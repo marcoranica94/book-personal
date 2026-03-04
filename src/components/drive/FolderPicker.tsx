@@ -18,17 +18,24 @@ export default function FolderPicker() {
 
   useEffect(() => {
     if (!open) { setSearch(''); return }
-    void loadFolders()
+    void loadFolders('')
     setTimeout(() => searchRef.current?.focus(), 50)
   }, [open])
 
-  async function loadFolders() {
+  // Debounced server-side search when user types
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(() => void loadFolders(search), 400)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  async function loadFolders(query: string) {
     if (!config || !user) return
     setLoading(true)
     try {
       const { accessToken, updatedTokens } = await getValidAccessToken(config, user.uid)
       if (updatedTokens) await patchTokens(user.uid, updatedTokens)
-      const list = await listDriveFolders(accessToken)
+      const list = await listDriveFolders(accessToken, query || undefined)
       setFolders(list)
     } catch (err) {
       toast.error('Errore caricamento cartelle: ' + (err as Error).message)
@@ -94,36 +101,31 @@ export default function FolderPicker() {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Caricamento cartelle...
               </div>
-            ) : (() => {
-              const filtered = folders.filter((f) =>
-                f.name.toLowerCase().includes(search.toLowerCase())
-              )
-              return filtered.length === 0 ? (
-                <p className="px-4 py-6 text-center text-sm text-slate-500">
-                  {search ? `Nessuna cartella trovata per "${search}"` : 'Nessuna cartella trovata su Drive'}
-                </p>
-              ) : (
-                <ul className="max-h-64 overflow-y-auto py-1">
-                  {filtered.map((f) => (
-                    <li key={f.id}>
-                      <button
-                        onClick={() => handleSelect(f)}
-                        className={cn(
-                          'flex w-full items-center gap-2.5 px-4 py-2.5 text-sm transition-colors hover:bg-white/6',
-                          config.folderId === f.id ? 'text-violet-400' : 'text-slate-300',
-                        )}
-                      >
-                        <Folder className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                        <span className="truncate">{f.name}</span>
-                        {config.folderId === f.id && (
-                          <span className="ml-auto text-xs text-violet-400">✓</span>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )
-            })()}
+            ) : folders.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-slate-500">
+                {search ? `Nessuna cartella trovata per "${search}"` : 'Nessuna cartella trovata su Drive'}
+              </p>
+            ) : (
+              <ul className="max-h-64 overflow-y-auto py-1">
+                {folders.map((f) => (
+                  <li key={f.id}>
+                    <button
+                      onClick={() => handleSelect(f)}
+                      className={cn(
+                        'flex w-full items-center gap-2.5 px-4 py-2.5 text-sm transition-colors hover:bg-white/6',
+                        config.folderId === f.id ? 'text-violet-400' : 'text-slate-300',
+                      )}
+                    >
+                      <Folder className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                      <span className="truncate">{f.name}</span>
+                      {config.folderId === f.id && (
+                        <span className="ml-auto text-xs text-violet-400">✓</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </>
       )}

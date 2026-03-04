@@ -186,17 +186,37 @@ export async function getValidAccessToken(
   return { accessToken: config.tokens.accessToken }
 }
 
-export async function listDriveFolders(accessToken: string): Promise<DriveFile[]> {
-  const params = new URLSearchParams({
-    q: "mimeType='application/vnd.google-apps.folder' and trashed=false",
-    fields: 'files(id,name,mimeType,modifiedTime)',
-    orderBy: 'name',
-    pageSize: '200',
-  })
-  const res = await fetch(`${DRIVE_API_URL}/files?${params}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (!res.ok) throw new Error('Errore accesso a Google Drive')
-  const data = (await res.json()) as { files: DriveFile[] }
-  return data.files ?? []
+export async function listDriveFolders(
+  accessToken: string,
+  search?: string,
+): Promise<DriveFile[]> {
+  const results: DriveFile[] = []
+  let pageToken: string | undefined
+
+  const nameFilter = search?.trim()
+    ? ` and name contains '${search.trim().replace(/'/g, "\\'")}'`
+    : ''
+
+  do {
+    const params = new URLSearchParams({
+      q: `mimeType='application/vnd.google-apps.folder' and trashed=false${nameFilter}`,
+      fields: 'nextPageToken,files(id,name,mimeType,modifiedTime)',
+      orderBy: 'name',
+      pageSize: '200',
+      includeItemsFromAllDrives: 'true',
+      supportsAllDrives: 'true',
+      corpora: 'allDrives',
+    })
+    if (pageToken) params.set('pageToken', pageToken)
+
+    const res = await fetch(`${DRIVE_API_URL}/files?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) throw new Error('Errore accesso a Google Drive')
+    const data = (await res.json()) as { files: DriveFile[]; nextPageToken?: string }
+    results.push(...(data.files ?? []))
+    pageToken = data.nextPageToken
+  } while (pageToken && results.length < 1000)
+
+  return results
 }
