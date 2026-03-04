@@ -19,6 +19,10 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   signIn: async () => {
     const user = await signInWithGitHub()
+    if (ALLOWED_UID && user.uid !== ALLOWED_UID) {
+      await signOutUser()
+      throw new Error('Accesso non autorizzato.')
+    }
     set({user, isAuthenticated: true})
   },
 
