@@ -1,5 +1,5 @@
 import type { DriveConfig, DriveFile, DriveTokens } from '@/types'
-import { DRIVE_ENCRYPTION_KEY_B64, GOOGLE_CLIENT_ID } from '@/utils/constants'
+import { DRIVE_ENCRYPTION_KEY_B64, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } from '@/utils/constants'
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -122,6 +122,7 @@ export async function handleDriveOAuthCallback(
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
       code,
       code_verifier: verifier,
       grant_type: 'authorization_code',
@@ -157,6 +158,7 @@ export async function refreshDriveAccessToken(
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
       refresh_token: refreshToken,
       grant_type: 'refresh_token',
     }),

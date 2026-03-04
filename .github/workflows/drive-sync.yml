@@ -41,6 +41,7 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
           DRIVE_ENCRYPTION_KEY: ${{ secrets.VITE_DRIVE_ENCRYPTION_KEY }}
           SYNC_DIRECTION: ${{ inputs.direction || 'both' }}
         run: node drive-sync.mjs
