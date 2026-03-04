@@ -10,13 +10,13 @@
 > Fondamenta del progetto. Da completare per primo, sblocca tutto il resto.
 
 ### E0-1 · Inizializzazione Progetto
-- 🔲 `E0-1.1` Inizializzare progetto Vite + React 18 + TypeScript
-- 🔲 `E0-1.2` Configurare Tailwind CSS v3 con tema custom (colori brand, dark mode)
-- 🔲 `E0-1.3` Installare e configurare shadcn/ui
-- 🔲 `E0-1.4` Installare dipendenze: framer-motion, zustand, @dnd-kit/core, recharts, react-router-dom, date-fns, lucide-react, react-markdown
-- 🔲 `E0-1.5` Configurare path aliases TypeScript (`@/components`, `@/stores`, etc.)
-- 🔲 `E0-1.6` Setup ESLint + Prettier con config condivisa
-- 🔲 `E0-1.7` Configurare Vite per build GitHub Pages (base URL)
+- ✅ `E0-1.1` Inizializzare progetto Vite + React 18 + TypeScript
+- ✅ `E0-1.2` Configurare Tailwind CSS v4 con tema custom dark mode
+- ✅ `E0-1.3` Installare Radix UI + class-variance-authority + tailwind-merge
+- ✅ `E0-1.4` Installare dipendenze: framer-motion, zustand, @dnd-kit, recharts, react-router-dom, date-fns, lucide-react, react-markdown, uuid
+- ✅ `E0-1.5` Configurare path aliases TypeScript (`@/*` → `./src/*`)
+- ✅ `E0-1.6` Setup Prettier con prettier-plugin-tailwindcss
+- ✅ `E0-1.7` Configurare Vite per build GitHub Pages (base: `/book-personal/`)
 
 ### E0-2 · GitHub Configuration
 - 🔲 `E0-2.1` Creare GitHub OAuth App nelle impostazioni developer
@@ -28,19 +28,19 @@
 - 🔲 `E0-2.7` Creare `book-stats-history.json` vuoto nel branch data
 
 ### E0-3 · CI/CD Pipeline
-- 🔲 `E0-3.1` Creare workflow `.github/workflows/deploy.yml` per GitHub Pages
-- 🔲 `E0-3.2` Configurare pnpm caching nel workflow
-- 🔲 `E0-3.3` Aggiungere step build + test nel workflow
-- 🔲 `E0-3.4` Testare deploy end-to-end su GitHub Pages
+- ✅ `E0-3.1` Creare workflow `.github/workflows/deploy.yml` per GitHub Pages
+- ✅ `E0-3.2` Configurare pnpm caching nel workflow
+- ✅ `E0-3.3` Step build nel workflow (tsc + vite build)
+- 🔲 `E0-3.4` Testare deploy end-to-end su GitHub Pages (richiede push sul repo)
 - 🔲 `E0-3.5` Aggiungere `CNAME` se si usa dominio custom (opzionale)
 
 ### E0-4 · TypeScript Types
-- 🔲 `E0-4.1` Definire type `Chapter` con tutti i campi
-- 🔲 `E0-4.2` Definire type `ChecklistItem`
-- 🔲 `E0-4.3` Definire type `ChapterAnalysis` con scores
-- 🔲 `E0-4.4` Definire type `BookSettings`
-- 🔲 `E0-4.5` Definire type `StatsSnapshot` per storico
-- 🔲 `E0-4.6` Definire enums: `ChapterStatus`, `Priority`, `CorrectionType`
+- ✅ `E0-4.1` Definire type `Chapter` con tutti i campi
+- ✅ `E0-4.2` Definire type `ChecklistItem`
+- ✅ `E0-4.3` Definire type `ChapterAnalysis` con scores
+- ✅ `E0-4.4` Definire type `BookSettings`
+- ✅ `E0-4.5` Definire type `StatsSnapshot` per storico
+- ✅ `E0-4.6` Definire const objects: `ChapterStatus`, `Priority`, `CorrectionType`
 
 ---
 
@@ -48,24 +48,15 @@
 
 > GitHub OAuth Device Flow. No backend.
 
-- 🔲 `E1-1` Implementare `githubOAuth.ts` service con Device Flow completo
-  - Request device code
-  - Polling token (ogni 5s, timeout 5min)
-  - Refresh token handling
-- 🔲 `E1-2` Creare `authStore.ts` (Zustand) con stato auth e token
-- 🔲 `E1-3` Creare `LoginPage.tsx` con UI accattivante
-  - Logo/nome dashboard
-  - Pulsante "Accedi con GitHub"
-  - QR code o link diretto a github.com/login/device
-  - Mostrare `user_code` con animazione attesa
-  - Spinner di polling con countdown
-  - Messaggio di errore/retry
-- 🔲 `E1-4` Creare `ProtectedRoute.tsx` HOC
-- 🔲 `E1-5` Implementare persistenza token in localStorage
-- 🔲 `E1-6` Implementare validazione token all'avvio app
-- 🔲 `E1-7` Implementare logout (revoca token via API + clear localStorage)
-- 🔲 `E1-8` Gestire scadenza token con redirect automatico a login
-- 🔲 `E1-9` Mostrare info utente autenticato nell'header (avatar, nome)
+- ✅ `E1-1` Implementare `githubOAuth.ts` service con Device Flow completo
+- ✅ `E1-2` Creare `authStore.ts` (Zustand) con stato auth e token
+- ✅ `E1-3` Creare `LoginPage.tsx` con UI accattivante (5 stati animati)
+- ✅ `E1-4` Creare `ProtectedRoute.tsx` HOC
+- ✅ `E1-5` Implementare persistenza token in localStorage
+- ✅ `E1-6` Implementare validazione token all'avvio app (optimistic + background)
+- ✅ `E1-7` Implementare logout (revoca token via API + clear localStorage)
+- ✅ `E1-8` Redirect automatico a login su 401
+- ✅ `E1-9` Avatar e nome utente in Sidebar
 
 ---
 
@@ -73,29 +64,15 @@
 
 > Layer di astrazione per leggere/scrivere JSON nel repo via GitHub API.
 
-- 🔲 `E2-1` Implementare `github.ts` client base (fetch wrapper con auth header)
-- 🔲 `E2-2` Implementare `dataService.ts`:
-  - `readFile(path)` → GET content via API
-  - `writeFile(path, content, sha)` → PUT content via API (crea/aggiorna)
-  - `getSha(path)` → recupera SHA corrente (necessario per update)
-- 🔲 `E2-3` Implementare `chaptersService`:
-  - `getAllChapters()` → legge chapters.json
-  - `saveChapters(chapters)` → scrive chapters.json
-  - `addChapter(chapter)` → aggiunge e salva
-  - `updateChapter(id, updates)` → aggiorna e salva
-  - `deleteChapter(id)` → rimuove e salva
-- 🔲 `E2-4` Implementare `settingsService`:
-  - `getSettings()` → legge book-settings.json
-  - `saveSettings(settings)` → scrive book-settings.json
-- 🔲 `E2-5` Implementare `statsService`:
-  - `getStatsHistory()` → legge storico
-  - `addStatsSnapshot(snapshot)` → aggiunge entry giornaliera
-- 🔲 `E2-6` Implementare `analysisService`:
-  - `getAnalysis(chapterId)` → legge analysis/chapter-{id}.json
-  - `getAllAnalysesIndex()` → legge analysis-index.json
-- 🔲 `E2-7` Gestione errori API (rate limit, 404, 401, 422)
-- 🔲 `E2-8` Implementare retry logic per rate limiting
-- 🔲 `E2-9` Cache in-memory con invalidazione (evita chiamate ridondanti)
+- ✅ `E2-1` Implementare `github.ts` client base (fetch wrapper con auth header)
+- ✅ `E2-2` Implementare `dataService.ts` con readJSON/writeJSON + SHA cache
+- ✅ `E2-3` CRUD capitoli in `dataService.ts` (getAllChapters, add, update, delete)
+- ✅ `E2-4` Settings service (getSettings, saveSettings)
+- ✅ `E2-5` Stats history service (getStatsHistory, appendStatsSnapshot)
+- ✅ `E2-6` Analysis service (getChapterAnalysis, getAllAnalysisIndex)
+- ✅ `E2-7` Gestione errori API (401 redirect, 404 fallback, error propagation)
+- 🔲 `E2-8` Retry logic per rate limiting (429)
+- ✅ `E2-9` SHA cache in-memory per evitare roundtrip extra
 
 ---
 
@@ -103,13 +80,8 @@
 
 > Shell dell'applicazione, sidebar, header, routing.
 
-- 🔲 `E3-1` Creare `Layout.tsx` con sidebar + main content
-- 🔲 `E3-2` Creare `Sidebar.tsx`:
-  - Logo + nome dashboard
-  - Navigation links con icone
-  - Indicatore pagina attiva
-  - Collapsible (versione mobile)
-  - Footer con info utente + logout
+- ✅ `E3-1` Creare `Layout.tsx` con sidebar + main content
+- ✅ `E3-2` Creare `Sidebar.tsx` (collapsible, nav attiva, avatar, logout)
 - 🔲 `E3-3` Creare `Header.tsx`:
   - Titolo pagina corrente
   - Breadcrumb

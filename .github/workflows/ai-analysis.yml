@@ -1,0 +1,55 @@
+name: AI Chapter Analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      chapter_id:
+        description: 'Chapter ID to analyze (or "all" for all chapters)'
+        required: true
+        default: 'all'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout data branch
+        uses: actions/checkout@v4
+        with:
+          ref: data
+          path: data
+
+      - name: Checkout scripts
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          path: app
+          sparse-checkout: scripts
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install script dependencies
+        working-directory: app/scripts
+        run: npm install
+
+      - name: Run analysis
+        working-directory: app/scripts
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CHAPTER_ID: ${{ inputs.chapter_id }}
+          DATA_DIR: ${{ github.workspace }}/data
+        run: node analyze-chapter.mjs
+
+      - name: Commit and push analysis results
+        working-directory: data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || git commit -m "analysis: update chapter analysis - $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push

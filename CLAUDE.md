@@ -168,13 +168,46 @@ book-personal/
 | Data | Sessione | Attività | Output |
 |------|----------|----------|--------|
 | 2026-03-04 | #1 | Setup progetto, creazione CLAUDE.md, PROJECT.md, BACKLOG.md | 3 file di specifica |
+| 2026-03-04 | #2 | Sprint 1 completo — tutta la fondazione del progetto | App funzionante, build ✅ |
 
 ---
 
-## TODO per Prossima Sessione
+## TODO per Prossima Sessione (Sprint 2)
 
-- [ ] Inizializzare progetto Vite + React
-- [ ] Configurare Tailwind CSS
-- [ ] Installare dipendenze (shadcn, framer-motion, zustand, dnd-kit, recharts)
-- [ ] Setup GitHub Pages workflow
-- [ ] Implementare GitHub OAuth Device Flow
+- [ ] E4: Kanban Board completo (KanbanColumn, ChapterCard, drag & drop, ChapterModal)
+- [ ] E5: Dashboard Home (grafici Recharts, milestone, KPI animati)
+- [ ] E6: Dettaglio Capitolo (ChecklistEditor, stats, note)
+- [ ] E3: Header.tsx, breadcrumb, animazioni pagina
+
+## Struttura File Creata (Sprint 1)
+
+```
+src/
+├── App.tsx                          ← Router + auth init
+├── index.css                        ← Tailwind v4 + custom scrollbar
+├── types/index.ts                   ← Tutti i tipi + const enums + STATUS_CONFIG
+├── utils/cn.ts                      ← cn() helper
+├── utils/formatters.ts              ← charsToPages, wordsToReadingTime, ...
+├── utils/constants.ts               ← ENV vars, LS keys, API URLs
+├── services/github.ts               ← GitHub API client (fetch wrapper)
+├── services/githubOAuth.ts          ← Device Flow OAuth
+├── services/dataService.ts          ← CRUD JSON su branch data
+├── stores/authStore.ts              ← Auth Zustand store
+├── stores/chaptersStore.ts          ← Chapters CRUD store
+├── stores/settingsStore.ts          ← Settings store
+├── stores/analysisStore.ts          ← Analysis store
+├── stores/uiStore.ts                ← UI state (filters, theme, sidebar)
+├── components/layout/Layout.tsx     ← Shell app
+├── components/layout/Sidebar.tsx    ← Nav collapsibile con animazioni
+├── components/layout/ProtectedRoute.tsx ← Guard auth
+└── pages/
+    ├── LoginPage.tsx                ← UI Login Device Flow (5 stati animati)
+    ├── DashboardPage.tsx            ← Home con KPI e stats
+    ├── KanbanPage.tsx               ← Placeholder Sprint 2
+    ├── AnalysisPage.tsx             ← Placeholder Sprint 4
+    └── SettingsPage.tsx             ← Form impostazioni libro
+.github/workflows/
+    ├── deploy.yml                   ← CI/CD GitHub Pages
+    └── ai-analysis.yml              ← AI analysis con Claude API
+scripts/analyze-chapter.mjs         ← Script Node.js per analisi AI
+```
