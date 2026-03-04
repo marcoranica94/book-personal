@@ -2,6 +2,9 @@
 export const GITHUB_REPO_OWNER = import.meta.env.VITE_GITHUB_REPO_OWNER ?? ''
 export const GITHUB_REPO_NAME = import.meta.env.VITE_GITHUB_REPO_NAME ?? 'book-personal'
 
+// Utente autorizzato — solo questo UID Firebase può accedere all'app
+export const ALLOWED_UID = import.meta.env.VITE_ALLOWED_UID ?? ''
+
 // Google Drive OAuth
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
 export const GOOGLE_CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET ?? ''

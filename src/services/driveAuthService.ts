@@ -1,5 +1,5 @@
-import type { DriveConfig, DriveFile, DriveTokens } from '@/types'
-import { DRIVE_ENCRYPTION_KEY_B64, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } from '@/utils/constants'
+import type {DriveConfig, DriveFile, DriveTokens} from '@/types'
+import {DRIVE_ENCRYPTION_KEY_B64, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET} from '@/utils/constants'
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -191,7 +191,7 @@ export async function listDriveFolders(accessToken: string): Promise<DriveFile[]
     q: "mimeType='application/vnd.google-apps.folder' and trashed=false",
     fields: 'files(id,name,mimeType,modifiedTime)',
     orderBy: 'name',
-    pageSize: '50',
+    pageSize: '200',
   })
   const res = await fetch(`${DRIVE_API_URL}/files?${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
