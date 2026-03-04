@@ -14,6 +14,7 @@ import {patchAnalysis} from '@/services/analysisService'
 import * as chaptersService from '@/services/chaptersService'
 import {getValidAccessToken} from '@/services/driveAuthService'
 import {getDriveFileContent} from '@/services/driveFileService'
+import {pushToDrive} from '@/services/driveSyncService'
 import {GITHUB_REPO_NAME, GITHUB_REPO_OWNER} from '@/utils/constants'
 import {formatRelativeDate} from '@/utils/formatters'
 import {cn} from '@/utils/cn'
@@ -69,7 +70,76 @@ function applyCorrectionsToContent(
   return { content: result, applied, notFound }
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function findContext(text: string, phrase: string, pad = 60): string | null {
+  const idx = text.indexOf(phrase)
+  if (idx === -1) return null
+  const start = Math.max(0, idx - pad)
+  const end = Math.min(text.length, idx + phrase.length + pad)
+  return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '')
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+function ItemModal({
+  type,
+  text,
+  onClose,
+}: {
+  type: 'weaknesses' | 'suggestions'
+  text: string
+  onClose: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{opacity: 0, scale: 0.95}}
+        animate={{opacity: 1, scale: 1}}
+        exit={{opacity: 0, scale: 0.95}}
+        transition={{duration: 0.15}}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#16161F] p-6 shadow-2xl"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <span className={cn(
+            'rounded-full px-3 py-1 text-xs font-semibold',
+            type === 'weaknesses'
+              ? 'bg-amber-900/30 text-amber-400 border border-amber-800/30'
+              : 'bg-blue-900/30 text-blue-400 border border-blue-800/30'
+          )}>
+            {type === 'weaknesses' ? 'Punto debole' : 'Suggerimento'}
+          </span>
+          <button onClick={onClose} className="rounded-md p-1 text-slate-500 hover:text-slate-300">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="mb-5 text-sm leading-relaxed text-slate-200">{text}</p>
+        <div className="rounded-xl border border-white/6 bg-white/3 p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Come applicarlo</p>
+          <ul className="space-y-2 text-sm text-slate-400">
+            {type === 'suggestions' ? (
+              <>
+                <li className="flex items-start gap-2"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />Vai nella tab <strong className="text-slate-300">Editor</strong> e individua la parte interessata</li>
+                <li className="flex items-start gap-2"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />Riscrivi il passaggio tenendo a mente questo suggerimento</li>
+                <li className="flex items-start gap-2"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />Salva su Drive quando sei soddisfatto</li>
+              </>
+            ) : (
+              <>
+                <li className="flex items-start gap-2"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />Identifica i passaggi specifici che mostrano questa debolezza</li>
+                <li className="flex items-start gap-2"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />Controlla anche la tab <strong className="text-slate-300">Correzioni</strong> per errori correlati</li>
+                <li className="flex items-start gap-2"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />Dopo la revisione, rilancia l'analisi per verificare il miglioramento</li>
+              </>
+            )}
+          </ul>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
 
 function ScoreBar({label, value}: {label: string; value: number}) {
   return (
@@ -110,6 +180,9 @@ export default function AnalysisPage() {
   const [editorContent, setEditorContent] = useState('')
   const [isSavingContent, setIsSavingContent] = useState(false)
   const [isForceSyncingDrive, setIsForceSyncingDrive] = useState(false)
+  const [isPushingToDrive, setIsPushingToDrive] = useState(false)
+  const [appliedChanges, setAppliedChanges] = useState<Array<{original: string; suggested: string}>>([])
+  const [itemDetailModal, setItemDetailModal] = useState<{type: 'weaknesses' | 'suggestions'; text: string} | null>(null)
   const editorRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -123,15 +196,18 @@ export default function AnalysisPage() {
   useEffect(() => {
     if (selectedId) void loadAnalysis(selectedId)
     setSelectedCorrections(new Set())
+    setAppliedChanges([])
   }, [selectedId, loadAnalysis])
 
   useEffect(() => {
     const chapter = chapters.find((c) => c.id === selectedId)
     setEditorContent(chapter?.driveContent ?? '')
+    setAppliedChanges([])
   }, [selectedId, chapters])
 
   const selectedChapter = chapters.find((c) => c.id === selectedId) ?? null
   const analysis = selectedId ? (analyses[selectedId] ?? null) : null
+  const isDirty = editorContent !== (selectedChapter?.driveContent ?? '')
 
   async function triggerAnalysis(chapterId: string) {
     const hasExisting =
@@ -174,18 +250,28 @@ export default function AnalysisPage() {
         .map((_, i) => i)
         .filter((i) => !selectedCorrections.has(i))
 
-      await chaptersService.updateChapter(selectedChapter.id, {
-        driveContent: content,
-        syncStatus: SyncStatus.PENDING_PUSH,
-        syncSource: SyncSource.AI,
-      })
-      await patchAnalysis(selectedChapter.id, {
-        acceptedCorrections: accepted,
-        rejectedCorrections: rejected,
-        appliedAt: new Date().toISOString(),
-      })
-      await loadChapters()
-      await loadAnalysis(selectedId)
+      // Scritture in parallelo per ridurre la latenza
+      await Promise.all([
+        chaptersService.updateChapter(selectedChapter.id, {
+          driveContent: content,
+          syncStatus: SyncStatus.PENDING_PUSH,
+          syncSource: SyncSource.AI,
+        }),
+        patchAnalysis(selectedChapter.id, {
+          acceptedCorrections: accepted,
+          rejectedCorrections: rejected,
+          appliedAt: new Date().toISOString(),
+        }),
+      ])
+      await Promise.all([loadChapters(), loadAnalysis(selectedId)])
+
+      // Salva le modifiche per mostrarle nell'editor
+      const changes = accepted
+        .map((i) => analysis.corrections[i])
+        .filter((c) => !!c && baseContent.includes(c.original))
+        .map((c) => ({original: c!.original, suggested: c!.suggested}))
+      setAppliedChanges(changes)
+      setEditorContent(content)
       setSelectedCorrections(new Set())
 
       if (notFound.length) {
@@ -217,6 +303,28 @@ export default function AnalysisPage() {
       toast.error('Errore salvataggio: ' + (err as Error).message)
     } finally {
       setIsSavingContent(false)
+    }
+  }
+
+  async function handlePushToDrive() {
+    if (!selectedChapter || !driveConfig || !user) return
+    setIsPushingToDrive(true)
+    try {
+      await chaptersService.updateChapter(selectedChapter.id, {
+        driveContent: editorContent,
+        currentChars: editorContent.length,
+        wordCount: editorContent.split(/\s+/).filter(Boolean).length,
+        syncStatus: SyncStatus.PENDING_PUSH,
+        syncSource: SyncSource.MANUAL,
+      })
+      const updated = {...selectedChapter, driveContent: editorContent}
+      await pushToDrive(updated, driveConfig, user.uid, (tokens) => patchTokens(user.uid, tokens))
+      await loadChapters()
+      toast.success('Testo salvato su Drive')
+    } catch (err) {
+      toast.error('Errore salvataggio Drive: ' + (err as Error).message)
+    } finally {
+      setIsPushingToDrive(false)
     }
   }
 
@@ -455,21 +563,34 @@ export default function AnalysisPage() {
                             : activeTab === 'weaknesses'
                               ? analysis.weaknesses
                               : analysis.suggestions
-                          ).map((item, i) => (
-                            <li key={i} className="flex items-start gap-2.5 text-sm">
-                              <span
+                          ).map((item, i) => {
+                            const isClickable = activeTab === 'weaknesses' || activeTab === 'suggestions'
+                            return (
+                              <li
+                                key={i}
+                                onClick={isClickable ? () => setItemDetailModal({type: activeTab as 'weaknesses' | 'suggestions', text: item}) : undefined}
                                 className={cn(
-                                  'mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full',
-                                  activeTab === 'strengths'
-                                    ? 'bg-emerald-500'
-                                    : activeTab === 'weaknesses'
-                                      ? 'bg-amber-500'
-                                      : 'bg-blue-500'
+                                  'flex items-start gap-2.5 rounded-lg px-2 py-1.5 text-sm',
+                                  isClickable && 'cursor-pointer transition-colors hover:bg-white/4'
                                 )}
-                              />
-                              <span className="text-slate-300">{item}</span>
-                            </li>
-                          ))}
+                              >
+                                <span
+                                  className={cn(
+                                    'mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full',
+                                    activeTab === 'strengths'
+                                      ? 'bg-emerald-500'
+                                      : activeTab === 'weaknesses'
+                                        ? 'bg-amber-500'
+                                        : 'bg-blue-500'
+                                  )}
+                                />
+                                <span className="flex-1 text-slate-300">{item}</span>
+                                {isClickable && (
+                                  <span className="shrink-0 text-xs text-slate-600 mt-0.5">dettagli →</span>
+                                )}
+                              </li>
+                            )
+                          })}
                           {(activeTab === 'strengths'
                             ? analysis.strengths
                             : activeTab === 'weaknesses'
@@ -605,6 +726,24 @@ export default function AnalysisPage() {
                                         </p>
                                       </div>
                                     </div>
+                                    {/* Contesto nel testo */}
+                                    {(() => {
+                                      const ctx = selectedChapter?.driveContent
+                                        ? findContext(selectedChapter.driveContent, c.original)
+                                        : null
+                                      if (!ctx) return null
+                                      const parts = ctx.split(c.original)
+                                      return (
+                                        <div className="rounded-lg border border-white/6 bg-white/3 px-3 py-2 text-xs text-slate-500">
+                                          <p className="mb-1 text-slate-600">Contesto nel testo</p>
+                                          <p className="leading-relaxed">
+                                            {parts[0]}
+                                            <mark className="rounded bg-amber-900/40 px-0.5 text-amber-300 not-italic">{c.original}</mark>
+                                            {parts.slice(1).join(c.original)}
+                                          </p>
+                                        </div>
+                                      )
+                                    })()}
                                     {c.note && (
                                       <p className="text-xs text-slate-600 italic">{c.note}</p>
                                     )}
@@ -652,32 +791,82 @@ export default function AnalysisPage() {
                           <textarea
                             ref={editorRef}
                             value={editorContent}
-                            onChange={(e) => setEditorContent(e.target.value)}
+                            onChange={(e) => { setEditorContent(e.target.value); setAppliedChanges([]) }}
                             placeholder="Il testo del capitolo apparirà qui dopo la sincronizzazione Drive..."
                             className="w-full min-h-[400px] resize-y rounded-lg border border-white/8 bg-white/3 px-4 py-3 font-mono text-sm text-slate-300 placeholder-slate-700 focus:border-violet-500/40 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
                             spellCheck={false}
                           />
+
+                          {/* Pannello modifiche applicate */}
+                          {appliedChanges.length > 0 && (
+                            <div className="rounded-xl border border-emerald-800/30 bg-emerald-900/10 p-4 space-y-2">
+                              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-500">
+                                {appliedChanges.length} modifiche applicate al testo
+                              </p>
+                              {appliedChanges.map((ch, i) => (
+                                <div key={i} className="grid grid-cols-2 gap-2 text-xs">
+                                  <p className="rounded bg-red-950/30 px-2 py-1.5 text-slate-500 line-through">{ch.original}</p>
+                                  <p className="rounded bg-emerald-950/30 px-2 py-1.5 text-emerald-300">{ch.suggested}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                           <div className="flex items-center justify-between">
                             <div className="flex gap-4 text-xs text-slate-600">
                               <span>{editorContent.length.toLocaleString('it-IT')} caratteri</span>
                               <span>{editorContent.split(/\s+/).filter(Boolean).length.toLocaleString('it-IT')} parole</span>
                             </div>
-                            <button
-                              onClick={() => void handleSaveEditorContent()}
-                              disabled={isSavingContent || !editorContent}
-                              className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
-                            >
-                              {isSavingContent ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <FileEdit className="h-4 w-4" />
+                            <div className="flex items-center gap-2">
+                              {/* Stato sync */}
+                              {!isDirty && (
+                                <span className="flex items-center gap-1 text-xs text-emerald-600">
+                                  <CheckCheck className="h-3 w-3" />
+                                  Nessuna modifica
+                                </span>
                               )}
-                              Salva su Firestore
-                            </button>
+                              {isDirty && (
+                                <span className="flex items-center gap-1 text-xs text-amber-500">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                  Modifiche non salvate
+                                </span>
+                              )}
+                              {/* Salva su Drive */}
+                              {driveConfig?.folderId ? (
+                                <button
+                                  onClick={() => void handlePushToDrive()}
+                                  disabled={isPushingToDrive || !editorContent || !isDirty}
+                                  className={cn(
+                                    'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-40',
+                                    isDirty
+                                      ? 'bg-amber-600 hover:bg-amber-500'
+                                      : 'bg-slate-700 hover:bg-slate-600'
+                                  )}
+                                >
+                                  {isPushingToDrive ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <FileEdit className="h-4 w-4" />
+                                  )}
+                                  Salva su Drive{isDirty ? ' *' : ''}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => void handleSaveEditorContent()}
+                                  disabled={isSavingContent || !editorContent || !isDirty}
+                                  className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                                >
+                                  {isSavingContent ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileEdit className="h-4 w-4" />}
+                                  Salva bozza{isDirty ? ' *' : ''}
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-600">
-                            Il testo viene salvato su Firestore come bozza locale. Usa "Sincronizza ora" nelle Impostazioni per inviarlo su Drive.
-                          </p>
+                          {!driveConfig?.folderId && (
+                            <p className="text-xs text-slate-600">
+                              Drive non connesso — il testo viene salvato come bozza su Firestore.
+                            </p>
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -703,6 +892,17 @@ export default function AnalysisPage() {
               </div>
             )}
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Item detail modal */}
+      <AnimatePresence>
+        {itemDetailModal && (
+          <ItemModal
+            type={itemDetailModal.type}
+            text={itemDetailModal.text}
+            onClose={() => setItemDetailModal(null)}
+          />
         )}
       </AnimatePresence>
 
