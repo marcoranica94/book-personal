@@ -20,7 +20,7 @@ export async function listDriveFiles(
   folderId: string,
 ): Promise<DriveFile[]> {
   const params = new URLSearchParams({
-    q: `'${folderId}' in parents and trashed=false and ${SUPPORTED_MIME_QUERY}`,
+    q: `'${folderId}' in parents and trashed=false and name contains 'Capitoli' and ${SUPPORTED_MIME_QUERY}`,
     fields: 'files(id,name,mimeType,modifiedTime,md5Checksum,size,webViewLink)',
     orderBy: 'name',
     pageSize: '200',
