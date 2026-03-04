@@ -9,6 +9,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/kanban': 'Kanban Board',
   '/analysis': 'Analisi AI',
   '/settings': 'Impostazioni',
+  '/chapters': 'Dettaglio Capitolo',
 }
 
 interface HeaderProps {
@@ -18,7 +19,8 @@ interface HeaderProps {
 export default function Header({ actions }: HeaderProps) {
   const location = useLocation()
   const { lastSavedAt } = useUIStore()
-  const title = PAGE_TITLES[location.pathname] ?? 'Book Dashboard'
+  const basePath = '/' + location.pathname.split('/')[1]
+  const title = PAGE_TITLES[basePath] ?? 'Book Dashboard'
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-white/8 bg-[#0A0A0F]/80 px-6 backdrop-blur-sm">

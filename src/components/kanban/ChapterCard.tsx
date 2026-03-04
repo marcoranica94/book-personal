@@ -1,7 +1,8 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { motion } from 'framer-motion'
-import { GripVertical, Calendar, FileText, CheckSquare, Tag, Pencil, Trash2 } from 'lucide-react'
+import { GripVertical, Calendar, FileText, CheckSquare, Tag, Pencil, Trash2, ExternalLink } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import type { Chapter } from '@/types'
 import { PRIORITY_CONFIG } from '@/types'
 import { charsToPages, calcProgress, formatDate, isDueSoon, isOverdue } from '@/utils/formatters'
@@ -54,6 +55,14 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
 
         {/* Actions */}
         <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <Link
+            to={`/chapters/${chapter.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="rounded-md p-1 text-slate-500 transition-colors hover:bg-white/8 hover:text-violet-400"
+            title="Apri dettaglio"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
           <button
             onClick={(e) => { e.stopPropagation(); onEdit(chapter) }}
             className="rounded-md p-1 text-slate-500 transition-colors hover:bg-white/8 hover:text-slate-300"

@@ -6,6 +6,7 @@ import Layout from '@/components/layout/Layout'
 import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
 import KanbanPage from '@/pages/KanbanPage'
+import ChapterPage from '@/pages/ChapterPage'
 import AnalysisPage from '@/pages/AnalysisPage'
 import SettingsPage from '@/pages/SettingsPage'
 
@@ -31,6 +32,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="kanban" element={<KanbanPage />} />
+          <Route path="chapters/:id" element={<ChapterPage />} />
           <Route path="analysis" element={<AnalysisPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>

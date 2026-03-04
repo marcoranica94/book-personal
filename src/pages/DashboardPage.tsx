@@ -1,165 +1,303 @@
-import {useEffect} from 'react'
+import {useEffect, useState} from 'react'
 import {motion} from 'framer-motion'
-import {BookOpen, CheckCircle2, Clock, FileText, TrendingUp, Zap} from 'lucide-react'
+import {BookOpen, Calendar, CheckCircle2, Clock, FileText, TrendingUp, Zap} from 'lucide-react'
+import {differenceInDays} from 'date-fns'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useAuthStore} from '@/stores/authStore'
+import {useAnalysisStore} from '@/stores/analysisStore'
+import type {StatsSnapshot} from '@/types'
 import {ChapterStatus} from '@/types'
-import {calcProgress, charsToPages, formatNumber, wordsToReadingTime} from '@/utils/formatters'
+import {
+  appendStatsSnapshot,
+  getStatsHistory,
+} from '@/services/dataService'
+import {
+  calcProgress,
+  calcProjectedEndDate,
+  charsToPages,
+  formatDate,
+  formatNumber,
+  wordsPerDay,
+  wordsToReadingTime,
+} from '@/utils/formatters'
+import {useCountUp} from '@/hooks/useCountUp'
 import {cn} from '@/utils/cn'
+import ProgressRing from '@/components/dashboard/ProgressRing'
+import WordCountChart from '@/components/dashboard/WordCountChart'
+import StatusDonutChart from '@/components/dashboard/StatusDonutChart'
+import ProductivityChart from '@/components/dashboard/ProductivityChart'
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  color = 'violet',
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+
+function KpiCard({
+  icon: Icon, label, value, sub, color = 'violet', delay = 0,
 }: {
   icon: React.ComponentType<{ className?: string }>
-  label: string
-  value: string
-  sub?: string
-  color?: 'violet' | 'cyan' | 'emerald' | 'amber'
+  label: string; value: string; sub?: string
+  color?: 'violet' | 'cyan' | 'emerald' | 'amber' | 'slate'
+  delay?: number
 }) {
   const colors = {
-    violet: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
-    cyan: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
-    emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-    amber: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    violet: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
+    cyan:   'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
+    emerald:'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+    amber:  'text-amber-400 bg-amber-500/10 border-amber-500/20',
+    slate:  'text-slate-400 bg-slate-500/10 border-slate-500/20',
   }
   return (
-    <div className="rounded-xl border border-white/8 bg-[#12121A] p-5">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay, duration: 0.3 }}
+      className="rounded-xl border border-white/8 bg-[#12121A] p-4"
+    >
       <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-slate-500">{label}</p>
-          <p className="mt-1 text-2xl font-bold text-white">{value}</p>
-          {sub && <p className="mt-0.5 text-xs text-slate-500">{sub}</p>}
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-slate-500 truncate">{label}</p>
+          <p className="mt-1 text-xl font-bold text-white">{value}</p>
+          {sub && <p className="mt-0.5 text-xs text-slate-600">{sub}</p>}
         </div>
-        <span className={cn('rounded-lg border p-2', colors[color])}>
-          <Icon className="h-5 w-5" />
+        <span className={cn('flex shrink-0 h-9 w-9 items-center justify-center rounded-lg border ml-3', colors[color])}>
+          <Icon className="h-4 w-4" />
         </span>
       </div>
+    </motion.div>
+  )
+}
+
+// ─── Chart Card wrapper ────────────────────────────────────────────────────────
+
+function ChartCard({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn('rounded-xl border border-white/8 bg-[#12121A] p-5', className)}>
+      <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</h3>
+      {children}
     </div>
   )
 }
+
+// ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
   const { chapters, loadChapters, totalWords, totalChars, completedCount } = useChaptersStore()
   const { settings, loadSettings } = useSettingsStore()
+  const { loadAllAnalyses } = useAnalysisStore()
+  const [history, setHistory] = useState<StatsSnapshot[]>([])
 
   useEffect(() => {
     void loadChapters()
     void loadSettings()
   }, [loadChapters, loadSettings])
 
+  // Load stats history + save today's snapshot
+  useEffect(() => {
+    async function loadAndSave() {
+      try {
+        const hist = await getStatsHistory()
+        setHistory(hist)
+
+        // Save today's snapshot (once per day)
+        const today = new Date().toISOString().split('T')[0]
+        const alreadySaved = hist.some((s) => s.date.startsWith(today))
+        if (!alreadySaved && chapters.length > 0) {
+          const snap: StatsSnapshot = {
+            date: new Date().toISOString(),
+            totalWords: totalWords(),
+            totalChars: totalChars(),
+            totalPages: charsToPages(totalChars(), settings.charsPerPage),
+            chaptersByStatus: Object.values(ChapterStatus).reduce(
+              (acc, s) => ({ ...acc, [s]: chapters.filter((c) => c.status === s).length }),
+              {} as Record<ChapterStatus, number>
+            ),
+          }
+          await appendStatsSnapshot(snap)
+          setHistory((prev) => {
+            const idx = prev.findIndex((s) => s.date.startsWith(today))
+            if (idx >= 0) { const next = [...prev]; next[idx] = snap; return next }
+            return [...prev, snap]
+          })
+        }
+      } catch { /* silently ignore — data branch may not exist yet */ }
+    }
+    if (chapters.length > 0) void loadAndSave()
+  }, [chapters, settings.charsPerPage, totalChars, totalWords])
+
+  useEffect(() => {
+    if (chapters.length > 0) {
+      void loadAllAnalyses(chapters.map((c) => c.id))
+    }
+  }, [chapters, loadAllAnalyses])
+
+  // Stats
   const words = totalWords()
   const chars = totalChars()
   const pages = charsToPages(chars, settings.charsPerPage)
   const progress = calcProgress(words, settings.targetWords)
   const readingTime = wordsToReadingTime(words, settings.wordsPerMinuteReading)
   const done = completedCount()
+  const daysActive = differenceInDays(new Date(), new Date(settings.startDate)) + 1
+  const avgWordsPerDay = wordsPerDay(words, settings.startDate)
+  const projectedEnd = calcProjectedEndDate(words, settings.targetWords, settings.startDate)
 
   const statusCounts = Object.values(ChapterStatus).reduce(
     (acc, s) => ({ ...acc, [s]: chapters.filter((c) => c.status === s).length }),
     {} as Record<ChapterStatus, number>
   )
 
-  return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <motion.h1
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-2xl font-bold text-white"
-        >
-          Ciao, {user?.name ?? user?.login} 👋
-        </motion.h1>
-        <p className="mt-1 text-sm text-slate-400">
-          {settings.title} — panoramica del progetto
-        </p>
-      </div>
+  // Count-up animated values
+  const animWords = useCountUp(words, 1200)
+  const animPages = useCountUp(pages, 1000)
+  const animProgress = useCountUp(progress, 1100)
 
-      {/* Progress bar */}
+  // Upcoming due dates
+  const dueSoon = chapters
+    .filter((c) => c.dueDate && differenceInDays(new Date(c.dueDate), new Date()) <= 7 && differenceInDays(new Date(c.dueDate), new Date()) >= 0)
+    .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
+    .slice(0, 3)
+
+  const greeting = user?.name?.split(' ')[0] ?? user?.login ?? 'scrittore'
+
+  return (
+    <div className="space-y-6 p-6">
+
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-2xl font-bold text-white">Ciao, {greeting} 👋</h1>
+        <p className="mt-1 text-sm text-slate-500">{settings.title} — panoramica aggiornata</p>
+      </motion.div>
+
+      {/* Progress bar principale */}
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
         className="rounded-xl border border-white/8 bg-[#12121A] p-5"
       >
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-slate-300">Completamento libro</span>
-          <span className="text-sm font-bold text-violet-400">{progress}%</span>
+          <span className="text-sm font-bold text-violet-400">{animProgress}%</span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-white/8">
+        <div className="h-2.5 overflow-hidden rounded-full bg-white/8">
           <motion.div
-            className="h-full rounded-full bg-gradient-to-r from-violet-600 to-cyan-500"
+            className="h-full rounded-full bg-gradient-to-r from-violet-600 via-violet-500 to-cyan-500"
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
-            transition={{ delay: 0.3, duration: 1, ease: 'easeOut' }}
+            transition={{ delay: 0.4, duration: 1.2, ease: 'easeOut' }}
           />
         </div>
-        <div className="mt-2 flex justify-between text-xs text-slate-500">
+        <div className="mt-2 flex justify-between text-xs text-slate-600">
           <span>{formatNumber(words)} parole scritte</span>
           <span>obiettivo: {formatNumber(settings.targetWords)}</span>
         </div>
       </motion.div>
 
-      {/* KPI Grid */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6"
-      >
-        <StatCard icon={FileText} label="Pagine stimate" value={String(pages)} sub="chars/1800" color="violet" />
-        <StatCard icon={BookOpen} label="Parole totali" value={formatNumber(words)} color="cyan" />
-        <StatCard icon={CheckCircle2} label="Cap. completati" value={`${done}/${chapters.length}`} color="emerald" />
-        <StatCard icon={Clock} label="Tempo lettura" value={readingTime} color="amber" />
-        <StatCard icon={TrendingUp} label="Capitoli" value={String(chapters.length)} sub="totali" color="violet" />
-        <StatCard icon={Zap} label="Progresso" value={`${progress}%`} color="cyan" />
-      </motion.div>
-
-      {/* Status breakdown */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="rounded-xl border border-white/8 bg-[#12121A] p-5"
-      >
-        <h2 className="mb-4 text-sm font-semibold text-slate-300">Stato capitoli</h2>
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-          {[
-            { key: ChapterStatus.TODO, label: 'Da fare', color: 'bg-slate-500' },
-            { key: ChapterStatus.IN_PROGRESS, label: 'Scrittura', color: 'bg-blue-500' },
-            { key: ChapterStatus.REVIEW, label: 'Revisione', color: 'bg-amber-500' },
-            { key: ChapterStatus.EXTERNAL_REVIEW, label: 'Rev. esterna', color: 'bg-violet-500' },
-            { key: ChapterStatus.REFINEMENT, label: 'Rifinimento', color: 'bg-cyan-500' },
-            { key: ChapterStatus.DONE, label: 'Fatto', color: 'bg-emerald-500' },
-          ].map(({ key, label, color }) => (
-            <div key={key} className="rounded-lg bg-white/4 p-3 text-center">
-              <div className={cn('mx-auto mb-1.5 h-2.5 w-2.5 rounded-full', color)} />
-              <p className="text-xl font-bold text-white">{statusCounts[key] ?? 0}</p>
-              <p className="mt-0.5 text-xs text-slate-500">{label}</p>
-            </div>
-          ))}
+      {/* KPI grid */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        <div className="col-span-2 sm:col-span-2 lg:col-span-2">
+          <KpiCard icon={FileText} label="Parole totali" value={formatNumber(animWords)} color="violet" delay={0.1} />
         </div>
+        <div className="col-span-2 sm:col-span-2 lg:col-span-2">
+          <KpiCard icon={BookOpen} label="Pagine stimate" value={String(animPages)} sub={`chars/${settings.charsPerPage}`} color="cyan" delay={0.15} />
+        </div>
+        <div className="col-span-2 sm:col-span-2 lg:col-span-2">
+          <KpiCard icon={CheckCircle2} label="Cap. completati" value={`${done}/${chapters.length}`} color="emerald" delay={0.2} />
+        </div>
+        <div className="col-span-2 sm:col-span-2 lg:col-span-2">
+          <KpiCard icon={Clock} label="Tempo lettura" value={readingTime} color="amber" delay={0.25} />
+        </div>
+        <div className="col-span-2 sm:col-span-2 lg:col-span-2">
+          <KpiCard icon={TrendingUp} label="Parole/giorno" value={formatNumber(avgWordsPerDay)} sub="media" color="violet" delay={0.3} />
+        </div>
+        <div className="col-span-2 sm:col-span-2 lg:col-span-2">
+          <KpiCard icon={Calendar} label="Giorni attivi" value={String(daysActive)} color="cyan" delay={0.35} />
+        </div>
+        <div className="col-span-2 sm:col-span-2 lg:col-span-2">
+          <KpiCard icon={Zap} label="Fine stimata" value={projectedEnd ?? '—'} color="amber" delay={0.4} />
+        </div>
+        <div className="col-span-2 sm:col-span-2 lg:col-span-2">
+          <KpiCard icon={FileText} label="Mancano" value={formatNumber(Math.max(0, settings.targetWords - words))} sub="parole al target" color="slate" delay={0.45} />
+        </div>
+      </div>
+
+      {/* Charts row */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+        className="grid grid-cols-1 gap-4 lg:grid-cols-3"
+      >
+        {/* Andamento parole */}
+        <ChartCard title="Andamento parole nel tempo" className="lg:col-span-2">
+          <div className="h-44">
+            <WordCountChart history={history} />
+          </div>
+        </ChartCard>
+
+        {/* Stato capitoli + progress ring */}
+        <ChartCard title="Stato capitoli">
+          <div className="flex items-center justify-center gap-6">
+            <ProgressRing value={progress} size={100} stroke={9} label={`${animProgress}%`} sublabel="fatto" />
+            <div className="space-y-1.5">
+              {Object.entries(statusCounts)
+                .filter(([, v]) => v > 0)
+                .map(([s, v]) => (
+                  <div key={s} className="flex items-center gap-2 text-xs">
+                    <span className="font-medium text-white w-4 text-right">{v}</span>
+                    <span className="text-slate-500">{s.replace('_', ' ')}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </ChartCard>
       </motion.div>
 
-      {/* Empty state hint */}
+      {/* Second charts row */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+        className="grid grid-cols-1 gap-4 lg:grid-cols-2"
+      >
+        {/* Produttività */}
+        <ChartCard title="Produttività giornaliera (parole)">
+          <div className="h-40">
+            <ProductivityChart history={history} />
+          </div>
+        </ChartCard>
+
+        {/* Distribuzione status */}
+        <ChartCard title="Distribuzione capitoli">
+          <div className="h-40">
+            <StatusDonutChart counts={statusCounts} />
+          </div>
+        </ChartCard>
+      </motion.div>
+
+      {/* Due soon + empty state */}
+      {dueSoon.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
+          className="rounded-xl border border-amber-500/20 bg-amber-950/20 p-5"
+        >
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-amber-400">
+            In scadenza nei prossimi 7 giorni
+          </h3>
+          <div className="space-y-2">
+            {dueSoon.map((c) => (
+              <div key={c.id} className="flex items-center gap-3 text-sm">
+                <span className="text-slate-500">Cap. {c.number}</span>
+                <span className="flex-1 font-medium text-slate-200">{c.title}</span>
+                <span className="text-amber-400">{formatDate(c.dueDate)}</span>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
       {chapters.length === 0 && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="rounded-xl border border-dashed border-white/10 bg-white/2 p-10 text-center"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
+          className="rounded-xl border border-dashed border-white/8 bg-white/2 py-14 text-center"
         >
-          <BookOpen className="mx-auto mb-3 h-10 w-10 text-slate-600" />
+          <BookOpen className="mx-auto mb-3 h-10 w-10 text-slate-700" />
           <p className="text-sm font-medium text-slate-400">Nessun capitolo ancora</p>
-          <p className="mt-1 text-xs text-slate-600">
-            Vai al Kanban per aggiungere il primo capitolo
-          </p>
+          <p className="mt-1 text-xs text-slate-600">Vai al Kanban per aggiungere il primo capitolo</p>
         </motion.div>
       )}
     </div>
