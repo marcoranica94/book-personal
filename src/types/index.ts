@@ -130,6 +130,9 @@ export interface DriveFile {
   name: string
   mimeType: string
   modifiedTime: string
+  md5Checksum?: string
+  size?: string
+  webViewLink?: string
 }
 
 // ─── UI / App Types ───────────────────────────────────────────────────────────
