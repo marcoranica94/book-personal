@@ -12,6 +12,7 @@ import DriveConnectButton from '@/components/drive/DriveConnectButton'
 import FolderPicker from '@/components/drive/FolderPicker'
 import ConflictResolver from '@/components/drive/ConflictResolver'
 import {fullSync} from '@/services/driveSyncService'
+import {getStoredPat, setStoredPat} from '@/services/githubWorkflow'
 import {getValidAccessToken} from '@/services/driveAuthService'
 import {listDriveFiles, getDriveFileContent} from '@/services/driveFileService'
 import {parseDriveFileToChapter} from '@/services/driveParserService'
@@ -61,6 +62,8 @@ export default function SettingsPage() {
   const {config: driveConfig, isConnected: driveConnected, load: loadDrive, patchTokens} = useDriveStore()
   const [form, setForm] = useState<BookSettings>(settings)
   const [saved, setSaved] = useState(false)
+  const [pat, setPat] = useState(getStoredPat)
+  const [patSaved, setPatSaved] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [lastSyncResult, setLastSyncResult] = useState<string | null>(null)
   const [conflictChapter, setConflictChapter] = useState<Chapter | null>(null)
@@ -208,7 +211,25 @@ export default function SettingsPage() {
             <p className="text-sm text-slate-500">{user?.email}</p>
           </div>
         </div>
-        <div className="border-t border-white/6 pt-4">
+        <div className="border-t border-white/6 pt-4 space-y-3">
+          <Field label="GitHub Personal Access Token" sub="Necessario per avviare l'analisi AI (scope: workflow)">
+            <div className="flex gap-2">
+              <input
+                type="password"
+                className={inputCls + ' flex-1'}
+                value={pat}
+                onChange={(e) => { setPat(e.target.value); setPatSaved(false) }}
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+              />
+              <button
+                onClick={() => { setStoredPat(pat); setPatSaved(true); setTimeout(() => setPatSaved(false), 2000) }}
+                className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors"
+              >
+                {patSaved ? <CheckCircle2 className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+                {patSaved ? 'Salvato' : 'Salva'}
+              </button>
+            </div>
+          </Field>
           <button
             onClick={() => {
               if (confirm('Sei sicuro di voler uscire?')) logout()
