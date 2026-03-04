@@ -134,6 +134,18 @@ export default function AnalysisPage() {
   const analysis = selectedId ? (analyses[selectedId] ?? null) : null
 
   async function triggerAnalysis(chapterId: string) {
+    const hasExisting =
+      chapterId === 'all'
+        ? Object.keys(analyses).length > 0
+        : !!analyses[chapterId]
+    if (hasExisting) {
+      const label =
+        chapterId === 'all'
+          ? 'Alcuni capitoli hanno già un\'analisi salvata'
+          : `Il capitolo ha già un'analisi del ${formatRelativeDate(analyses[chapterId]!.analyzedAt)}`
+      const ok = confirm(`${label}.\n\nRieseguire l'analisi sovrascriverà i risultati esistenti e consumerà token Claude.\n\nContinuare?`)
+      if (!ok) return
+    }
     setTriggering(true)
     try {
       await triggerWorkflow(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'ai-analysis.yml', {
