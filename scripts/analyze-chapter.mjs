@@ -85,7 +85,7 @@ async function analyzeChapter(chapter) {
   }
 
   const message = await client.messages.create({
-    model: 'claude-opus-4-6',
+    model: 'claude-sonnet-4-6',
     max_tokens: 4096,
     messages: [
       {
@@ -112,7 +112,7 @@ async function analyzeChapter(chapter) {
   return {
     chapterId: chapter.id,
     analyzedAt: new Date().toISOString(),
-    model: 'claude-opus-4-6',
+    model: 'claude-sonnet-4-6',
     ...analysisData,
   }
 }
