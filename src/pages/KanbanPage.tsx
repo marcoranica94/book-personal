@@ -34,7 +34,7 @@ export default function KanbanPage() {
     useChaptersStore()
   const { loadSettings } = useSettingsStore()
   const { viewMode, setViewMode, filters, setFilter, clearFilters } = useUIStore()
-  const { config: driveConfig, patchTokens } = useDriveStore()
+  const { config: driveConfig, load: loadDrive, patchTokens } = useDriveStore()
   const { user } = useAuthStore()
 
   const [activeChapter, setActiveChapter] = useState<Chapter | null>(null)
@@ -48,10 +48,17 @@ export default function KanbanPage() {
     async function init() {
       await loadChapters()
       void loadSettings()
-      if (user && driveConfig?.folderId) {
+      if (!user) return
+      // Carica la config Drive se non è ancora in store (es. primo accesso diretto alla board)
+      let config = driveConfig
+      if (!config) {
+        await loadDrive(user.uid)
+        config = useDriveStore.getState().config
+      }
+      if (config?.folderId) {
         try {
           const currentChapters = useChaptersStore.getState().chapters
-          const { result } = await pullFromDrive(driveConfig, user.uid, currentChapters, (tokens) =>
+          const { result } = await pullFromDrive(config, user.uid, currentChapters, (tokens) =>
             patchTokens(user.uid, tokens),
           )
           if (result.created > 0 || result.updated > 0) {
@@ -67,6 +74,7 @@ export default function KanbanPage() {
         }
       }
     }
+
     void init()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
