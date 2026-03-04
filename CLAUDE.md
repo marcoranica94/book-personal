@@ -8,9 +8,9 @@
 
 **Nome repository:** `book-personal`
 **Tipo:** Dashboard web per la gestione di un libro in scrittura
-**Autore:** z004v04h
+**Autore:** z004v04h / marcoranica94
 **Data inizio:** 2026-03-04
-**Stack:** React + Vite + Tailwind CSS + Firebase (Firestore + Auth) + Claude API
+**Stack:** React 19 + Vite 7 + Tailwind CSS v4 + Firebase (Firestore + Auth) + Claude API
 
 ---
 
@@ -23,136 +23,149 @@
 - **Target parole:** TBD
 - **Numero capitoli previsti:** TBD
 - **Lingua:** Italiano
-- **Stato attuale:** Pianificazione dashboard
+- **Stato attuale:** App funzionante in produzione su GitHub Pages
 
 ---
 
-## Decisioni Architetturali Prese
-
-### 2026-03-04 — Sessione 1 (Setup iniziale)
-
-**Problema:** Come hostare una dashboard personale con auth, DB e AI su infrastruttura gratuita.
-
-**Decisioni:**
+## Decisioni Architetturali
 
 | Area | Scelta | Motivazione |
 |------|--------|-------------|
 | Hosting | GitHub Pages | Gratuito, integrato con repo |
-| Build | React 18 + Vite | Veloce, SPA moderna, DX eccellente |
-| Styling | Tailwind CSS + shadcn/ui + Framer Motion | UI accattivante senza overhead |
-| Auth | Firebase Auth + GitHub provider | Popup OAuth, no Device Flow polling, refresh token automatico |
-| Database | Firebase Firestore | Writes in <200ms (vs 1-3s con GitHub API), query reali, free tier generoso |
-| AI Analysis | GitHub Actions + Claude API (Anthropic) | Automatizzabile, log nel repo; scrive risultati su Firestore via Admin SDK |
+| Build | React 19 + Vite 7 + TypeScript 5 | Veloce, SPA moderna |
+| Styling | Tailwind CSS v4 + Framer Motion | UI accattivante, animazioni fluide |
+| Auth | Firebase Auth + GitHub provider (popup) | No Device Flow polling, refresh automatico |
+| Database | Firebase Firestore | Writes ~50-200ms, query native, free tier Spark |
+| AI Analysis | GitHub Actions + Claude API → Firestore via Admin SDK | Automatizzabile, zero costo frontend |
 | Charts | Recharts | Leggero, React-friendly |
-| State | Zustand | Semplice, performante |
-| Drag & Drop | @dnd-kit/core | Modern, accessibile |
+| State | Zustand 5 | Semplice, performante, `getState()` fuori da componenti |
+| Drag & Drop | @dnd-kit/core + @dnd-kit/sortable | Accessibile, sensori pointer |
 
-**Perché Firebase invece di JSON su branch `data`:**
-L'approccio originale con JSON nel repo GitHub richiedeva 1-3 secondi per ogni write (crea un commit), una SHA cache come workaround per i conflitti, e nessuna possibilità di query. Firebase Firestore risolve tutto: writes in ~50-200ms, nessun overhead SHA, Security Rules per la protezione, free tier Spark da 1GB/50K reads/20K writes al giorno — ampiamente sufficiente per uso personale.
-
-**Cosa rimane su GitHub:** Il testo dei capitoli (file `.md`) resta nel repo. Il workflow AI li legge da lì e scrive i risultati analisi su Firestore via Firebase Admin SDK (secret: `FIREBASE_SERVICE_ACCOUNT_JSON`).
-
-**Struttura Firestore (single-user, flat):**
+**Struttura Firestore:**
 ```
-/chapters/{chapterId}          ← metadati capitolo
-/analyses/{chapterId}          ← analisi AI (ultima)
+/chapters/{chapterId}              ← metadati capitolo (Chapter type)
+/analyses/{chapterId}              ← ultima analisi AI
 /analyses/{chapterId}/history/{ts} ← storico analisi
-/settings/book                 ← impostazioni libro
-/statsHistory/{timestamp}      ← serie storica statistiche
+/settings/book                     ← impostazioni libro (doc singolo)
+/statsHistory/{autoId}             ← snapshot giornaliero statistiche
 ```
 
-**Security Rules:** solo `request.auth != null` (utente autenticato con GitHub via Firebase).
-
-### 2026-03-04 — Sessione 2 (Cambio DB)
-
-Decisione: migrazione da JSON su branch `data` → **Firebase Firestore + Firebase Auth**.
+**Security Rules:** `allow read, write: if request.auth != null`
 
 ---
 
-## Struttura File Principale
+## Struttura File Attuale
 
 ```
 book-personal/
-├── CLAUDE.md          # Questo file
-├── PROJECT.md         # Specifiche tecniche
-├── BACKLOG.md         # Task da realizzare
-├── README.md          # Intro repo
-├── src/               # App React
-│   ├── components/    # Componenti UI
-│   ├── pages/         # Route pages
-│   ├── stores/        # Zustand stores
-│   ├── hooks/         # Custom hooks
-│   ├── services/      # GitHub API, Claude API
-│   └── utils/         # Helpers
-├── data/              # JSON data (branch `data` o stesso main)
-│   ├── chapters.json
-│   ├── analysis.json
-│   └── settings.json
-├── .github/
-│   └── workflows/
-│       ├── deploy.yml        # CI/CD GitHub Pages
-│       └── ai-analysis.yml   # Auto-analisi capitoli
-└── public/
+├── CLAUDE.md / PROJECT.md / BACKLOG.md
+├── firebase.json / firestore.rules / firestore.indexes.json
+├── src/
+│   ├── App.tsx                          ← HashRouter + auth init + routes
+│   ├── types/index.ts                   ← Tutti i tipi, ChapterStatus, STATUS_CONFIG, DEFAULT_CHECKLIST
+│   ├── utils/
+│   │   ├── cn.ts                        ← cn() helper
+│   │   ├── formatters.ts                ← charsToPages, wordsToReadingTime, calcProgress, ...
+│   │   └── constants.ts                 ← GITHUB_REPO_OWNER/NAME, KANBAN_COLUMNS_ORDER
+│   ├── services/
+│   │   ├── firebase.ts                  ← initializeApp, export db + auth
+│   │   ├── authService.ts               ← signInWithGitHub (popup), signOut, onAuthChange
+│   │   ├── chaptersService.ts           ← Firestore CRUD /chapters
+│   │   ├── settingsService.ts           ← Firestore /settings/book
+│   │   ├── analysisService.ts           ← Firestore /analyses + subcollection history
+│   │   ├── statsService.ts              ← Firestore /statsHistory
+│   │   └── githubWorkflow.ts            ← triggerWorkflow (GitHub Actions dispatch)
+│   ├── stores/
+│   │   ├── authStore.ts                 ← Firebase Auth state (user, isAuthenticated, isLoading)
+│   │   ├── chaptersStore.ts             ← CRUD capitoli + selectors (totalWords, byStatus...)
+│   │   ├── settingsStore.ts             ← BookSettings load/save
+│   │   ├── analysisStore.ts             ← Analisi AI load/loadAll
+│   │   ├── uiStore.ts                   ← sidebarCollapsed, viewMode, filters
+│   │   └── toastStore.ts                ← Toast notifications
+│   ├── hooks/
+│   │   ├── useCountUp.ts                ← Animazione numeri count-up
+│   │   └── useDebounce.ts               ← Debounce generico
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── Layout.tsx               ← Shell: Sidebar + Header + <Outlet>
+│   │   │   ├── Sidebar.tsx              ← Nav collapsibile, avatar, progress libro
+│   │   │   ├── Header.tsx               ← Titolo pagina corrente + breadcrumb
+│   │   │   └── ProtectedRoute.tsx       ← Guard: isLoading spinner / redirect /login
+│   │   ├── kanban/
+│   │   │   ├── KanbanColumn.tsx         ← useDroppable + SortableContext
+│   │   │   ├── ChapterCard.tsx          ← useSortable, drag da intera superficie, stopPropagation sui bottoni
+│   │   │   └── ChapterModal.tsx         ← Form creazione/modifica capitolo
+│   │   ├── dashboard/
+│   │   │   ├── ProgressRing.tsx         ← SVG gauge circolare
+│   │   │   ├── WordCountChart.tsx       ← Recharts AreaChart storico parole
+│   │   │   ├── StatusDonutChart.tsx     ← Recharts PieChart distribuzione status
+│   │   │   └── ProductivityChart.tsx    ← Recharts BarChart produttività giornaliera
+│   │   ├── chapters/
+│   │   │   └── ChecklistEditor.tsx      ← Checklist drag-to-reorder con dnd-kit
+│   │   ├── ui/
+│   │   │   ├── Toaster.tsx              ← Toast notifications
+│   │   │   ├── ConfirmDialog.tsx        ← Dialog conferma azioni distruttive
+│   │   │   └── EmptyState.tsx           ← Empty state generico con icona
+│   │   └── ScrollToTop.tsx              ← Reset scroll su navigazione
+│   └── pages/
+│       ├── LoginPage.tsx                ← Firebase popup OAuth GitHub (3 stati animati)
+│       ├── DashboardPage.tsx            ← KPI animati + 4 grafici Recharts + scadenze
+│       ├── KanbanPage.tsx               ← Board drag & drop + lista + filtri + modal
+│       ├── ChapterPage.tsx              ← Dettaglio capitolo + checklist + stats + analisi preview
+│       ├── AnalysisPage.tsx             ← Radar chart + score bars + tabs + tabella comparativa
+│       └── SettingsPage.tsx             ← Form libro + parametri + export JSON + logout
+├── scripts/
+│   ├── analyze-chapter.mjs              ← Node.js: Firebase Admin + Claude API → analisi su Firestore
+│   └── package.json                     ← deps script: @anthropic-ai/sdk, firebase-admin
+└── .github/workflows/
+    ├── deploy.yml                       ← CI/CD GitHub Pages (pnpm build + VITE_FIREBASE_* inline)
+    └── ai-analysis.yml                  ← workflow_dispatch → node analyze-chapter.mjs
 ```
 
 ---
 
 ## Modello Dati
 
-### Chapter (Capitolo/Story)
-```json
+### Chapter
+```typescript
 {
-  "id": "uuid",
-  "number": 1,
-  "title": "Titolo capitolo",
-  "subtitle": "",
-  "status": "TODO | IN_PROGRESS | REVIEW | EXTERNAL_REVIEW | REFINEMENT | DONE",
-  "priority": "LOW | MEDIUM | HIGH | URGENT",
-  "tags": ["azione", "protagonista"],
-  "targetChars": 9000,
-  "currentChars": 0,
-  "wordCount": 0,
-  "synopsis": "",
-  "notes": "",
-  "checklist": [
-    { "id": "uuid", "text": "Prima bozza completata", "done": false },
-    { "id": "uuid", "text": "Revisione grammaticale", "done": false }
-  ],
-  "filePath": "chapters/01-titolo.md",
-  "createdAt": "ISO8601",
-  "updatedAt": "ISO8601",
-  "dueDate": null,
-  "assignedReviewer": null
+  id: string            // UUID
+  number: number
+  title: string
+  subtitle: string
+  status: 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'EXTERNAL_REVIEW' | 'REFINEMENT' | 'DONE'
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
+  tags: string[]
+  targetChars: number   // default 9000
+  currentChars: number
+  wordCount: number
+  synopsis: string
+  notes: string
+  checklist: { id: string; text: string; done: boolean }[]
+  filePath: string      // chapters-content/{id}.md
+  createdAt: string     // ISO8601
+  updatedAt: string
+  dueDate: string | null
+  assignedReviewer: string | null
 }
 ```
 
-### Analysis (Analisi AI)
-```json
+### ChapterAnalysis
+```typescript
 {
-  "chapterId": "uuid",
-  "analyzedAt": "ISO8601",
-  "model": "claude-opus-4-6",
-  "scores": {
-    "stile": 8.5,
-    "chiarezza": 7.0,
-    "ritmo": 8.0,
-    "sviluppoPersonaggi": 7.5,
-    "trama": 9.0,
-    "originalita": 8.5,
-    "overall": 8.1
-  },
-  "summary": "...",
-  "strengths": ["..."],
-  "weaknesses": ["..."],
-  "suggestions": ["..."],
-  "corrections": [
-    {
-      "original": "testo originale",
-      "suggested": "testo corretto",
-      "type": "grammatica | stile | chiarezza | continuita",
-      "note": "spiegazione"
-    }
-  ]
+  chapterId: string
+  analyzedAt: string
+  model: 'claude-sonnet-4-6'
+  scores: {
+    stile: number; chiarezza: number; ritmo: number
+    sviluppoPersonaggi: number; trama: number; originalita: number
+    overall: number
+  }
+  summary: string
+  strengths: string[]
+  weaknesses: string[]
+  suggestions: string[]
+  corrections: { original: string; suggested: string; type: string; note: string }[]
 }
 ```
 
@@ -161,22 +174,23 @@ book-personal/
 ## Convenzioni di Sviluppo
 
 - **Lingua UI:** Italiano
-- **Branch default:** `master`
-- **Branch data:** eliminato — i dati stanno su Firestore
-- **Commit style:** Conventional Commits (`feat:`, `fix:`, `analysis:`)
-- **Auth Firebase:** token gestito automaticamente da Firebase SDK, nessun localStorage manuale
-- **Env vars frontend:** `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` (sicure, Firebase API key è pubblica per design)
-- **GitHub Actions secrets:** `ANTHROPIC_API_KEY` + `FIREBASE_SERVICE_ACCOUNT_JSON`
+- **Branch:** `master` (unico branch attivo)
+- **Commit style:** Conventional Commits (`feat:`, `fix:`, `chore:`)
+- **TypeScript:** no `enum` keyword (erasableSyntaxOnly) → usare `const obj = {} as const` + type alias
+- **Tailwind:** v4 con `@tailwindcss/vite`, `@import "tailwindcss"` in CSS
+- **Router:** HashRouter (compatibile GitHub Pages senza 404)
+- **Drag & Drop fix critico:** usare `useChaptersStore.getState()` in `onDragEnd` (non closure React) per evitare stale state
+- **Firebase Auth:** aggiungere dominio in Firebase Console → Authentication → Authorized domains
+- **Firebase Firestore rules:** devono essere deployate manualmente dalla console (non automatico)
 
 ---
 
 ## Note e Preferenze Utente
 
-- Vuole UI accattivante e moderna (non minimale/piatta)
-- Hosting su GitHub Pages, DB su Firebase Firestore (gratuito, superiore)
+- UI accattivante, dark theme, animazioni Framer Motion
+- Hosting gratuito: GitHub Pages + Firebase Spark
+- Card Kanban draggabili da tutta la superficie (non solo handle)
 - Analisi AI per ogni capitolo con voti, commenti, correzioni
-- Conteggio pagine basato su: caratteri totali / 1800
-- Dashboard con andamento capitolo e libro nel tempo
 
 ---
 
@@ -184,48 +198,22 @@ book-personal/
 
 | Data | Sessione | Attività | Output |
 |------|----------|----------|--------|
-| 2026-03-04 | #1 | Setup progetto, creazione CLAUDE.md, PROJECT.md, BACKLOG.md | 3 file di specifica |
-| 2026-03-04 | #2 | Sprint 1 completo — tutta la fondazione del progetto | App funzionante, build ✅ |
-| 2026-03-04 | #3 | Sprint 0 — migrazione Firebase (Firestore + Auth), riscrittura tutti i service/store, workflow AI aggiornato | Build ✅, Firebase integrato |
+| 2026-03-04 | #1 | Setup progetto, CLAUDE.md, PROJECT.md, BACKLOG.md | Specifiche |
+| 2026-03-04 | #2 | Sprint 1 — fondamenta React, routing, layout, stores | App base funzionante |
+| 2026-03-04 | #3 | Sprint Firebase — migrazione da branch data a Firestore + Firebase Auth | Build ✅ |
+| 2026-03-04 | #4 | Sprint 2 — Kanban Board completo (dnd-kit, modal, filtri, lista) | Kanban ✅ |
+| 2026-03-04 | #5 | Sprint 3 — Dashboard (Recharts), ChapterPage, Settings | Dashboard ✅ |
+| 2026-03-04 | #6 | Sprint 4 — AnalysisPage (radar, score, tabs, tabella) | Analisi AI ✅ |
+| 2026-03-04 | #7 | Sprint 5 — error surfacing, auto-init | Polish ✅ |
+| 2026-03-04 | #8 | Fix auth/unauthorized-domain, Firestore permissions, drag & drop stale closure, card draggabile ovunque | Bug fix ✅ |
 
 ---
 
-## TODO per Prossima Sessione (Sprint 2)
+## TODO / Possibili Next Steps
 
-- [ ] E4: Kanban Board completo (KanbanColumn, ChapterCard, drag & drop, ChapterModal)
-- [ ] E5: Dashboard Home (grafici Recharts, milestone, KPI animati)
-- [ ] E6: Dettaglio Capitolo (ChecklistEditor, stats, note)
-- [ ] E3: Header.tsx, breadcrumb, animazioni pagina
-
-## Struttura File Creata (Sprint 1)
-
-```
-src/
-├── App.tsx                          ← Router + auth init
-├── index.css                        ← Tailwind v4 + custom scrollbar
-├── types/index.ts                   ← Tutti i tipi + const enums + STATUS_CONFIG
-├── utils/cn.ts                      ← cn() helper
-├── utils/formatters.ts              ← charsToPages, wordsToReadingTime, ...
-├── utils/constants.ts               ← ENV vars, LS keys, API URLs
-├── services/github.ts               ← GitHub API client (fetch wrapper)
-├── services/githubOAuth.ts          ← Device Flow OAuth
-├── services/dataService.ts          ← CRUD JSON su branch data
-├── stores/authStore.ts              ← Auth Zustand store
-├── stores/chaptersStore.ts          ← Chapters CRUD store
-├── stores/settingsStore.ts          ← Settings store
-├── stores/analysisStore.ts          ← Analysis store
-├── stores/uiStore.ts                ← UI state (filters, theme, sidebar)
-├── components/layout/Layout.tsx     ← Shell app
-├── components/layout/Sidebar.tsx    ← Nav collapsibile con animazioni
-├── components/layout/ProtectedRoute.tsx ← Guard auth
-└── pages/
-    ├── LoginPage.tsx                ← UI Login Device Flow (5 stati animati)
-    ├── DashboardPage.tsx            ← Home con KPI e stats
-    ├── KanbanPage.tsx               ← Placeholder Sprint 2
-    ├── AnalysisPage.tsx             ← Placeholder Sprint 4
-    └── SettingsPage.tsx             ← Form impostazioni libro
-.github/workflows/
-    ├── deploy.yml                   ← CI/CD GitHub Pages
-    └── ai-analysis.yml              ← AI analysis con Claude API
-scripts/analyze-chapter.mjs         ← Script Node.js per analisi AI
-```
+- [ ] ChapterPage: editor markdown per testo capitolo (upload file `.md`)
+- [ ] Checklist template personalizzabile nelle Impostazioni
+- [ ] Analisi AI: storico analisi per capitolo (trend nel tempo)
+- [ ] Filtri Kanban: per priorità e tag (UI già pronta in uiStore)
+- [ ] Responsive mobile (hamburger sidebar)
+- [ ] Notifica completamento analisi AI (polling o webhook)
