@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { motion } from 'framer-motion'
-import { GripVertical, Calendar, FileText, CheckSquare, Tag, Pencil, Trash2, ExternalLink } from 'lucide-react'
+import { Calendar, FileText, CheckSquare, Tag, Pencil, Trash2, ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Chapter } from '@/types'
 import { PRIORITY_CONFIG } from '@/types'
@@ -35,7 +35,13 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
   const dueSoon = isDueSoon(chapter.dueDate)
 
   return (
-    <div ref={setNodeRef} style={style} className={cn('group', isBeingDragged && 'opacity-40')}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={cn('group cursor-grab active:cursor-grabbing', isBeingDragged && 'opacity-40')}
+    >
       <motion.div
         whileHover={{ y: -1 }}
         className={cn(
@@ -44,40 +50,33 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
           isDragging && 'shadow-2xl ring-1 ring-violet-500/40'
         )}
       >
-        {/* Drag handle */}
-        <div
-          {...attributes}
-          {...listeners}
-          className="absolute left-2 top-1/2 -translate-y-1/2 cursor-grab p-1 opacity-0 transition-opacity group-hover:opacity-40 active:cursor-grabbing"
-        >
-          <GripVertical className="h-4 w-4 text-slate-500" />
-        </div>
-
-        {/* Actions */}
+        {/* Actions — stopPropagation su pointerDown per non triggerare il drag */}
         <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <Link
             to={`/chapters/${chapter.id}`}
-            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             className="rounded-md p-1 text-slate-500 transition-colors hover:bg-white/8 hover:text-violet-400"
             title="Apri dettaglio"
           >
             <ExternalLink className="h-3.5 w-3.5" />
           </Link>
           <button
-            onClick={(e) => { e.stopPropagation(); onEdit(chapter) }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => onEdit(chapter)}
             className="rounded-md p-1 text-slate-500 transition-colors hover:bg-white/8 hover:text-slate-300"
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); onDelete(chapter) }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => onDelete(chapter)}
             className="rounded-md p-1 text-slate-500 transition-colors hover:bg-red-900/30 hover:text-red-400"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
 
-        <div className="pl-3">
+        <div>
           {/* Chapter number + priority */}
           <div className="mb-2 flex items-center gap-2">
             <span className="text-xs font-medium text-slate-600">
