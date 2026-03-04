@@ -16,7 +16,10 @@ import { Plus, LayoutGrid, List, Search, X } from 'lucide-react'
 import { useChaptersStore } from '@/stores/chaptersStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useDriveStore } from '@/stores/driveStore'
+import { useAuthStore } from '@/stores/authStore'
 import { toast } from '@/stores/toastStore'
+import { pullFromDrive } from '@/services/driveSyncService'
 import type { Chapter } from '@/types'
 import { ChapterStatus } from '@/types'
 import { KANBAN_COLUMNS_ORDER } from '@/utils/constants'
@@ -31,6 +34,8 @@ export default function KanbanPage() {
     useChaptersStore()
   const { loadSettings } = useSettingsStore()
   const { viewMode, setViewMode, filters, setFilter, clearFilters } = useUIStore()
+  const { config: driveConfig, patchTokens } = useDriveStore()
+  const { user } = useAuthStore()
 
   const [activeChapter, setActiveChapter] = useState<Chapter | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -40,9 +45,30 @@ export default function KanbanPage() {
   const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
-    void loadChapters()
-    void loadSettings()
-  }, [loadChapters, loadSettings])
+    async function init() {
+      await loadChapters()
+      void loadSettings()
+      if (user && driveConfig?.folderId) {
+        try {
+          const currentChapters = useChaptersStore.getState().chapters
+          const { result } = await pullFromDrive(driveConfig, user.uid, currentChapters, (tokens) =>
+            patchTokens(user.uid, tokens),
+          )
+          if (result.created > 0 || result.updated > 0) {
+            await loadChapters()
+            const parts: string[] = []
+            if (result.created > 0) parts.push(`${result.created} nuov${result.created === 1 ? 'o' : 'i'}`)
+            if (result.updated > 0) parts.push(`${result.updated} aggiornat${result.updated === 1 ? 'o' : 'i'}`)
+            toast.success(`Drive: ${parts.join(', ')} capitol${result.created + result.updated === 1 ? 'o' : 'i'}`)
+          }
+          if (result.errors.length > 0) toast.error(`Drive: ${result.errors.length} errori`)
+        } catch {
+          // sync silenzioso — non blocca la board
+        }
+      }
+    }
+    void init()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
