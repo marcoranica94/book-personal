@@ -207,6 +207,62 @@
 
 ---
 
+---
+
+## EPIC A — Google Drive Auth & Config
+> Spec completa in `DRIVE_INTEGRATION.md`
+
+- 🔲 `A1.1` Google Cloud Project + Drive API + OAuth2 Client ID (setup manuale)
+- 🔲 `A1.2` Aggiungere `VITE_GOOGLE_CLIENT_ID` e `DRIVE_ENCRYPTION_KEY` alle env vars
+- 🔲 `A1.3` `driveAuthService.ts` — initiateOAuth (PKCE), exchangeCode, refreshToken, encrypt/decrypt AES-256-GCM
+- 🔲 `A1.4` `driveConfigService.ts` — saveDriveConfig, getDriveConfig, deleteDriveConfig (Firestore /driveConfig/{uid})
+- 🔲 `A1.5` `driveStore.ts` — config, isConnected, isSyncing, lastSyncAt
+- 🔲 `A1.6` `DriveConnectButton.tsx` in SettingsPage (connect/disconnect UI)
+- 🔲 `A1.7` `FolderPicker.tsx` — Google Picker API per selezionare cartella
+
+---
+
+## EPIC B — Drive File Service & Parser
+
+- 🔲 `B1.1` `driveFileService.ts` — listFiles, getFileContent, updateFileContent, createFile, deleteFile
+- 🔲 `B1.2` `driveParserService.ts` — parseYamlFrontmatter, parseFilenameConvention, injectFrontmatter, stripFrontmatter
+- 🔲 `B1.3` Unit test parser con vari formati (Vitest)
+
+---
+
+## EPIC C — Sync Engine Bidirezionale
+
+- 🔲 `C1.1` Estendere schema Firestore capitoli (driveFileId, contentHash, syncSource, syncStatus, ...)
+- 🔲 `C1.2` `driveSyncService.ts` — pullFromDrive, pushToDrive (debounce 3s), fullSync, resolveConflict
+- 🔲 `C1.3` Algoritmo anti-loop 5-layer (hash, syncSource+time, modifiedTime, lock, syncLog dedup)
+- 🔲 `C1.4` `SyncStatusBadge.tsx` — icona cloud su KanbanCard e ChapterPage
+- 🔲 `C1.5` `ConflictResolver.tsx` — diff UI per scegliere Drive vs Dashboard
+- 🔲 `C2.1` `scripts/drive-sync.mjs` — Admin SDK + Drive API per GitHub Actions
+- 🔲 `C2.2` `.github/workflows/drive-sync.yml` — cron ogni 15 min + workflow_dispatch
+- 🔲 `C2.3` Button "Sincronizza ora" in Settings → triggerWorkflow
+
+---
+
+## EPIC D — AI Review Enhanced
+
+- 🔲 `D1.1` `DiffEditor.tsx` — diff colorato originale ↔ modifiche AI (rosso/verde)
+- 🔲 `D1.2` `AcceptRejectBar.tsx` — ✅ Accetta / ❌ Rifiuta / ✏️ Modifica manuale
+- 🔲 `D1.3` Editor markdown inline in AnalysisPage con preview
+- 🔲 `D1.4` Aggiornare `analyze-chapter.mjs` per leggere driveContent da Firestore
+- 🔲 `D1.5` Tracciamento accept/reject in /analyses/{id} (appliedAt, appliedBy)
+
+---
+
+## EPIC E — UX Drive & Polish
+
+- 🔲 `E1.1` Settings: sezione Google Drive (stato, cartella, ultimo sync, statistiche)
+- 🔲 `E1.2` ChapterPage: link "Apri su Drive" + "Forza sync"
+- 🔲 `E1.3` AnalysisPage: "Contenuto aggiornato X min fa" + "Ricarica da Drive"
+- 🔲 `E1.4` Toast contestuali per eventi sync (es. "3 nuovi capitoli trovati")
+- 🔲 `E1.5` Pannello "File non collegati" con azione "Importa"
+
+---
+
 ## EPIC 11 — Testing & QA
 
 - 🔲 `E11-1` Setup Vitest + Testing Library

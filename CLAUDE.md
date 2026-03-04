@@ -209,11 +209,25 @@ book-personal/
 
 ---
 
-## TODO / Possibili Next Steps
+## TODO / Next Steps
 
-- [ ] ChapterPage: editor markdown per testo capitolo (upload file `.md`)
-- [ ] Checklist template personalizzabile nelle Impostazioni
-- [ ] Analisi AI: storico analisi per capitolo (trend nel tempo)
-- [ ] Filtri Kanban: per priorità e tag (UI già pronta in uiStore)
+### In corso
+- [ ] **Epic A — Google Drive Auth & Config** (vedi `DRIVE_INTEGRATION.md`)
+  - Setup Google Cloud Project + OAuth2 Client ID (manuale)
+  - driveAuthService.ts (PKCE, AES encrypt, token refresh)
+  - driveConfigService.ts + driveStore.ts
+  - DriveConnectButton + FolderPicker in Settings
+
+### Backlog (dopo Drive)
+- [ ] Filtri Kanban per priorità e tag (uiStore già pronto)
+- [ ] Storico analisi per capitolo (trend chart)
 - [ ] Responsive mobile (hamburger sidebar)
-- [ ] Notifica completamento analisi AI (polling o webhook)
+- [ ] Checklist template personalizzabile in Impostazioni
+
+### Documento architettura Drive
+Vedi `DRIVE_INTEGRATION.md` per:
+- Schema Firestore esteso
+- Strategia OAuth PKCE
+- Algoritmo anti-loop sync bidirezionale
+- Gestione edge case
+- Roadmap completa (Epic A → E)
