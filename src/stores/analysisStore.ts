@@ -1,5 +1,5 @@
 import {create} from 'zustand'
-import * as dataService from '@/services/dataService'
+import * as analysisService from '@/services/analysisService'
 import type {ChapterAnalysis} from '@/types'
 
 interface AnalysisStore {
@@ -8,7 +8,7 @@ interface AnalysisStore {
   error: string | null
 
   loadAnalysis: (chapterId: string) => Promise<void>
-  loadAllAnalyses: (chapterIds: string[]) => Promise<void>
+  loadAllAnalyses: () => Promise<void>
   getAnalysis: (chapterId: string) => ChapterAnalysis | null
 }
 
@@ -18,34 +18,30 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   error: null,
 
   loadAnalysis: async (chapterId) => {
-    set({ isLoading: true })
+    set({isLoading: true})
     try {
-      const analysis = await dataService.getChapterAnalysis(chapterId)
+      const analysis = await analysisService.getChapterAnalysis(chapterId)
       if (analysis) {
         set((s) => ({
-          analyses: { ...s.analyses, [chapterId]: analysis },
+          analyses: {...s.analyses, [chapterId]: analysis},
           isLoading: false,
         }))
       } else {
-        set({ isLoading: false })
+        set({isLoading: false})
       }
     } catch (err) {
-      set({ isLoading: false, error: (err as Error).message })
+      set({isLoading: false, error: (err as Error).message})
     }
   },
 
-  loadAllAnalyses: async (chapterIds) => {
-    set({ isLoading: true })
-    const results = await Promise.allSettled(
-      chapterIds.map((id) => dataService.getChapterAnalysis(id))
-    )
-    const analyses: Record<string, ChapterAnalysis> = { ...get().analyses }
-    results.forEach((result, i) => {
-      if (result.status === 'fulfilled' && result.value) {
-        analyses[chapterIds[i]] = result.value
-      }
-    })
-    set({ analyses, isLoading: false })
+  loadAllAnalyses: async () => {
+    set({isLoading: true})
+    try {
+      const all = await analysisService.getAllAnalyses()
+      set({analyses: all, isLoading: false})
+    } catch (err) {
+      set({isLoading: false, error: (err as Error).message})
+    }
   },
 
   getAnalysis: (chapterId) => get().analyses[chapterId] ?? null,

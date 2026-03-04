@@ -1,6 +1,6 @@
 import {create} from 'zustand'
 import {v4 as uuidv4} from 'uuid'
-import * as dataService from '@/services/dataService'
+import * as chaptersService from '@/services/chaptersService'
 import type {Chapter, ChecklistItem} from '@/types'
 import {ChapterStatus, DEFAULT_CHECKLIST, Priority} from '@/types'
 import {toast} from '@/stores/toastStore'
@@ -45,7 +45,7 @@ function createDefaultChapter(data: Partial<Chapter>, existingCount: number): Ch
     synopsis: data.synopsis ?? '',
     notes: data.notes ?? '',
     checklist:
-      data.checklist ?? DEFAULT_CHECKLIST.map((item) => ({ ...item, id: uuidv4() })),
+      data.checklist ?? DEFAULT_CHECKLIST.map((item) => ({...item, id: uuidv4()})),
     filePath:
       data.filePath ??
       `chapters/${String(number).padStart(2, '0')}-capitolo.md`,
@@ -64,81 +64,81 @@ export const useChaptersStore = create<ChaptersStore>((set, get) => ({
   lastSync: null,
 
   loadChapters: async () => {
-    set({ isLoading: true, error: null })
+    set({isLoading: true, error: null})
     try {
-      const chapters = await dataService.getAllChapters()
-      set({ chapters, isLoading: false, lastSync: new Date().toISOString() })
+      const chapters = await chaptersService.getChapters()
+      set({chapters, isLoading: false, lastSync: new Date().toISOString()})
     } catch (err) {
       const msg = (err as Error).message
-      set({ isLoading: false, error: msg })
+      set({isLoading: false, error: msg})
       toast.error('Errore caricamento capitoli: ' + msg)
     }
   },
 
   addChapter: async (data) => {
-    const { chapters } = get()
+    const {chapters} = get()
     const chapter = createDefaultChapter(data, chapters.length)
-    set({ isSaving: true })
+    set({isSaving: true})
     try {
-      await dataService.addChapter(chapter)
-      set((s) => ({ chapters: [...s.chapters, chapter], isSaving: false }))
+      await chaptersService.addChapter(chapter)
+      set((s) => ({chapters: [...s.chapters, chapter], isSaving: false}))
     } catch (err) {
       const msg = (err as Error).message
-      set({ isSaving: false, error: msg })
+      set({isSaving: false, error: msg})
       toast.error('Errore salvataggio capitolo: ' + msg)
-      throw err // re-throw so modal can show inline error
+      throw err
     }
   },
 
   updateChapter: async (id, updates) => {
-    set({ isSaving: true })
+    set({isSaving: true})
     try {
-      await dataService.updateChapter(id, updates)
+      await chaptersService.updateChapter(id, updates)
       set((s) => ({
         chapters: s.chapters.map((c) =>
-          c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c
+          c.id === id ? {...c, ...updates, updatedAt: new Date().toISOString()} : c
         ),
         isSaving: false,
       }))
     } catch (err) {
       const msg = (err as Error).message
-      set({ isSaving: false, error: msg })
+      set({isSaving: false, error: msg})
       toast.error('Errore aggiornamento: ' + msg)
       throw err
     }
   },
 
   deleteChapter: async (id) => {
-    set({ isSaving: true })
+    set({isSaving: true})
     try {
-      await dataService.deleteChapter(id)
+      await chaptersService.deleteChapter(id)
       set((s) => ({
         chapters: s.chapters.filter((c) => c.id !== id),
         isSaving: false,
       }))
     } catch (err) {
       const msg = (err as Error).message
-      set({ isSaving: false, error: msg })
+      set({isSaving: false, error: msg})
       toast.error('Errore eliminazione: ' + msg)
       throw err
     }
   },
 
   moveChapter: async (id, newStatus) => {
-    await get().updateChapter(id, { status: newStatus })
+    await get().updateChapter(id, {status: newStatus})
   },
 
   toggleChecklistItem: async (chapterId, itemId) => {
     const chapter = get().chapters.find((c) => c.id === chapterId)
     if (!chapter) return
     const checklist = chapter.checklist.map((item) =>
-      item.id === itemId ? { ...item, done: !item.done } : item
+      item.id === itemId ? {...item, done: !item.done} : item
     )
-    await get().updateChapter(chapterId, { checklist })
+    await get().updateChapter(chapterId, {checklist})
   },
 
   reorderChecklist: async (chapterId, items) => {
-    await get().updateChapter(chapterId, { checklist: items })
+    await get().updateChapter(chapterId, {checklist: items})
   },
 
   byStatus: (status) => get().chapters.filter((c) => c.status === status),

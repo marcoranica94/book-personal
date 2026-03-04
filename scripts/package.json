@@ -2,6 +2,7 @@
   "name": "book-analysis-scripts",
   "type": "module",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.54.0"
+    "@anthropic-ai/sdk": "^0.54.0",
+    "firebase-admin": "^13.0.0"
   }
 }

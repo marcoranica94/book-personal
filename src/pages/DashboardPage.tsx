@@ -8,10 +8,7 @@ import {useAuthStore} from '@/stores/authStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
 import type {StatsSnapshot} from '@/types'
 import {ChapterStatus} from '@/types'
-import {
-  appendStatsSnapshot,
-  getStatsHistory,
-} from '@/services/dataService'
+import {appendStatsSnapshot, getStatsHistory} from '@/services/statsService'
 import {
   calcProgress,
   calcProjectedEndDate,
@@ -126,7 +123,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (chapters.length > 0) {
-      void loadAllAnalyses(chapters.map((c) => c.id))
+      void loadAllAnalyses()
     }
   }, [chapters, loadAllAnalyses])
 
@@ -157,7 +154,7 @@ export default function DashboardPage() {
     .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
     .slice(0, 3)
 
-  const greeting = user?.name?.split(' ')[0] ?? user?.login ?? 'scrittore'
+  const greeting = user?.displayName?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'scrittore'
 
   return (
     <div className="space-y-6 p-6">

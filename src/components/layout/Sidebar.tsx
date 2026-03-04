@@ -122,10 +122,10 @@ export default function Sidebar() {
       {/* User + logout */}
       <div className="border-t border-white/8 p-2">
         <div className="flex items-center gap-2 rounded-lg p-2">
-          {user?.avatar_url && (
+          {user?.photoURL && (
             <img
-              src={user.avatar_url}
-              alt={user.login}
+              src={user.photoURL}
+              alt={user.displayName ?? ''}
               className="h-7 w-7 shrink-0 rounded-full ring-1 ring-white/10"
             />
           )}
@@ -138,9 +138,9 @@ export default function Sidebar() {
                 className="min-w-0 flex-1"
               >
                 <p className="truncate text-xs font-medium text-slate-300">
-                  {user?.name ?? user?.login}
+                  {user?.displayName ?? user?.email ?? 'Utente'}
                 </p>
-                <p className="truncate text-xs text-slate-600">@{user?.login}</p>
+                <p className="truncate text-xs text-slate-600">{user?.email ?? ''}</p>
               </motion.div>
             )}
           </AnimatePresence>

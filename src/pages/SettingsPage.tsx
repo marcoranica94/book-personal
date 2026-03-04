@@ -1,6 +1,6 @@
 import {useEffect, useState} from 'react'
 import {motion} from 'framer-motion'
-import {Download, ExternalLink, Loader2, LogOut, Save, User} from 'lucide-react'
+import {Download, Loader2, LogOut, Save} from 'lucide-react'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useAuthStore} from '@/stores/authStore'
 import {useChaptersStore} from '@/stores/chaptersStore'
@@ -92,29 +92,19 @@ export default function SettingsPage() {
       </div>
 
       {/* Account */}
-      <Section title="Account GitHub" delay={0}>
+      <Section title="Account" delay={0}>
         <div className="flex items-center gap-4">
-          {user?.avatar_url && (
+          {user?.photoURL && (
             <img
-              src={user.avatar_url}
-              alt={user.login}
+              src={user.photoURL}
+              alt={user.displayName ?? ''}
               className="h-12 w-12 rounded-full border border-white/10"
             />
           )}
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-white">{user?.name ?? user?.login}</p>
-            <p className="text-sm text-slate-500">@{user?.login}</p>
+            <p className="font-medium text-white">{user?.displayName ?? user?.email}</p>
+            <p className="text-sm text-slate-500">{user?.email}</p>
           </div>
-          <a
-            href={`https://github.com/${user?.login}`}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 rounded-lg border border-white/8 px-3 py-1.5 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
-          >
-            <User className="h-3.5 w-3.5" />
-            Profilo
-            <ExternalLink className="h-3 w-3" />
-          </a>
         </div>
         <div className="border-t border-white/6 pt-4">
           <button

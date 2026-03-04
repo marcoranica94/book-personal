@@ -19,13 +19,20 @@
 - ✅ `E0-1.7` Configurare Vite per build GitHub Pages (base: `/book-personal/`)
 
 ### E0-2 · GitHub Configuration
-- 🔲 `E0-2.1` Creare GitHub OAuth App nelle impostazioni developer
+- 🔲 `E0-2.1` Creare GitHub OAuth App nelle impostazioni developer (callback: Firebase auth handler)
 - 🔲 `E0-2.2` Configurare GitHub Pages nel repository (source: GitHub Actions)
 - 🔲 `E0-2.3` Aggiungere secret `ANTHROPIC_API_KEY` nelle repo settings
-- 🔲 `E0-2.4` Creare branch `data` orfano con struttura JSON iniziale
-- 🔲 `E0-2.5` Creare `chapters.json` vuoto nel branch data
-- 🔲 `E0-2.6` Creare `book-settings.json` con metadati libro nel branch data
-- 🔲 `E0-2.7` Creare `book-stats-history.json` vuoto nel branch data
+- 🔲 `E0-2.4` Aggiungere secret `FIREBASE_SERVICE_ACCOUNT_JSON` nelle repo settings (per workflow AI)
+- 🔲 `E0-2.5` Aggiungere variabili `VITE_FIREBASE_*` come env vars nel workflow deploy
+
+### E0-5 · Firebase Setup
+- 🔲 `E0-5.1` Creare progetto Firebase su console.firebase.google.com
+- 🔲 `E0-5.2` Abilitare Firestore Database (mode: production, region: europe-west)
+- 🔲 `E0-5.3` Abilitare Firebase Authentication → GitHub provider (inserire Client ID + Secret OAuth App)
+- 🔲 `E0-5.4` Configurare Security Rules Firestore: `allow read, write: if request.auth != null`
+- 🔲 `E0-5.5` Creare collezioni iniziali (opzionale, Firestore crea on-write)
+- 🔲 `E0-5.6` Generare Service Account JSON per GitHub Actions (Project Settings → Service Accounts)
+- 🔲 `E0-5.7` Installare dipendenza Firebase: `pnpm add firebase`
 
 ### E0-3 · CI/CD Pipeline
 - ✅ `E0-3.1` Creare workflow `.github/workflows/deploy.yml` per GitHub Pages
@@ -46,33 +53,43 @@
 
 ## EPIC 1 — Autenticazione
 
-> GitHub OAuth Device Flow. No backend.
+> Firebase Auth con GitHub provider. No backend, no polling.
 
-- ✅ `E1-1` Implementare `githubOAuth.ts` service con Device Flow completo
-- ✅ `E1-2` Creare `authStore.ts` (Zustand) con stato auth e token
-- ✅ `E1-3` Creare `LoginPage.tsx` con UI accattivante (5 stati animati)
+- 🔲 `E1-1` Implementare `authService.ts` con Firebase Auth (signInWithPopup GitHub, signOut, onAuthStateChanged)
+- 🔲 `E1-2` Aggiornare `authStore.ts` (Zustand) — state: firebaseUser, isAuthenticated, isLoading
+- 🔲 `E1-3` Aggiornare `LoginPage.tsx` con nuovo flusso Firebase (pulsante → popup → done, meno stati necessari)
 - ✅ `E1-4` Creare `ProtectedRoute.tsx` HOC
-- ✅ `E1-5` Implementare persistenza token in localStorage
-- ✅ `E1-6` Implementare validazione token all'avvio app (optimistic + background)
-- ✅ `E1-7` Implementare logout (revoca token via API + clear localStorage)
-- ✅ `E1-8` Redirect automatico a login su 401
-- ✅ `E1-9` Avatar e nome utente in Sidebar
+- 🔲 `E1-5` Auth persistence gestita automaticamente da Firebase SDK (IndexedDB)
+- 🔲 `E1-6` Validazione auth all'avvio tramite `onAuthStateChanged` (no roundtrip API manuale)
+- 🔲 `E1-7` Implementare logout (Firebase signOut — revoca sessione Firebase)
+- 🔲 `E1-8` Redirect automatico a login se `currentUser === null`
+- 🔲 `E1-9` Avatar e nome utente in Sidebar (da `firebaseUser.photoURL` e `displayName`)
 
 ---
 
-## EPIC 2 — Servizio Dati GitHub
+## EPIC 2 — Servizio Dati Firebase
 
-> Layer di astrazione per leggere/scrivere JSON nel repo via GitHub API.
+> Layer di astrazione per leggere/scrivere dati su Firestore. Sostituisce completamente il vecchio data service GitHub.
 
-- ✅ `E2-1` Implementare `github.ts` client base (fetch wrapper con auth header)
-- ✅ `E2-2` Implementare `dataService.ts` con readJSON/writeJSON + SHA cache
-- ✅ `E2-3` CRUD capitoli in `dataService.ts` (getAllChapters, add, update, delete)
-- ✅ `E2-4` Settings service (getSettings, saveSettings)
-- ✅ `E2-5` Stats history service (getStatsHistory, appendStatsSnapshot)
-- ✅ `E2-6` Analysis service (getChapterAnalysis, getAllAnalysisIndex)
-- ✅ `E2-7` Gestione errori API (401 redirect, 404 fallback, error propagation)
-- 🔲 `E2-8` Retry logic per rate limiting (429)
-- ✅ `E2-9` SHA cache in-memory per evitare roundtrip extra
+- 🔲 `E2-1` Implementare `firebase.ts` — init app, export `db` (Firestore) e `auth` (FirebaseAuth)
+- 🔲 `E2-2` Implementare `chaptersService.ts`:
+  - `getChapters()` → query Firestore `/chapters` orderBy number
+  - `addChapter(data)` → `addDoc`
+  - `updateChapter(id, patch)` → `updateDoc`
+  - `deleteChapter(id)` → `deleteDoc`
+  - `subscribeToChapters(cb)` → `onSnapshot` real-time (opzionale)
+- 🔲 `E2-3` Implementare `settingsService.ts`:
+  - `getSettings()` → `getDoc(/settings/book)`
+  - `saveSettings(data)` → `setDoc(/settings/book, data, {merge: true})`
+- 🔲 `E2-4` Implementare `statsService.ts`:
+  - `getStatsHistory()` → query `/statsHistory` orderBy timestamp
+  - `appendSnapshot(snapshot)` → `addDoc(/statsHistory)`
+- 🔲 `E2-5` Implementare `analysisService.ts`:
+  - `getAnalysis(chapterId)` → `getDoc(/analyses/{chapterId})`
+  - `getAllAnalyses()` → query `/analyses`
+  - `saveAnalysis(chapterId, data)` → `setDoc` + add a `/analyses/{id}/history/{ts}`
+- 🔲 `E2-6` Gestione errori Firestore (permission-denied, unavailable, quota-exceeded)
+- 🔲 `E2-7` Aggiornare `chaptersStore.ts`, `settingsStore.ts`, `analysisStore.ts` per usare i nuovi service
 
 ---
 
@@ -277,13 +294,17 @@
   - Trigger via GitHub API workflow_dispatch
 
 ### E7 · GitHub Actions AI Workflow
-- 🔲 `E7-11` Creare script Node.js `scripts/analyze-chapter.mjs`
-- 🔲 `E7-12` Creare `.github/workflows/ai-analysis.yml`:
+- 🔲 `E7-11` Aggiornare script `scripts/analyze-chapter.mjs`:
+  - Legge lista capitoli da Firestore via Admin SDK (o da chapters.json locale se testo è nel repo)
+  - Chiama Claude API con testo capitolo
+  - Scrive analisi su Firestore via Admin SDK (`FIREBASE_SERVICE_ACCOUNT_JSON`)
+- 🔲 `E7-12` Aggiornare `.github/workflows/ai-analysis.yml`:
   - Input: chapter_id (o "all")
-  - Steps: checkout data branch, run analyze script, commit results
+  - Steps: checkout, node setup, run analyze script (no branch data checkout)
+  - Secret: `FIREBASE_SERVICE_ACCOUNT_JSON` + `ANTHROPIC_API_KEY`
 - 🔲 `E7-13` Implementare prompt template per Claude (editor letterario)
 - 🔲 `E7-14` Gestione errori e retry nel workflow
-- 🔲 `E7-15` Notifica completamento (commit message + optional issue comment)
+- 🔲 `E7-15` Notifica completamento (GitHub Actions summary)
 
 ---
 
@@ -407,9 +428,9 @@
 
 | Epic | Nome | Tasks | Priorità |
 |------|------|-------|----------|
-| E0 | Setup & Infrastruttura | 18 | 🔴 Critica |
-| E1 | Autenticazione | 9 | 🔴 Critica |
-| E2 | Servizio Dati GitHub | 9 | 🔴 Critica |
+| E0 | Setup & Infrastruttura (incl. Firebase) | 25 | 🔴 Critica |
+| E1 | Autenticazione (Firebase Auth) | 9 | 🔴 Critica |
+| E2 | Servizio Dati Firebase | 7 | 🔴 Critica |
 | E3 | Layout & Navigazione | 8 | 🔴 Critica |
 | E4 | Kanban Board | 11 | 🟠 Alta |
 | E5 | Dashboard Home | 12 | 🟠 Alta |
@@ -420,15 +441,18 @@
 | E10 | Utilities & Helpers | 8 | 🟡 Media |
 | E11 | Testing & QA | 7 | 🟡 Media |
 | E12 | Polish & UX | 12 | 🟢 Bassa |
-| **TOT** | | **130** | |
+| **TOT** | | **~135** | |
 
 ---
 
 ## Ordine di Implementazione Consigliato
 
 ```
-Sprint 1 (Fondamenta):
-  E0 (Setup) → E9 (Stores) → E2 (Data Service) → E1 (Auth)
+Sprint 0 (Firebase Setup — prerequisito):
+  E0-5 (Firebase project + Firestore + Auth) → E0-2 (GitHub secrets aggiornati)
+
+Sprint 1 (Fondamenta — già fatto ma da aggiornare per Firebase):
+  E0 (Setup) → E9 (Stores) → E2 (Firebase Data Service) → E1 (Firebase Auth)
 
 Sprint 2 (Shell + Core):
   E3 (Layout) → E4 (Kanban) → E10 (Utils)
@@ -437,5 +461,5 @@ Sprint 3 (Dashboard):
   E5 (Dashboard Home) → E6 (Dettaglio Capitolo) → E8 (Impostazioni)
 
 Sprint 4 (AI + Polish):
-  E7 (AI Analysis) → E12 (Polish) → E11 (Testing)
+  E7 (AI Analysis con Firestore) → E12 (Polish) → E11 (Testing)
 ```

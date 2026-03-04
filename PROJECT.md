@@ -40,58 +40,81 @@ il tutto ospitato interamente su GitHub.
 |----------|----------|-------|
 | GitHub Pages | Hosting SPA statica | Gratuito |
 | GitHub Actions | CI/CD + AI Analysis workflow | Gratuito (2000 min/mese) |
-| GitHub API (REST v3) | CRUD dati JSON nel repo | Gratuito |
-| GitHub OAuth App | Autenticazione utente | Gratuito |
+| Firebase Firestore | Database principale (CRUD capitoli, analisi, settings) | Gratuito (Spark plan) |
+| Firebase Auth | Autenticazione con GitHub provider | Gratuito |
 | Anthropic API | Analisi AI capitoli | Pay-per-use (Actions) |
+
+**Firebase Spark plan (gratuito):**
+- 1 GB storage
+- 50.000 reads/giorno
+- 20.000 writes/giorno
+- 20.000 deletes/giorno
+- Ampiamente sufficiente per uso personale (libro ~ decine di capitoli)
 
 ### 2.3 Persistenza Dati
 
-**Strategia:** JSON files nel branch `data` del repository stesso, accessibili e modificabili
-via GitHub REST API con il token dell'utente autenticato.
+**Strategia:** Firebase Firestore come database principale. Il testo dei capitoli (file `.md`) rimane nel repo GitHub per l'analisi AI via Actions.
 
+**Struttura Firestore (collezioni flat, single-user):**
 ```
-data-branch/
-├── chapters.json          # Array di tutti i capitoli
-├── analysis/
-│   ├── chapter-{id}.json  # Analisi AI per capitolo
-├── book-settings.json     # Metadati libro
-├── book-stats-history.json # Serie storica statistiche
-└── chapters-content/
-    ├── 01-capitolo.md     # Testo capitolo (opzionale, se scritto qui)
+/chapters/{chapterId}              # Metadati capitolo (Chapter type)
+/analyses/{chapterId}              # Ultima analisi AI del capitolo
+/analyses/{chapterId}/history/{ts} # Storico analisi (sub-collection)
+/settings/book                     # Impostazioni libro (documento singolo)
+/statsHistory/{autoId}             # Snapshot statistiche nel tempo
 ```
 
-**Versionamento:** Ogni salvataggio crea un commit nel branch `data` con messaggio
-`data: update chapters.json - {timestamp}`. Questo fornisce storico completo gratuito.
+**Security Rules (solo utente autenticato):**
+```js
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+```
+
+**Perché Firestore invece di JSON su branch `data`:**
+- Write in ~50-200ms vs 1-3 secondi (commit GitHub API)
+- Nessuna SHA cache, nessun conflitto di commit
+- Query native (filtra per status, ordina per data, ecc.)
+- Integrazione nativa con Firebase Auth
 
 ---
 
 ## 3. Autenticazione
 
-### 3.1 GitHub OAuth Device Flow
+### 3.1 Firebase Auth con GitHub Provider
 
-Il Device Flow è l'unico metodo OAuth che funziona su siti statici senza backend.
+Firebase Auth gestisce OAuth con GitHub in modo nativo, compatibile con SPA statiche (popup o redirect).
 
 **Flusso:**
 1. Utente apre la dashboard → clicca "Accedi con GitHub"
-2. App richiede a GitHub un `device_code` e `user_code`
-3. Utente viene mandato su `github.com/login/device`
-4. Utente inserisce il `user_code` mostrato dalla dashboard
-5. Dashboard fa polling a GitHub ogni 5s per verificare autorizzazione
-6. GitHub restituisce `access_token` → salvato in `localStorage`
-7. Token usato per tutte le chiamate GitHub API
+2. Firebase apre un popup OAuth verso GitHub
+3. Utente autorizza l'app su GitHub
+4. Firebase riceve il token, crea la sessione
+5. `onAuthStateChanged` notifica l'app dello stato auth
+6. Token refresh automatico gestito da Firebase SDK
 
-**Scope richiesti:** `repo` (per leggere/scrivere dati nel repo)
+**Configurazione Firebase Auth:**
+- Abilitare GitHub provider in Firebase Console → Authentication → Sign-in method
+- Inserire GitHub OAuth App Client ID e Client Secret in Firebase Console
+- GitHub OAuth App: `Authorization callback URL` = `https://{project}.firebaseapp.com/__/auth/handler`
+
+**Scope GitHub:** `read:user` (solo profilo, non scrive nel repo)
 
 **Sicurezza:**
-- Token salvato in `localStorage` con prefix `book_dashboard_`
-- Token revocato al logout via API
-- Nessuna informazione sensibile nei file sorgente
+- Token gestito interamente da Firebase SDK (no localStorage manuale)
+- Refresh token automatico — sessione persiste tra visite
+- Nessun secret esposto nel frontend
 
 ### 3.2 Protezione Accesso
 
 - Tutte le route protette da `<ProtectedRoute>` component
-- Token validato all'avvio dell'app
-- Se token scaduto/non valido → redirect a `/login`
+- Auth state da `onAuthStateChanged` Firebase
+- Se non autenticato → redirect a `/login`
 
 ---
 
@@ -139,9 +162,12 @@ src/
 │   ├── analysisStore.ts
 │   └── uiStore.ts
 ├── services/
-│   ├── github.ts              # GitHub API client
-│   ├── githubOAuth.ts         # Device Flow OAuth
-│   └── dataService.ts         # CRUD su JSON nel repo
+│   ├── firebase.ts            # Init Firebase app, Firestore, Auth
+│   ├── authService.ts         # signInWithGitHub, signOut, onAuthStateChanged
+│   ├── chaptersService.ts     # CRUD capitoli su Firestore
+│   ├── analysisService.ts     # CRUD analisi su Firestore
+│   ├── settingsService.ts     # get/save impostazioni su Firestore
+│   └── statsService.ts        # storico statistiche su Firestore
 ├── hooks/
 │   ├── useChapters.ts
 │   ├── useAnalysis.ts
@@ -498,12 +524,13 @@ git push origin data
 
 ## 9. Sicurezza
 
-- **Nessuna secret nel codice sorgente:** Client ID GitHub è pubblico (necessario per Device Flow)
+- **Firebase API Key:** Pubblica per design (sicurezza garantita dalle Security Rules Firestore)
+- **Firebase Security Rules:** Solo utenti autenticati possono leggere/scrivere
 - **ANTHROPIC_API_KEY:** Solo in GitHub Actions Secrets, mai esposta al frontend
-- **Token utente:** Solo in localStorage, mai inviato a terze parti
-- **CORS:** Le API GitHub supportano CORS per browser, nessun problema
+- **FIREBASE_SERVICE_ACCOUNT_JSON:** Solo in GitHub Actions Secrets (usato dal workflow AI per scrivere analisi su Firestore)
+- **GitHub OAuth secret:** Inserito in Firebase Console (mai nel codice frontend)
 - **CSP:** Header configurati nel deploy workflow
-- **Rate limiting:** GitHub API: 5000 req/h con token autenticato (più che sufficiente)
+- **Rate limiting:** Firestore: 1M writes/giorno burst limit (vastamente sufficiente per uso personale)
 
 ---
 

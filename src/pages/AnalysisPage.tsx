@@ -6,7 +6,7 @@ import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
 import {toast} from '@/stores/toastStore'
 import {getScoreColor} from '@/types'
-import {triggerWorkflow} from '@/services/github'
+import {triggerWorkflow} from '@/services/githubWorkflow'
 import {GITHUB_REPO_NAME, GITHUB_REPO_OWNER} from '@/utils/constants'
 import {formatRelativeDate} from '@/utils/formatters'
 import {cn} from '@/utils/cn'
@@ -77,7 +77,7 @@ export default function AnalysisPage() {
   }, [loadChapters])
 
   useEffect(() => {
-    if (chapters.length > 0) void loadAllAnalyses(chapters.map((c) => c.id))
+    if (chapters.length > 0) void loadAllAnalyses()
   }, [chapters, loadAllAnalyses])
 
   useEffect(() => {

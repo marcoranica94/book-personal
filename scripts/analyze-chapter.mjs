@@ -3,29 +3,42 @@
  * Eseguito da GitHub Actions con: node analyze-chapter.mjs
  *
  * ENV:
- *   ANTHROPIC_API_KEY  — Chiave API Anthropic
- *   CHAPTER_ID         — ID capitolo o "all"
- *   DATA_DIR           — Path assoluto al branch data clonato
+ *   ANTHROPIC_API_KEY           — Chiave API Anthropic
+ *   FIREBASE_SERVICE_ACCOUNT_JSON — Service Account JSON (stringa)
+ *   CHAPTER_ID                  — ID capitolo o "all"
+ *   REPO_DIR                    — Path root del repo (per leggere i file .md)
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import {mkdir, readFile, writeFile} from 'fs/promises'
+import {readFile} from 'fs/promises'
 import {join} from 'path'
+import {cert, initializeApp} from 'firebase-admin/app'
+import {getFirestore} from 'firebase-admin/firestore'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+// ─── Init ──────────────────────────────────────────────────────────────────
 
-const DATA_DIR = process.env.DATA_DIR ?? './data'
+const client = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY})
 const CHAPTER_ID = process.env.CHAPTER_ID ?? 'all'
+const REPO_DIR = process.env.REPO_DIR ?? '.'
 
-async function readJSON(filePath) {
-  const content = await readFile(filePath, 'utf-8')
-  return JSON.parse(content)
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+initializeApp({credential: cert(serviceAccount)})
+const db = getFirestore()
+
+// ─── Firestore helpers ──────────────────────────────────────────────────────
+
+async function getChapters() {
+  const snap = await db.collection('chapters').orderBy('number').get()
+  return snap.docs.map((d) => ({...d.data(), id: d.id}))
 }
 
-async function writeJSON(filePath, data) {
-  await mkdir(new URL('.', `file://${filePath}`).pathname, { recursive: true })
-  await writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8')
+async function saveAnalysis(chapterId, analysis) {
+  const ref = db.collection('analyses').doc(chapterId)
+  await ref.set(analysis)
+  await ref.collection('history').add(analysis)
 }
+
+// ─── Prompt ─────────────────────────────────────────────────────────────────
 
 const ANALYSIS_PROMPT = (title, chapterText) => `
 Sei un editor letterario italiano di alto livello. Analizza il seguente capitolo del libro
@@ -68,58 +81,50 @@ Criteri di valutazione:
 ${chapterText}
 `.trim()
 
-async function analyzeChapter(chapter) {
-  console.log(`Analizzando capitolo: ${chapter.number} - ${chapter.title}`)
+// ─── Core ────────────────────────────────────────────────────────────────────
 
-  // Prova a leggere il testo del capitolo dal file (se esiste nel branch data)
+async function analyzeChapter(chapter) {
+  console.log(`Analizzando: ${chapter.number} - ${chapter.title}`)
+
+  // Legge il testo del capitolo dal repo (file .md)
   let chapterText = chapter.synopsis || ''
-  const chapterFilePath = join(DATA_DIR, 'chapters-content', `${chapter.id}.md`)
+  const mdPath = join(REPO_DIR, 'chapters-content', `${chapter.id}.md`)
   try {
-    chapterText = await readFile(chapterFilePath, 'utf-8')
+    chapterText = await readFile(mdPath, 'utf-8')
   } catch {
-    // Usa synopsis come fallback
     if (!chapterText) {
       console.warn(`  Nessun testo trovato per ${chapter.id}, skip.`)
       return null
     }
+    console.warn(`  File .md non trovato, uso synopsis come fallback.`)
   }
 
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
-    messages: [
-      {
-        role: 'user',
-        content: ANALYSIS_PROMPT(chapter.title, chapterText),
-      },
-    ],
+    messages: [{role: 'user', content: ANALYSIS_PROMPT(chapter.title, chapterText)}],
   })
 
   const rawContent = message.content[0]
   if (rawContent.type !== 'text') return null
 
-  let analysisData
   try {
-    // Extract JSON from response
     const jsonMatch = rawContent.text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) throw new Error('No JSON found in response')
-    analysisData = JSON.parse(jsonMatch[0])
+    if (!jsonMatch) throw new Error('Nessun JSON nella risposta')
+    return {
+      chapterId: chapter.id,
+      analyzedAt: new Date().toISOString(),
+      model: 'claude-sonnet-4-6',
+      ...JSON.parse(jsonMatch[0]),
+    }
   } catch (err) {
     console.error(`  Errore parsing JSON per ${chapter.id}:`, err)
     return null
   }
-
-  return {
-    chapterId: chapter.id,
-    analyzedAt: new Date().toISOString(),
-    model: 'claude-sonnet-4-6',
-    ...analysisData,
-  }
 }
 
 async function main() {
-  const chaptersPath = join(DATA_DIR, 'chapters.json')
-  const chapters = await readJSON(chaptersPath)
+  const chapters = await getChapters()
 
   const toAnalyze =
     CHAPTER_ID === 'all'
@@ -131,27 +136,13 @@ async function main() {
     return
   }
 
-  const analysisDir = join(DATA_DIR, 'analysis')
-  const indexPath = join(analysisDir, 'index.json')
-
-  let index = {}
-  try {
-    index = await readJSON(indexPath)
-  } catch {
-    // Index non esiste ancora
-  }
-
   for (const chapter of toAnalyze) {
     const analysis = await analyzeChapter(chapter)
     if (!analysis) continue
-
-    const outPath = join(analysisDir, `chapter-${chapter.id}.json`)
-    await writeJSON(outPath, analysis)
-    index[chapter.id] = analysis.analyzedAt
-    console.log(`  ✓ Analisi salvata in ${outPath}`)
+    await saveAnalysis(chapter.id, analysis)
+    console.log(`  ✓ Analisi salvata su Firestore (analyses/${chapter.id})`)
   }
 
-  await writeJSON(indexPath, index)
   console.log('Analisi completata.')
 }
 

@@ -10,7 +10,7 @@
 **Tipo:** Dashboard web per la gestione di un libro in scrittura
 **Autore:** z004v04h
 **Data inizio:** 2026-03-04
-**Stack:** React + Vite + Tailwind CSS + GitHub API + Claude API
+**Stack:** React + Vite + Tailwind CSS + Firebase (Firestore + Auth) + Claude API
 
 ---
 
@@ -31,7 +31,7 @@
 
 ### 2026-03-04 — Sessione 1 (Setup iniziale)
 
-**Problema:** Come hostare una dashboard personale interamente su GitHub, con auth, DB e AI.
+**Problema:** Come hostare una dashboard personale con auth, DB e AI su infrastruttura gratuita.
 
 **Decisioni:**
 
@@ -40,16 +40,32 @@
 | Hosting | GitHub Pages | Gratuito, integrato con repo |
 | Build | React 18 + Vite | Veloce, SPA moderna, DX eccellente |
 | Styling | Tailwind CSS + shadcn/ui + Framer Motion | UI accattivante senza overhead |
-| Auth | GitHub OAuth Device Flow | No backend necessario, funziona su sito statico |
-| Database | JSON files nel repo via GitHub API | Zero infrastruttura, tutto su GitHub, storico con git |
-| AI Analysis | GitHub Actions + Claude API (Anthropic) | Automatizzabile, log nel repo, free tier generoso |
+| Auth | Firebase Auth + GitHub provider | Popup OAuth, no Device Flow polling, refresh token automatico |
+| Database | Firebase Firestore | Writes in <200ms (vs 1-3s con GitHub API), query reali, free tier generoso |
+| AI Analysis | GitHub Actions + Claude API (Anthropic) | Automatizzabile, log nel repo; scrive risultati su Firestore via Admin SDK |
 | Charts | Recharts | Leggero, React-friendly |
 | State | Zustand | Semplice, performante |
 | Drag & Drop | @dnd-kit/core | Modern, accessibile |
 
-**Motivazione GitHub Device Flow:** Il GitHub OAuth Device Flow permette autenticazione senza redirect server. L'utente va su `github.com/login/device`, inserisce un codice mostrato dalla dashboard, la SPA fa polling fino all'approvazione. Zero backend necessario.
+**Perché Firebase invece di JSON su branch `data`:**
+L'approccio originale con JSON nel repo GitHub richiedeva 1-3 secondi per ogni write (crea un commit), una SHA cache come workaround per i conflitti, e nessuna possibilità di query. Firebase Firestore risolve tutto: writes in ~50-200ms, nessun overhead SHA, Security Rules per la protezione, free tier Spark da 1GB/50K reads/20K writes al giorno — ampiamente sufficiente per uso personale.
 
-**Motivazione JSON su GitHub:** Per un progetto single-user personale, usare il repo stesso come DB è ideale: versioning gratuito, backup automatico, storico completo di ogni modifica ai dati.
+**Cosa rimane su GitHub:** Il testo dei capitoli (file `.md`) resta nel repo. Il workflow AI li legge da lì e scrive i risultati analisi su Firestore via Firebase Admin SDK (secret: `FIREBASE_SERVICE_ACCOUNT_JSON`).
+
+**Struttura Firestore (single-user, flat):**
+```
+/chapters/{chapterId}          ← metadati capitolo
+/analyses/{chapterId}          ← analisi AI (ultima)
+/analyses/{chapterId}/history/{ts} ← storico analisi
+/settings/book                 ← impostazioni libro
+/statsHistory/{timestamp}      ← serie storica statistiche
+```
+
+**Security Rules:** solo `request.auth != null` (utente autenticato con GitHub via Firebase).
+
+### 2026-03-04 — Sessione 2 (Cambio DB)
+
+Decisione: migrazione da JSON su branch `data` → **Firebase Firestore + Firebase Auth**.
 
 ---
 
@@ -146,17 +162,18 @@ book-personal/
 
 - **Lingua UI:** Italiano
 - **Branch default:** `master`
-- **Branch data:** `data` (JSON files, separati dal codice)
-- **Commit style:** Conventional Commits (`feat:`, `fix:`, `data:`, `analysis:`)
-- **Token GitHub:** Conservato in `localStorage` dopo Device Flow OAuth
-- **API key Claude:** Conservata come GitHub Actions Secret (`ANTHROPIC_API_KEY`)
+- **Branch data:** eliminato — i dati stanno su Firestore
+- **Commit style:** Conventional Commits (`feat:`, `fix:`, `analysis:`)
+- **Auth Firebase:** token gestito automaticamente da Firebase SDK, nessun localStorage manuale
+- **Env vars frontend:** `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` (sicure, Firebase API key è pubblica per design)
+- **GitHub Actions secrets:** `ANTHROPIC_API_KEY` + `FIREBASE_SERVICE_ACCOUNT_JSON`
 
 ---
 
 ## Note e Preferenze Utente
 
 - Vuole UI accattivante e moderna (non minimale/piatta)
-- Tutto deve girare su GitHub (no servizi terzi per il core)
+- Hosting su GitHub Pages, DB su Firebase Firestore (gratuito, superiore)
 - Analisi AI per ogni capitolo con voti, commenti, correzioni
 - Conteggio pagine basato su: caratteri totali / 1800
 - Dashboard con andamento capitolo e libro nel tempo
@@ -169,6 +186,7 @@ book-personal/
 |------|----------|----------|--------|
 | 2026-03-04 | #1 | Setup progetto, creazione CLAUDE.md, PROJECT.md, BACKLOG.md | 3 file di specifica |
 | 2026-03-04 | #2 | Sprint 1 completo — tutta la fondazione del progetto | App funzionante, build ✅ |
+| 2026-03-04 | #3 | Sprint 0 — migrazione Firebase (Firestore + Auth), riscrittura tutti i service/store, workflow AI aggiornato | Build ✅, Firebase integrato |
 
 ---
 

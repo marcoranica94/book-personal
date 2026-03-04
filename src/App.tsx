@@ -12,10 +12,12 @@ import AnalysisPage from '@/pages/AnalysisPage'
 import SettingsPage from '@/pages/SettingsPage'
 
 export default function App() {
-  const { initialize } = useAuthStore()
+  const {initialize} = useAuthStore()
 
   useEffect(() => {
-    void initialize()
+    // initialize() registra onAuthStateChanged e restituisce l'unsubscribe
+    const unsubscribe = initialize()
+    return unsubscribe
   }, [initialize])
 
   return (
