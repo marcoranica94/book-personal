@@ -1,16 +1,22 @@
 import {useEffect, useState} from 'react'
 import {motion} from 'framer-motion'
-import {AlertTriangle, CheckCircle2, Download, Folder, Loader2, LogOut, RefreshCw, Save} from 'lucide-react'
+import {AlertTriangle, CheckCircle2, Download, ExternalLink, Folder, Link2, Loader2, LogOut, Package, RefreshCw, Save, Search} from 'lucide-react'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useAuthStore} from '@/stores/authStore'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useDriveStore} from '@/stores/driveStore'
 import {toast} from '@/stores/toastStore'
-import type {BookSettings} from '@/types'
+import type {BookSettings, Chapter, DriveFile} from '@/types'
+import {SyncSource, SyncStatus} from '@/types'
 import DriveConnectButton from '@/components/drive/DriveConnectButton'
 import FolderPicker from '@/components/drive/FolderPicker'
 import ConflictResolver from '@/components/drive/ConflictResolver'
 import {fullSync} from '@/services/driveSyncService'
+import {getValidAccessToken} from '@/services/driveAuthService'
+import {listDriveFiles, getDriveFileContent} from '@/services/driveFileService'
+import {parseDriveFileToChapter} from '@/services/driveParserService'
+import * as chaptersService from '@/services/chaptersService'
+import {formatRelativeDate} from '@/utils/formatters'
 import {cn} from '@/utils/cn'
 
 function Field({
@@ -57,7 +63,10 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [lastSyncResult, setLastSyncResult] = useState<string | null>(null)
-  const [conflictChapter, setConflictChapter] = useState<import('@/types').Chapter | null>(null)
+  const [conflictChapter, setConflictChapter] = useState<Chapter | null>(null)
+  const [unlinkedFiles, setUnlinkedFiles] = useState<DriveFile[] | null>(null)
+  const [isSearchingUnlinked, setIsSearchingUnlinked] = useState(false)
+  const [importingFileId, setImportingFileId] = useState<string | null>(null)
 
   useEffect(() => {
     void loadSettings()
@@ -79,11 +88,18 @@ export default function SettingsPage() {
       await loadChapters()
       const msg = `✓ ${result.created} creati, ${result.updated} aggiornati, ${result.pushed} caricati`
       setLastSyncResult(result.errors.length ? `${msg} — ${result.errors.length} errori` : msg)
-      if (result.conflicts > 0) {
-        toast.success(`Sync completato — ${result.conflicts} conflitti da risolvere`)
-      } else {
-        toast.success('Sincronizzazione completata')
-      }
+      if (result.created > 0)
+        toast.info(`${result.created} nuov${result.created === 1 ? 'o capitolo trovato' : 'i capitoli trovati'} su Drive`)
+      if (result.updated > 0)
+        toast.success(`${result.updated} capitol${result.updated === 1 ? 'o aggiornato' : 'i aggiornati'} da Drive`)
+      if (result.pushed > 0)
+        toast.success(`${result.pushed} capitol${result.pushed === 1 ? 'o inviato' : 'i inviati'} su Drive`)
+      if (result.conflicts > 0)
+        toast.warning(`${result.conflicts} conflitt${result.conflicts === 1 ? 'o' : 'i'} da risolvere`)
+      if (result.errors.length > 0)
+        toast.error(`${result.errors.length} error${result.errors.length === 1 ? 'e' : 'i'} durante la sync`)
+      if (result.created === 0 && result.updated === 0 && result.pushed === 0 && result.conflicts === 0)
+        toast.success('Tutto aggiornato — nessuna modifica')
     } catch (err) {
       toast.error('Errore sync: ' + (err as Error).message)
       setLastSyncResult('Errore durante la sincronizzazione')
@@ -105,6 +121,53 @@ export default function SettingsPage() {
     setSaved(true)
     toast.success('Impostazioni salvate')
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  async function handleSearchUnlinked() {
+    if (!user || !driveConfig?.folderId) return
+    setIsSearchingUnlinked(true)
+    try {
+      const {accessToken, updatedTokens} = await getValidAccessToken(driveConfig, user.uid)
+      if (updatedTokens) await patchTokens(user.uid, updatedTokens)
+      const files = await listDriveFiles(accessToken, driveConfig.folderId)
+      const linkedIds = new Set(chapters.map((c) => c.driveFileId).filter(Boolean))
+      setUnlinkedFiles(files.filter((f) => !linkedIds.has(f.id)))
+    } catch (err) {
+      toast.error('Errore ricerca: ' + (err as Error).message)
+    } finally {
+      setIsSearchingUnlinked(false)
+    }
+  }
+
+  async function handleImportFile(file: DriveFile) {
+    if (!user || !driveConfig) return
+    setImportingFileId(file.id)
+    try {
+      const {accessToken: importToken, updatedTokens: importUpdatedTokens} = await getValidAccessToken(driveConfig, user.uid)
+      if (importUpdatedTokens) await patchTokens(user.uid, importUpdatedTokens)
+      const content = await getDriveFileContent(importToken, file.id, file.mimeType)
+      const {driveBody, ...fields} = parseDriveFileToChapter(content, file)
+      const chapter: Chapter = {
+        ...(fields as Chapter),
+        driveFileId: file.id,
+        driveFileName: file.name,
+        driveMimeType: file.mimeType,
+        driveWebViewLink: file.webViewLink ?? null,
+        driveModifiedTime: file.modifiedTime,
+        driveContent: driveBody,
+        lastSyncAt: new Date().toISOString(),
+        syncSource: SyncSource.DRIVE,
+        syncStatus: SyncStatus.SYNCED,
+      }
+      await chaptersService.addChapter(chapter)
+      await loadChapters()
+      setUnlinkedFiles((prev) => prev?.filter((f) => f.id !== file.id) ?? null)
+      toast.success(`"${file.name}" importato come cap. ${chapter.number}`)
+    } catch (err) {
+      toast.error('Errore importazione: ' + (err as Error).message)
+    } finally {
+      setImportingFileId(null)
+    }
   }
 
   function handleExport() {
@@ -269,10 +332,44 @@ export default function SettingsPage() {
         {driveConnected && driveConfig ? (
           <div className="space-y-4">
             {/* Status */}
-            <div className="flex items-center gap-2 text-sm text-emerald-400">
-              <CheckCircle2 className="h-4 w-4" />
-              Connesso
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-emerald-400">
+                <CheckCircle2 className="h-4 w-4" />
+                Connesso
+              </div>
+              {driveConfig.createdAt && (
+                <span className="text-xs text-slate-600">
+                  Dal {formatRelativeDate(driveConfig.createdAt)}
+                </span>
+              )}
             </div>
+
+            {/* Drive stats — E1.1 */}
+            <div className="grid grid-cols-3 gap-3 rounded-lg border border-white/6 bg-white/2 p-3 text-center">
+              {(() => {
+                const linked = chapters.filter((c) => c.driveFileId).length
+                const pending = chapters.filter((c) => c.syncStatus === SyncStatus.PENDING_PUSH).length
+                const conflicts = chapters.filter((c) => c.syncStatus === SyncStatus.CONFLICT).length
+                return (
+                  <>
+                    <div>
+                      <p className="text-base font-bold text-white">{linked}</p>
+                      <p className="text-xs text-slate-500 flex items-center justify-center gap-1">
+                        <Link2 className="h-3 w-3" />
+                        Collegati
+                      </p>
+                    </div>
+                    <div>
+                      <p className={cn('text-base font-bold', pending > 0 ? 'text-amber-400' : 'text-white')}>{pending}</p>
+                      <p className="text-xs text-slate-500">Da inviare</p>
+                    </div>
+                    <div>
+                      <p className={cn('text-base font-bold', conflicts > 0 ? 'text-red-400' : 'text-white')}>{conflicts}</p>
+                      <p className="text-xs text-slate-500">Conflitti</p>
+                    </div>
+                  </>
+                )
+              })()}</div>
 
             {/* Folder picker */}
             <div>
@@ -304,6 +401,60 @@ export default function SettingsPage() {
                 )}
               </div>
             )}
+
+            {/* File non collegati — E1.5 */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => void handleSearchUnlinked()}
+                  disabled={isSearchingUnlinked || !driveConfig.folderId}
+                  className="flex items-center gap-2 rounded-lg border border-white/8 px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/5 disabled:opacity-50"
+                >
+                  {isSearchingUnlinked
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <Search className="h-4 w-4" />}
+                  File non collegati
+                </button>
+                {unlinkedFiles !== null && (
+                  <span className="text-xs text-slate-500">
+                    {unlinkedFiles.length === 0 ? 'Tutti collegati ✓' : `${unlinkedFiles.length} da importare`}
+                  </span>
+                )}
+              </div>
+              {unlinkedFiles && unlinkedFiles.length > 0 && (
+                <div className="rounded-lg border border-white/6 divide-y divide-white/4">
+                  {unlinkedFiles.map((file) => (
+                    <div key={file.id} className="flex items-center gap-3 px-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-slate-300 truncate">{file.name}</p>
+                        {file.webViewLink && (
+                          <a
+                            href={file.webViewLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-0.5 inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-400"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ExternalLink className="h-2.5 w-2.5" />
+                            Apri
+                          </a>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => void handleImportFile(file)}
+                        disabled={importingFileId === file.id}
+                        className="shrink-0 flex items-center gap-1.5 rounded-md border border-violet-700/30 bg-violet-900/20 px-2.5 py-1 text-xs text-violet-400 transition-colors hover:bg-violet-900/40 disabled:opacity-50"
+                      >
+                        {importingFileId === file.id
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <Package className="h-3 w-3" />}
+                        Importa
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Conflitti */}
             {(() => {

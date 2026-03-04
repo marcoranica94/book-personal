@@ -4,12 +4,16 @@ import {CheckCheck, FileEdit, Loader2, Play, RadarIcon, RefreshCw, Sparkles, Squ
 import {PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer} from 'recharts'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
+import {useDriveStore} from '@/stores/driveStore'
+import {useAuthStore} from '@/stores/authStore'
 import {toast} from '@/stores/toastStore'
 import type {AnalysisCorrection} from '@/types'
 import {getScoreColor, SyncSource, SyncStatus} from '@/types'
 import {triggerWorkflow} from '@/services/githubWorkflow'
 import {patchAnalysis} from '@/services/analysisService'
 import * as chaptersService from '@/services/chaptersService'
+import {getValidAccessToken} from '@/services/driveAuthService'
+import {getDriveFileContent} from '@/services/driveFileService'
 import {GITHUB_REPO_NAME, GITHUB_REPO_OWNER} from '@/utils/constants'
 import {formatRelativeDate} from '@/utils/formatters'
 import {cn} from '@/utils/cn'
@@ -94,6 +98,8 @@ function ScoreBar({label, value}: {label: string; value: number}) {
 export default function AnalysisPage() {
   const {chapters, loadChapters} = useChaptersStore()
   const {analyses, loadAnalysis, loadAllAnalyses, isLoading} = useAnalysisStore()
+  const {config: driveConfig, patchTokens} = useDriveStore()
+  const {user} = useAuthStore()
   const [selectedId, setSelectedId] = useState<string>('')
   const [activeTab, setActiveTab] = useState<Tab>('strengths')
   const [triggering, setTriggering] = useState(false)
@@ -103,6 +109,7 @@ export default function AnalysisPage() {
   // Editor inline
   const [editorContent, setEditorContent] = useState('')
   const [isSavingContent, setIsSavingContent] = useState(false)
+  const [isForceSyncingDrive, setIsForceSyncingDrive] = useState(false)
   const editorRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -198,6 +205,31 @@ export default function AnalysisPage() {
       toast.error('Errore salvataggio: ' + (err as Error).message)
     } finally {
       setIsSavingContent(false)
+    }
+  }
+
+  async function handleReloadFromDrive() {
+    if (!selectedChapter?.driveFileId || !driveConfig || !user) return
+    setIsForceSyncingDrive(true)
+    try {
+      const {accessToken, updatedTokens} = await getValidAccessToken(driveConfig, user.uid)
+      if (updatedTokens) await patchTokens(user.uid, updatedTokens)
+      const content = await getDriveFileContent(accessToken, selectedChapter.driveFileId, selectedChapter.driveMimeType ?? 'text/plain')
+      await chaptersService.updateChapter(selectedChapter.id, {
+        driveContent: content,
+        currentChars: content.length,
+        wordCount: content.split(/\s+/).filter(Boolean).length,
+        syncStatus: SyncStatus.SYNCED,
+        syncSource: SyncSource.DRIVE,
+        lastSyncAt: new Date().toISOString(),
+      })
+      await loadChapters()
+      setEditorContent(content)
+      toast.success('Contenuto ricaricato da Drive')
+    } catch (err) {
+      toast.error('Errore: ' + (err as Error).message)
+    } finally {
+      setIsForceSyncingDrive(false)
     }
   }
 
@@ -585,6 +617,26 @@ export default function AnalysisPage() {
                               Nessun testo sincronizzato da Drive. Sincronizza il capitolo nelle Impostazioni.
                             </p>
                           ) : null}
+
+                          {/* lastSyncAt + reload */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-600">
+                              {selectedChapter?.lastSyncAt
+                                ? `Contenuto aggiornato ${formatRelativeDate(selectedChapter.lastSyncAt)}`
+                                : 'Nessuna sincronizzazione registrata'}
+                            </span>
+                            {selectedChapter?.driveFileId && driveConfig?.folderId && (
+                              <button
+                                onClick={() => void handleReloadFromDrive()}
+                                disabled={isForceSyncingDrive}
+                                className="flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-slate-300 disabled:opacity-50"
+                              >
+                                <RefreshCw className={cn('h-3 w-3', isForceSyncingDrive && 'animate-spin')} />
+                                Ricarica da Drive
+                              </button>
+                            )}
+                          </div>
+
                           <textarea
                             ref={editorRef}
                             value={editorContent}

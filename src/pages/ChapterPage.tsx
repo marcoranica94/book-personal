@@ -3,16 +3,20 @@ import {Link, useParams} from 'react-router-dom'
 import {motion} from 'framer-motion'
 import {
   ArrowLeft, ArrowRight, BookOpen, Calendar,
-  CheckSquare, ChevronLeft, Clock, FileText,
-  Loader2, Pencil, Sparkles, Tag, Target,
+  CheckSquare, ChevronLeft, Clock, ExternalLink, FileText,
+  Loader2, Pencil, RefreshCw, Sparkles, Tag, Target,
 } from 'lucide-react'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
 import {useUIStore} from '@/stores/uiStore'
+import {useDriveStore} from '@/stores/driveStore'
+import {useAuthStore} from '@/stores/authStore'
 import {toast} from '@/stores/toastStore'
 import type {Chapter, ChecklistItem} from '@/types'
-import {ChapterStatus, PRIORITY_CONFIG, STATUS_CONFIG} from '@/types'
+import {ChapterStatus, PRIORITY_CONFIG, STATUS_CONFIG, SyncSource, SyncStatus} from '@/types'
+import {getValidAccessToken} from '@/services/driveAuthService'
+import {getDriveFileContent} from '@/services/driveFileService'
 import {
   calcProgress, charsToPages, formatDate,
   formatNumber, formatRelativeDate, wordsToReadingTime,
@@ -30,6 +34,8 @@ export default function ChapterPage() {
   const { settings } = useSettingsStore()
   const { getAnalysis, loadAnalysis } = useAnalysisStore()
   const { setLastSaved } = useUIStore()
+  const { config: driveConfig, patchTokens } = useDriveStore()
+  const { user } = useAuthStore()
 
   const chapter = chapters.find((c) => c.id === id)
   const sorted = [...chapters].sort((a, b) => a.number - b.number)
@@ -46,6 +52,7 @@ export default function ChapterPage() {
   const [status, setStatus] = useState<ChapterStatus>(ChapterStatus.TODO)
   const [checklist, setChecklist] = useState<ChecklistItem[]>([])
   const [editingTitle, setEditingTitle] = useState(false)
+  const [isForceSyncing, setIsForceSyncing] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
 
   // Populate from chapter
@@ -95,6 +102,32 @@ export default function ChapterPage() {
     setChecklist(items)
     await updateChapter(id, { checklist: items })
     setLastSaved()
+  }
+
+  async function handleForceSyncFromDrive() {
+    if (!chapter?.driveFileId || !driveConfig || !user) return
+    setIsForceSyncing(true)
+    try {
+      const {accessToken, updatedTokens} = await getValidAccessToken(driveConfig, user.uid)
+      if (updatedTokens) await patchTokens(user.uid, updatedTokens)
+      const content = await getDriveFileContent(accessToken, chapter.driveFileId, chapter.driveMimeType ?? 'text/plain')
+      const words = content.split(/\s+/).filter(Boolean).length
+      await updateChapter(chapter.id, {
+        driveContent: content,
+        currentChars: content.length,
+        wordCount: words,
+        syncStatus: SyncStatus.SYNCED,
+        syncSource: SyncSource.DRIVE,
+        lastSyncAt: new Date().toISOString(),
+      })
+      setCurrentChars(content.length)
+      setWordCount(words)
+      toast.success('Contenuto aggiornato da Drive')
+    } catch (err) {
+      toast.error('Errore sync: ' + (err as Error).message)
+    } finally {
+      setIsForceSyncing(false)
+    }
   }
 
   async function saveTitle() {
@@ -207,6 +240,32 @@ export default function ChapterPage() {
               <Calendar className="h-3 w-3" />
               {formatDate(chapter.dueDate)}
             </span>
+          )}
+
+          {/* Drive actions */}
+          {chapter.driveWebViewLink && (
+            <a
+              href={chapter.driveWebViewLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 rounded-full bg-white/6 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:text-slate-200"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Drive
+            </a>
+          )}
+          {chapter.driveFileId && driveConfig?.folderId && (
+            <button
+              onClick={() => void handleForceSyncFromDrive()}
+              disabled={isForceSyncing}
+              title="Scarica contenuto aggiornato da Drive"
+              className="flex items-center gap-1 rounded-full bg-white/6 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:text-slate-200 disabled:opacity-50"
+            >
+              <RefreshCw className={cn('h-3 w-3', isForceSyncing && 'animate-spin')} />
+              {chapter.lastSyncAt
+                ? `Sync ${formatRelativeDate(chapter.lastSyncAt)}`
+                : 'Forza sync'}
+            </button>
           )}
 
           <span className="ml-auto text-xs text-slate-600">
