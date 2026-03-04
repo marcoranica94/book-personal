@@ -3,6 +3,7 @@ import {v4 as uuidv4} from 'uuid'
 import * as dataService from '@/services/dataService'
 import type {Chapter, ChecklistItem} from '@/types'
 import {ChapterStatus, DEFAULT_CHECKLIST, Priority} from '@/types'
+import {toast} from '@/stores/toastStore'
 
 interface ChaptersStore {
   chapters: Chapter[]
@@ -68,7 +69,9 @@ export const useChaptersStore = create<ChaptersStore>((set, get) => ({
       const chapters = await dataService.getAllChapters()
       set({ chapters, isLoading: false, lastSync: new Date().toISOString() })
     } catch (err) {
-      set({ isLoading: false, error: (err as Error).message })
+      const msg = (err as Error).message
+      set({ isLoading: false, error: msg })
+      toast.error('Errore caricamento capitoli: ' + msg)
     }
   },
 
@@ -80,7 +83,10 @@ export const useChaptersStore = create<ChaptersStore>((set, get) => ({
       await dataService.addChapter(chapter)
       set((s) => ({ chapters: [...s.chapters, chapter], isSaving: false }))
     } catch (err) {
-      set({ isSaving: false, error: (err as Error).message })
+      const msg = (err as Error).message
+      set({ isSaving: false, error: msg })
+      toast.error('Errore salvataggio capitolo: ' + msg)
+      throw err // re-throw so modal can show inline error
     }
   },
 
@@ -95,7 +101,10 @@ export const useChaptersStore = create<ChaptersStore>((set, get) => ({
         isSaving: false,
       }))
     } catch (err) {
-      set({ isSaving: false, error: (err as Error).message })
+      const msg = (err as Error).message
+      set({ isSaving: false, error: msg })
+      toast.error('Errore aggiornamento: ' + msg)
+      throw err
     }
   },
 
@@ -108,7 +117,10 @@ export const useChaptersStore = create<ChaptersStore>((set, get) => ({
         isSaving: false,
       }))
     } catch (err) {
-      set({ isSaving: false, error: (err as Error).message })
+      const msg = (err as Error).message
+      set({ isSaving: false, error: msg })
+      toast.error('Errore eliminazione: ' + msg)
+      throw err
     }
   },
 

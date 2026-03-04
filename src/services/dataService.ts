@@ -1,7 +1,50 @@
-import {getFileContent, putFileContent} from './github'
+import {checkBranchExists, createBranch, getFileContent, getRefSha, putFileContent} from './github'
 import {GITHUB_DATA_BRANCH, GITHUB_REPO_NAME, GITHUB_REPO_OWNER,} from '@/utils/constants'
 import type {BookSettings, Chapter, ChapterAnalysis, StatsSnapshot,} from '@/types'
 import {DEFAULT_BOOK_SETTINGS} from '@/types'
+
+// ─── Data Branch Initialization ───────────────────────────────────────────────
+
+const LS_DB_READY = 'book_db_ready'
+
+export async function initializeDataBranch(): Promise<boolean> {
+  // Skip if already initialized this session
+  if (localStorage.getItem(LS_DB_READY) === '1') return false
+
+  const exists = await checkBranchExists(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, GITHUB_DATA_BRANCH)
+
+  if (exists) {
+    localStorage.setItem(LS_DB_READY, '1')
+    return false
+  }
+
+  // Create branch from master HEAD
+  const sha = await getRefSha(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'heads/master')
+  await createBranch(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, GITHUB_DATA_BRANCH, sha)
+
+  // Seed initial files
+  const initialFiles: { path: string; data: unknown; message: string }[] = [
+    { path: 'chapters.json', data: [], message: 'init: chapters database' },
+    { path: 'book-settings.json', data: DEFAULT_BOOK_SETTINGS, message: 'init: book settings' },
+    { path: 'book-stats-history.json', data: [], message: 'init: stats history' },
+    { path: 'analysis/index.json', data: {}, message: 'init: analysis index' },
+  ]
+
+  for (const file of initialFiles) {
+    await putFileContent(
+      GITHUB_REPO_OWNER,
+      GITHUB_REPO_NAME,
+      file.path,
+      JSON.stringify(file.data, null, 2),
+      null,
+      file.message,
+      GITHUB_DATA_BRANCH
+    )
+  }
+
+  localStorage.setItem(LS_DB_READY, '1')
+  return true // was freshly initialized
+}
 
 // ─── SHA Cache (avoid extra requests) ────────────────────────────────────────
 

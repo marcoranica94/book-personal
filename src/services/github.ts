@@ -90,6 +90,42 @@ export async function revokeToken(token: string): Promise<void> {
   }
 }
 
+export async function checkBranchExists(
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<boolean> {
+  try {
+    await githubFetch(`/repos/${owner}/${repo}/branches/${branch}`)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function getRefSha(
+  owner: string,
+  repo: string,
+  ref: string // e.g. "heads/master"
+): Promise<string> {
+  const data = await githubFetch<{ object: { sha: string } }>(
+    `/repos/${owner}/${repo}/git/ref/${ref}`
+  )
+  return data.object.sha
+}
+
+export async function createBranch(
+  owner: string,
+  repo: string,
+  branchName: string,
+  sha: string
+): Promise<void> {
+  await githubFetch(`/repos/${owner}/${repo}/git/refs`, {
+    method: 'POST',
+    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha }),
+  })
+}
+
 export async function triggerWorkflow(
   owner: string,
   repo: string,

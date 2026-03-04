@@ -2,6 +2,7 @@ import {create} from 'zustand'
 import * as dataService from '@/services/dataService'
 import type {BookSettings} from '@/types'
 import {DEFAULT_BOOK_SETTINGS} from '@/types'
+import {toast} from '@/stores/toastStore'
 
 interface SettingsStore {
   settings: BookSettings
@@ -26,7 +27,9 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       const settings = await dataService.getSettings()
       set({ settings, isLoading: false })
     } catch (err) {
-      set({ isLoading: false, error: (err as Error).message })
+      const msg = (err as Error).message
+      set({ isLoading: false, error: msg })
+      toast.error('Errore caricamento impostazioni: ' + msg)
     }
   },
 
@@ -36,7 +39,10 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       await dataService.saveSettings(settings)
       set({ settings, isSaving: false })
     } catch (err) {
-      set({ isSaving: false, error: (err as Error).message })
+      const msg = (err as Error).message
+      set({ isSaving: false, error: msg })
+      toast.error('Errore salvataggio impostazioni: ' + msg)
+      throw err
     }
   },
 
