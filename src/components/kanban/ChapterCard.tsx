@@ -2,6 +2,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { motion } from 'framer-motion'
 import { Calendar, FileText, CheckSquare, Tag, Pencil, Trash2, ExternalLink } from 'lucide-react'
+import SyncStatusBadge from '@/components/drive/SyncStatusBadge'
 import { Link } from 'react-router-dom'
 import type { Chapter } from '@/types'
 import { PRIORITY_CONFIG } from '@/types'
@@ -116,6 +117,10 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
 
           {/* Metadata row */}
           <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-500">
+            {/* Sync status */}
+            {chapter.syncStatus && (
+              <SyncStatusBadge status={chapter.syncStatus} error={chapter.syncError} />
+            )}
             {/* Pages */}
             <span className="flex items-center gap-1">
               <FileText className="h-3 w-3" />

@@ -1,6 +1,6 @@
 import {useEffect, useState} from 'react'
 import {motion} from 'framer-motion'
-import {CheckCircle2, Download, Folder, Loader2, LogOut, Save} from 'lucide-react'
+import {AlertTriangle, CheckCircle2, Download, Folder, Loader2, LogOut, RefreshCw, Save} from 'lucide-react'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useAuthStore} from '@/stores/authStore'
 import {useChaptersStore} from '@/stores/chaptersStore'
@@ -9,6 +9,9 @@ import {toast} from '@/stores/toastStore'
 import type {BookSettings} from '@/types'
 import DriveConnectButton from '@/components/drive/DriveConnectButton'
 import FolderPicker from '@/components/drive/FolderPicker'
+import ConflictResolver from '@/components/drive/ConflictResolver'
+import {fullSync} from '@/services/driveSyncService'
+import {cn} from '@/utils/cn'
 
 function Field({
   label,
@@ -48,18 +51,46 @@ const inputCls =
 export default function SettingsPage() {
   const {settings, loadSettings, saveSettings, isSaving} = useSettingsStore()
   const {user, logout} = useAuthStore()
-  const {chapters} = useChaptersStore()
-  const {config: driveConfig, isConnected: driveConnected, load: loadDrive} = useDriveStore()
+  const {chapters, loadChapters} = useChaptersStore()
+  const {config: driveConfig, isConnected: driveConnected, load: loadDrive, patchTokens} = useDriveStore()
   const [form, setForm] = useState<BookSettings>(settings)
   const [saved, setSaved] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [lastSyncResult, setLastSyncResult] = useState<string | null>(null)
+  const [conflictChapter, setConflictChapter] = useState<import('@/types').Chapter | null>(null)
 
   useEffect(() => {
     void loadSettings()
-  }, [loadSettings])
+    void loadChapters()
+  }, [loadSettings, loadChapters])
 
   useEffect(() => {
     if (user) void loadDrive(user.uid)
   }, [user, loadDrive])
+
+  async function handleSyncNow() {
+    if (!user || !driveConfig?.folderId) return
+    setIsSyncing(true)
+    setLastSyncResult(null)
+    try {
+      const result = await fullSync(driveConfig, user.uid, chapters, (tokens) =>
+        patchTokens(user.uid, tokens),
+      )
+      await loadChapters()
+      const msg = `✓ ${result.created} creati, ${result.updated} aggiornati, ${result.pushed} caricati`
+      setLastSyncResult(result.errors.length ? `${msg} — ${result.errors.length} errori` : msg)
+      if (result.conflicts > 0) {
+        toast.success(`Sync completato — ${result.conflicts} conflitti da risolvere`)
+      } else {
+        toast.success('Sincronizzazione completata')
+      }
+    } catch (err) {
+      toast.error('Errore sync: ' + (err as Error).message)
+      setLastSyncResult('Errore durante la sincronizzazione')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   useEffect(() => {
     setForm(settings)
@@ -257,6 +288,48 @@ export default function SettingsPage() {
               )}
             </div>
 
+            {/* Sync now */}
+            {driveConfig.folderId && (
+              <div className="space-y-2">
+                <button
+                  onClick={handleSyncNow}
+                  disabled={isSyncing}
+                  className="flex items-center gap-2 rounded-lg border border-white/8 px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/5 disabled:opacity-50"
+                >
+                  <RefreshCw className={cn('h-4 w-4', isSyncing && 'animate-spin')} />
+                  {isSyncing ? 'Sincronizzazione...' : 'Sincronizza ora'}
+                </button>
+                {lastSyncResult && (
+                  <p className="text-xs text-slate-500">{lastSyncResult}</p>
+                )}
+              </div>
+            )}
+
+            {/* Conflitti */}
+            {(() => {
+              const conflicts = chapters.filter((c) => c.syncStatus === 'conflict')
+              if (!conflicts.length) return null
+              return (
+                <div className="rounded-lg border border-red-800/40 bg-red-900/10 p-3">
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-red-400">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    {conflicts.length} conflitt{conflicts.length === 1 ? 'o' : 'i'} da risolvere
+                  </p>
+                  <div className="space-y-1">
+                    {conflicts.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setConflictChapter(c)}
+                        className="block w-full rounded-md px-2 py-1 text-left text-xs text-red-300 hover:bg-red-900/20"
+                      >
+                        {c.title} →
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
+
             <div className="border-t border-white/6 pt-3">
               <DriveConnectButton />
             </div>
@@ -287,6 +360,19 @@ export default function SettingsPage() {
           </button>
         </div>
       </Section>
+
+      {/* Conflict resolver */}
+      {conflictChapter && driveConfig && user && (
+        <ConflictResolver
+          chapter={conflictChapter}
+          config={driveConfig}
+          uid={user.uid}
+          open={!!conflictChapter}
+          onClose={() => setConflictChapter(null)}
+          onResolved={() => { void loadChapters(); setConflictChapter(null) }}
+          onTokenRefresh={(tokens) => patchTokens(user.uid, tokens)}
+        />
+      )}
 
       {/* Save button */}
       <button

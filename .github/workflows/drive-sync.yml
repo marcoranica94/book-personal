@@ -1,0 +1,46 @@
+name: Drive Sync
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # ogni 15 minuti
+  workflow_dispatch:
+    inputs:
+      direction:
+        description: 'Direzione sync'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - pull
+          - push
+
+concurrency:
+  group: drive-sync
+  cancel-in-progress: false   # non interrompere una sync in corso
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install script dependencies
+        working-directory: scripts
+        run: npm install
+
+      - name: Run Drive sync
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          DRIVE_ENCRYPTION_KEY: ${{ secrets.VITE_DRIVE_ENCRYPTION_KEY }}
+          SYNC_DIRECTION: ${{ inputs.direction || 'both' }}
+        run: node drive-sync.mjs

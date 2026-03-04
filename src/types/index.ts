@@ -53,6 +53,18 @@ export interface Chapter {
   updatedAt: string
   dueDate: string | null
   assignedReviewer: string | null
+  // Drive sync (opzionali — assenti sui capitoli pre-Drive)
+  driveFileId?: string | null
+  driveFileName?: string | null
+  driveMimeType?: string | null
+  driveWebViewLink?: string | null
+  contentHash?: string | null
+  driveModifiedTime?: string | null
+  lastSyncAt?: string | null
+  syncSource?: SyncSource
+  syncStatus?: SyncStatus
+  syncError?: string | null
+  driveContent?: string | null
 }
 
 export interface AnalysisScores {
@@ -107,6 +119,26 @@ export interface StatsSnapshot {
   totalPages: number
   chaptersByStatus: Record<ChapterStatus, number>
 }
+
+// ─── Drive Sync Types ─────────────────────────────────────────────────────────
+
+export const SyncStatus = {
+  SYNCED: 'synced',
+  PENDING_PUSH: 'pending_push',
+  PENDING_PULL: 'pending_pull',
+  CONFLICT: 'conflict',
+  ERROR: 'error',
+  NOT_LINKED: 'not_linked',
+} as const
+export type SyncStatus = (typeof SyncStatus)[keyof typeof SyncStatus]
+
+export const SyncSource = {
+  DRIVE: 'drive',
+  DASHBOARD: 'dashboard',
+  AI: 'ai',
+  MANUAL: 'manual',
+} as const
+export type SyncSource = (typeof SyncSource)[keyof typeof SyncSource]
 
 // ─── Google Drive Types ───────────────────────────────────────────────────────
 
