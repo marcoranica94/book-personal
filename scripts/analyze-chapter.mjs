@@ -86,18 +86,33 @@ ${chapterText}
 async function analyzeChapter(chapter) {
   console.log(`Analizzando: ${chapter.number} - ${chapter.title}`)
 
-  // Legge il testo del capitolo dal repo (file .md)
-  let chapterText = chapter.synopsis || ''
-  const mdPath = join(REPO_DIR, 'chapters-content', `${chapter.id}.md`)
-  try {
-    chapterText = await readFile(mdPath, 'utf-8')
-  } catch {
-    if (!chapterText) {
-      console.warn(`  Nessun testo trovato per ${chapter.id}, skip.`)
-      return null
+  // Priorità sorgente testo:
+  // 1. driveContent (testo sincronizzato da Drive, salvato su Firestore)
+  // 2. chapters-content/{id}.md (file nel repo)
+  // 3. synopsis (fallback minimo)
+  let chapterText = ''
+  let source = ''
+
+  if (chapter.driveContent && chapter.driveContent.trim().length > 50) {
+    chapterText = chapter.driveContent
+    source = 'driveContent (Firestore)'
+  } else {
+    const mdPath = join(REPO_DIR, 'chapters-content', `${chapter.id}.md`)
+    try {
+      chapterText = await readFile(mdPath, 'utf-8')
+      source = mdPath
+    } catch {
+      chapterText = chapter.synopsis || ''
+      source = 'synopsis (fallback)'
     }
-    console.warn(`  File .md non trovato, uso synopsis come fallback.`)
   }
+
+  if (!chapterText.trim()) {
+    console.warn(`  Nessun testo trovato per ${chapter.id}, skip.`)
+    return null
+  }
+
+  console.log(`  Sorgente: ${source} (${chapterText.length} chars)`)
 
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',

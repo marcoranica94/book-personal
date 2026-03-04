@@ -1,12 +1,15 @@
-import {useEffect, useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import {AnimatePresence, motion} from 'framer-motion'
-import {Loader2, Play, RadarIcon, RefreshCw, Sparkles} from 'lucide-react'
+import {CheckCheck, FileEdit, Loader2, Play, RadarIcon, RefreshCw, Sparkles, Square, X} from 'lucide-react'
 import {PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer} from 'recharts'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
 import {toast} from '@/stores/toastStore'
-import {getScoreColor} from '@/types'
+import type {AnalysisCorrection} from '@/types'
+import {getScoreColor, SyncSource, SyncStatus} from '@/types'
 import {triggerWorkflow} from '@/services/githubWorkflow'
+import {patchAnalysis} from '@/services/analysisService'
+import * as chaptersService from '@/services/chaptersService'
 import {GITHUB_REPO_NAME, GITHUB_REPO_OWNER} from '@/utils/constants'
 import {formatRelativeDate} from '@/utils/formatters'
 import {cn} from '@/utils/cn'
@@ -37,7 +40,30 @@ const CORRECTION_TYPE_COLORS: Record<string, string> = {
   continuity: 'border-amber-800/30 bg-amber-900/30 text-amber-400',
 }
 
-type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections'
+type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor'
+
+// ─── Correzione applicazione ──────────────────────────────────────────────────
+
+function applyCorrectionsToContent(
+  content: string,
+  corrections: AnalysisCorrection[],
+  selected: Set<number>,
+): { content: string; applied: number; notFound: string[] } {
+  let result = content
+  let applied = 0
+  const notFound: string[] = []
+  for (const idx of Array.from(selected).sort((a, b) => a - b)) {
+    const c = corrections[idx]
+    if (!c) continue
+    if (result.includes(c.original)) {
+      result = result.replace(c.original, c.suggested)
+      applied++
+    } else {
+      notFound.push(c.original.slice(0, 40))
+    }
+  }
+  return { content: result, applied, notFound }
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -71,6 +97,13 @@ export default function AnalysisPage() {
   const [selectedId, setSelectedId] = useState<string>('')
   const [activeTab, setActiveTab] = useState<Tab>('strengths')
   const [triggering, setTriggering] = useState(false)
+  // Correzioni
+  const [selectedCorrections, setSelectedCorrections] = useState<Set<number>>(new Set())
+  const [isApplying, setIsApplying] = useState(false)
+  // Editor inline
+  const [editorContent, setEditorContent] = useState('')
+  const [isSavingContent, setIsSavingContent] = useState(false)
+  const editorRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     void loadChapters()
@@ -82,7 +115,13 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     if (selectedId) void loadAnalysis(selectedId)
+    setSelectedCorrections(new Set())
   }, [selectedId, loadAnalysis])
+
+  useEffect(() => {
+    const chapter = chapters.find((c) => c.id === selectedId)
+    setEditorContent(chapter?.driveContent ?? '')
+  }, [selectedId, chapters])
 
   const selectedChapter = chapters.find((c) => c.id === selectedId) ?? null
   const analysis = selectedId ? (analyses[selectedId] ?? null) : null
@@ -99,6 +138,85 @@ export default function AnalysisPage() {
     } finally {
       setTriggering(false)
     }
+  }
+
+  async function handleApplyCorrections() {
+    if (!selectedChapter || !analysis || selectedCorrections.size === 0) return
+    setIsApplying(true)
+    try {
+      const baseContent = selectedChapter.driveContent ?? ''
+      const { content, applied, notFound } = applyCorrectionsToContent(
+        baseContent,
+        analysis.corrections,
+        selectedCorrections,
+      )
+      const accepted = Array.from(selectedCorrections)
+      const rejected = analysis.corrections
+        .map((_, i) => i)
+        .filter((i) => !selectedCorrections.has(i))
+
+      await chaptersService.updateChapter(selectedChapter.id, {
+        driveContent: content,
+        syncStatus: SyncStatus.PENDING_PUSH,
+        syncSource: SyncSource.AI,
+      })
+      await patchAnalysis(selectedChapter.id, {
+        acceptedCorrections: accepted,
+        rejectedCorrections: rejected,
+        appliedAt: new Date().toISOString(),
+      })
+      await loadChapters()
+      await loadAnalysis(selectedId)
+      setSelectedCorrections(new Set())
+
+      if (notFound.length) {
+        toast.success(`${applied} correzioni applicate — ${notFound.length} non trovate nel testo`)
+      } else {
+        toast.success(`${applied} correzioni applicate al testo`)
+      }
+    } catch (err) {
+      toast.error('Errore applicazione: ' + (err as Error).message)
+    } finally {
+      setIsApplying(false)
+    }
+  }
+
+  async function handleSaveEditorContent() {
+    if (!selectedChapter) return
+    setIsSavingContent(true)
+    try {
+      await chaptersService.updateChapter(selectedChapter.id, {
+        driveContent: editorContent,
+        currentChars: editorContent.length,
+        wordCount: editorContent.split(/\s+/).filter(Boolean).length,
+        syncStatus: SyncStatus.PENDING_PUSH,
+        syncSource: SyncSource.MANUAL,
+      })
+      await loadChapters()
+      toast.success('Testo salvato — usa "Sincronizza ora" per inviarlo su Drive')
+    } catch (err) {
+      toast.error('Errore salvataggio: ' + (err as Error).message)
+    } finally {
+      setIsSavingContent(false)
+    }
+  }
+
+  function toggleCorrection(idx: number) {
+    setSelectedCorrections((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
+  function selectAllCorrections() {
+    if (!analysis) return
+    setSelectedCorrections(new Set(analysis.corrections.map((_, i) => i)))
+  }
+
+  function deselectAllCorrections() {
+    setSelectedCorrections(new Set())
   }
 
   // Chapters with analysis sorted by overall score desc
@@ -119,6 +237,7 @@ export default function AnalysisPage() {
     {id: 'weaknesses', label: 'Debolezze', count: analysis?.weaknesses.length},
     {id: 'suggestions', label: 'Suggerimenti', count: analysis?.suggestions.length},
     {id: 'corrections', label: 'Correzioni', count: analysis?.corrections.length},
+    {id: 'editor', label: 'Editor'},
   ]
 
   return (
@@ -278,7 +397,7 @@ export default function AnalysisPage() {
                   </div>
                   <div className="p-5">
                     <AnimatePresence mode="wait">
-                      {activeTab !== 'corrections' ? (
+                      {activeTab === 'strengths' || activeTab === 'weaknesses' || activeTab === 'suggestions' ? (
                         <motion.ul
                           key={activeTab}
                           initial={{opacity: 0, x: -4}}
@@ -316,7 +435,7 @@ export default function AnalysisPage() {
                             <p className="text-sm text-slate-600">Nessun elemento disponibile.</p>
                           )}
                         </motion.ul>
-                      ) : (
+                      ) : activeTab === 'corrections' ? (
                         <motion.div
                           key="corrections"
                           initial={{opacity: 0, x: -4}}
@@ -328,37 +447,173 @@ export default function AnalysisPage() {
                             <p className="text-sm text-slate-600">Nessuna correzione suggerita.</p>
                           ) : (
                             <div className="space-y-3">
-                              {analysis.corrections.map((c, i) => (
-                                <div key={i} className="rounded-lg border border-white/6 p-4 space-y-3">
-                                  <span
+                              {/* Already applied banner */}
+                              {analysis.appliedAt && (
+                                <div className="flex items-center gap-2 rounded-lg border border-emerald-800/30 bg-emerald-900/15 px-3 py-2">
+                                  <CheckCheck className="h-3.5 w-3.5 text-emerald-400" />
+                                  <span className="text-xs text-emerald-400">
+                                    Correzioni applicate il {new Date(analysis.appliedAt).toLocaleDateString('it-IT')}
+                                    {' '}· {analysis.acceptedCorrections?.length ?? 0} accettate,{' '}
+                                    {analysis.rejectedCorrections?.length ?? 0} rifiutate
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Toolbar */}
+                              {!selectedChapter?.driveContent && (
+                                <p className="text-xs text-amber-400 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2">
+                                  Nessun testo disponibile — sincronizza il capitolo da Drive per applicare le correzioni
+                                </p>
+                              )}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  onClick={selectAllCorrections}
+                                  className="flex items-center gap-1.5 rounded-md border border-white/8 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
+                                >
+                                  <CheckCheck className="h-3 w-3" />
+                                  Seleziona tutte
+                                </button>
+                                <button
+                                  onClick={deselectAllCorrections}
+                                  className="flex items-center gap-1.5 rounded-md border border-white/8 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
+                                >
+                                  <Square className="h-3 w-3" />
+                                  Deseleziona
+                                </button>
+                                {selectedCorrections.size > 0 && (
+                                  <span className="text-xs text-slate-500">
+                                    {selectedCorrections.size} selezionat{selectedCorrections.size === 1 ? 'a' : 'e'}
+                                  </span>
+                                )}
+                                <div className="flex-1" />
+                                <button
+                                  onClick={() => void handleApplyCorrections()}
+                                  disabled={
+                                    selectedCorrections.size === 0 ||
+                                    isApplying ||
+                                    !selectedChapter?.driveContent
+                                  }
+                                  className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                                >
+                                  {isApplying ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <FileEdit className="h-3 w-3" />
+                                  )}
+                                  Applica {selectedCorrections.size > 0 ? selectedCorrections.size : ''} correzioni
+                                </button>
+                              </div>
+
+                              {/* Correction list */}
+                              {analysis.corrections.map((c, i) => {
+                                const isSelected = selectedCorrections.has(i)
+                                const wasAccepted = analysis.acceptedCorrections?.includes(i)
+                                const wasRejected = analysis.rejectedCorrections?.includes(i)
+                                return (
+                                  <div
+                                    key={i}
+                                    onClick={() => toggleCorrection(i)}
                                     className={cn(
-                                      'inline-flex rounded-full border px-2 py-0.5 text-xs',
-                                      CORRECTION_TYPE_COLORS[c.type] ?? 'border-white/8 bg-white/8 text-slate-400'
+                                      'cursor-pointer rounded-lg border p-4 space-y-3 transition-colors',
+                                      isSelected
+                                        ? 'border-violet-600/50 bg-violet-900/15'
+                                        : 'border-white/6 hover:border-white/10 hover:bg-white/2'
                                     )}
                                   >
-                                    {CORRECTION_TYPE_LABELS[c.type] ?? c.type}
-                                  </span>
-                                  <div className="grid grid-cols-2 gap-3 text-xs">
-                                    <div>
-                                      <p className="mb-1 text-slate-600">Originale</p>
-                                      <p className="rounded-lg bg-red-950/20 p-2.5 text-slate-400 line-through">
-                                        {c.original}
-                                      </p>
+                                    <div className="flex items-center gap-2">
+                                      {/* Checkbox */}
+                                      <div
+                                        className={cn(
+                                          'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
+                                          isSelected
+                                            ? 'border-violet-500 bg-violet-600'
+                                            : 'border-white/20 bg-transparent'
+                                        )}
+                                      >
+                                        {isSelected && <X className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                                      </div>
+                                      <span
+                                        className={cn(
+                                          'inline-flex rounded-full border px-2 py-0.5 text-xs',
+                                          CORRECTION_TYPE_COLORS[c.type] ?? 'border-white/8 bg-white/8 text-slate-400'
+                                        )}
+                                      >
+                                        {CORRECTION_TYPE_LABELS[c.type] ?? c.type}
+                                      </span>
+                                      {wasAccepted && (
+                                        <span className="ml-auto text-xs text-emerald-500">✓ accettata</span>
+                                      )}
+                                      {wasRejected && (
+                                        <span className="ml-auto text-xs text-slate-600">✗ rifiutata</span>
+                                      )}
                                     </div>
-                                    <div>
-                                      <p className="mb-1 text-slate-600">Suggerito</p>
-                                      <p className="rounded-lg bg-emerald-950/20 p-2.5 text-emerald-300">
-                                        {c.suggested}
-                                      </p>
+                                    <div className="grid grid-cols-2 gap-3 text-xs">
+                                      <div>
+                                        <p className="mb-1 text-slate-600">Originale</p>
+                                        <p className="rounded-lg bg-red-950/20 p-2.5 text-slate-400 line-through">
+                                          {c.original}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="mb-1 text-slate-600">Suggerito</p>
+                                        <p className="rounded-lg bg-emerald-950/20 p-2.5 text-emerald-300">
+                                          {c.suggested}
+                                        </p>
+                                      </div>
                                     </div>
+                                    {c.note && (
+                                      <p className="text-xs text-slate-600 italic">{c.note}</p>
+                                    )}
                                   </div>
-                                  {c.note && (
-                                    <p className="text-xs text-slate-600 italic">{c.note}</p>
-                                  )}
-                                </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           )}
+                        </motion.div>
+                      ) : (
+                        /* Editor tab */
+                        <motion.div
+                          key="editor"
+                          initial={{opacity: 0, x: -4}}
+                          animate={{opacity: 1, x: 0}}
+                          exit={{opacity: 0}}
+                          transition={{duration: 0.15}}
+                          className="space-y-3"
+                        >
+                          {!selectedChapter?.driveContent && !editorContent ? (
+                            <p className="text-xs text-amber-400 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2">
+                              Nessun testo sincronizzato da Drive. Sincronizza il capitolo nelle Impostazioni.
+                            </p>
+                          ) : null}
+                          <textarea
+                            ref={editorRef}
+                            value={editorContent}
+                            onChange={(e) => setEditorContent(e.target.value)}
+                            placeholder="Il testo del capitolo apparirà qui dopo la sincronizzazione Drive..."
+                            className="w-full min-h-[400px] resize-y rounded-lg border border-white/8 bg-white/3 px-4 py-3 font-mono text-sm text-slate-300 placeholder-slate-700 focus:border-violet-500/40 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+                            spellCheck={false}
+                          />
+                          <div className="flex items-center justify-between">
+                            <div className="flex gap-4 text-xs text-slate-600">
+                              <span>{editorContent.length.toLocaleString('it-IT')} caratteri</span>
+                              <span>{editorContent.split(/\s+/).filter(Boolean).length.toLocaleString('it-IT')} parole</span>
+                            </div>
+                            <button
+                              onClick={() => void handleSaveEditorContent()}
+                              disabled={isSavingContent || !editorContent}
+                              className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                            >
+                              {isSavingContent ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FileEdit className="h-4 w-4" />
+                              )}
+                              Salva su Firestore
+                            </button>
+                          </div>
+                          <p className="text-xs text-slate-600">
+                            Il testo viene salvato su Firestore come bozza locale. Usa "Sincronizza ora" nelle Impostazioni per inviarlo su Drive.
+                          </p>
                         </motion.div>
                       )}
                     </AnimatePresence>

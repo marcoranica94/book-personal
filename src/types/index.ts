@@ -94,6 +94,10 @@ export interface ChapterAnalysis {
   weaknesses: string[]
   suggestions: string[]
   corrections: AnalysisCorrection[]
+  // Accept/reject tracking
+  acceptedCorrections?: number[]  // indici delle correzioni accettate
+  rejectedCorrections?: number[]  // indici delle correzioni rifiutate
+  appliedAt?: string | null       // quando sono state applicate
 }
 
 export interface BookSettings {

@@ -1,4 +1,4 @@
-import {addDoc, collection, doc, getDoc, getDocs} from 'firebase/firestore'
+import {addDoc, collection, doc, getDoc, getDocs, updateDoc} from 'firebase/firestore'
 import {db} from './firebase'
 import type {ChapterAnalysis} from '@/types'
 
@@ -19,9 +19,14 @@ export async function getAllAnalyses(): Promise<Record<string, ChapterAnalysis>>
 }
 
 export async function saveAnalysis(chapterId: string, analysis: ChapterAnalysis): Promise<void> {
-  // Salva come documento principale (ultima analisi)
   const {setDoc} = await import('firebase/firestore')
   await setDoc(doc(db, COL, chapterId), analysis)
-  // Salva anche nello storico
   await addDoc(collection(db, COL, chapterId, 'history'), analysis)
+}
+
+export async function patchAnalysis(
+  chapterId: string,
+  patch: Partial<ChapterAnalysis>,
+): Promise<void> {
+  await updateDoc(doc(db, COL, chapterId), patch as Record<string, unknown>)
 }
