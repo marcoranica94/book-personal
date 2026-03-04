@@ -3,6 +3,7 @@ import {HashRouter, Navigate, Route, Routes} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
 import ProtectedRoute from '@/components/layout/ProtectedRoute'
 import Layout from '@/components/layout/Layout'
+import ScrollToTop from '@/components/ScrollToTop'
 import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
 import KanbanPage from '@/pages/KanbanPage'
@@ -19,6 +20,7 @@ export default function App() {
 
   return (
     <HashRouter>
+      <ScrollToTop />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route

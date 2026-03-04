@@ -4,6 +4,8 @@ import {BookOpen, ChevronLeft, ChevronRight, Kanban, LayoutDashboard, LogOut, Se
 import {useAuthStore} from '@/stores/authStore'
 import {useUIStore} from '@/stores/uiStore'
 import {useSettingsStore} from '@/stores/settingsStore'
+import {useChaptersStore} from '@/stores/chaptersStore'
+import {calcProgress} from '@/utils/formatters'
 import {cn} from '@/utils/cn'
 
 const navItems = [
@@ -17,6 +19,8 @@ export default function Sidebar() {
   const { user, logout } = useAuthStore()
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
   const { settings } = useSettingsStore()
+  const { totalWords } = useChaptersStore()
+  const progress = calcProgress(totalWords(), settings.targetWords)
 
   return (
     <motion.aside
@@ -85,6 +89,35 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      {/* Progress mini-bar */}
+      <div className="border-t border-white/6 px-3 py-3">
+        {sidebarCollapsed ? (
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-xs font-medium text-slate-600">{progress}%</span>
+            <div className="w-2 rounded-full bg-white/8" style={{height: 32}}>
+              <div
+                className="w-full rounded-full bg-violet-500/50 transition-all duration-700"
+                style={{height: `${progress}%`}}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-600">Progresso libro</span>
+              <span className="font-medium text-slate-500">{progress}%</span>
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-white/8">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-violet-600 to-cyan-500"
+                animate={{width: `${progress}%`}}
+                transition={{duration: 0.8, ease: 'easeOut'}}
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* User + logout */}
       <div className="border-t border-white/8 p-2">
