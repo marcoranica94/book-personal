@@ -63,7 +63,8 @@ export default function KanbanPage() {
   // ── Drag handlers ─────────────────────────────────────────────────────────
 
   function onDragStart({ active }: DragStartEvent) {
-    const chapter = chapters.find((c) => c.id === active.id)
+    // Salva lo snapshot ORIGINALE del capitolo (con lo status prima del drag)
+    const chapter = useChaptersStore.getState().chapters.find((c) => c.id === active.id)
     setActiveChapter(chapter ?? null)
   }
 
@@ -72,57 +73,72 @@ export default function KanbanPage() {
     const activeId = active.id as string
     const overId = over.id as string
 
-    // Detect if dropped over a column header (status string)
-    const overIsColumn = (Object.values(ChapterStatus) as string[]).includes(overId)
-    const activeChapter = chapters.find((c) => c.id === activeId)
-    if (!activeChapter) return
+    const current = useChaptersStore.getState().chapters
+    const dragged = current.find((c) => c.id === activeId)
+    if (!dragged) return
 
-    if (overIsColumn && activeChapter.status !== overId) {
-      useChaptersStore.setState((s) => ({
-        chapters: s.chapters.map((c) =>
-          c.id === activeId ? { ...c, status: overId as ChapterStatus } : c
-        ),
-      }))
+    const overIsColumn = (Object.values(ChapterStatus) as string[]).includes(overId)
+
+    if (overIsColumn) {
+      if (dragged.status !== overId) {
+        useChaptersStore.setState((s) => ({
+          chapters: s.chapters.map((c) =>
+            c.id === activeId ? { ...c, status: overId as ChapterStatus } : c
+          ),
+        }))
+      }
     } else {
-      const overChapter = chapters.find((c) => c.id === overId)
-      if (!overChapter || activeChapter.status === overChapter.status) return
-      useChaptersStore.setState((s) => ({
-        chapters: s.chapters.map((c) =>
-          c.id === activeId ? { ...c, status: overChapter.status } : c
-        ),
-      }))
+      const overChapter = current.find((c) => c.id === overId)
+      if (overChapter && dragged.status !== overChapter.status) {
+        useChaptersStore.setState((s) => ({
+          chapters: s.chapters.map((c) =>
+            c.id === activeId ? { ...c, status: overChapter.status } : c
+          ),
+        }))
+      }
     }
   }
 
   async function onDragEnd({ active, over }: DragEndEvent) {
+    // activeChapter ha lo status ORIGINALE (catturato in onDragStart)
+    const originalChapter = activeChapter
     setActiveChapter(null)
-    if (!over) return
+    if (!originalChapter) return
 
     const activeId = active.id as string
-    const overId = over.id as string
-    const activeChapter = chapters.find((c) => c.id === activeId)
-    if (!activeChapter) return
+    // Legge lo stato CORRENTE dallo store (aggiornato da onDragOver)
+    const current = useChaptersStore.getState().chapters
+    const currentChapter = current.find((c) => c.id === activeId)
+    if (!currentChapter) return
 
     // Reorder within same column
-    const overChapter = chapters.find((c) => c.id === overId)
-    if (overChapter && activeChapter.status === overChapter.status) {
-      const colChapters = chapters.filter((c) => c.status === activeChapter.status)
-      const oldIdx = colChapters.findIndex((c) => c.id === activeId)
-      const newIdx = colChapters.findIndex((c) => c.id === overId)
-      if (oldIdx !== newIdx) {
-        const reordered = arrayMove(colChapters, oldIdx, newIdx)
-        const otherChapters = chapters.filter((c) => c.status !== activeChapter.status)
-        useChaptersStore.setState({ chapters: [...otherChapters, ...reordered] })
+    if (over) {
+      const overId = over.id as string
+      const overChapter = current.find((c) => c.id === overId)
+      if (overChapter && currentChapter.status === overChapter.status) {
+        const colChapters = current.filter((c) => c.status === currentChapter.status)
+        const oldIdx = colChapters.findIndex((c) => c.id === activeId)
+        const newIdx = colChapters.findIndex((c) => c.id === overId)
+        if (oldIdx !== newIdx) {
+          const reordered = arrayMove(colChapters, oldIdx, newIdx)
+          const others = current.filter((c) => c.status !== currentChapter.status)
+          useChaptersStore.setState({ chapters: [...others, ...reordered] })
+        }
       }
     }
 
-    // Persist status change
-    if (activeChapter.status !== chapters.find((c) => c.id === activeId)?.status) {
-      const newStatus = chapters.find((c) => c.id === activeId)?.status ?? activeChapter.status
+    // Persist solo se lo status è cambiato rispetto all'originale
+    if (originalChapter.status !== currentChapter.status) {
       try {
-        await updateChapter(activeId, { status: newStatus })
-        toast.success(`Capitolo spostato in "${newStatus.replace('_', ' ')}"`)
+        await updateChapter(activeId, { status: currentChapter.status })
+        toast.success(`Spostato in "${currentChapter.status.replace('_', ' ')}"`)
       } catch {
+        // Rollback visivo
+        useChaptersStore.setState((s) => ({
+          chapters: s.chapters.map((c) =>
+            c.id === activeId ? { ...c, status: originalChapter.status } : c
+          ),
+        }))
         toast.error('Errore nel salvataggio')
       }
     }
