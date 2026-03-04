@@ -303,7 +303,7 @@ export const DEFAULT_CHECKLIST: Omit<ChecklistItem, 'id'>[] = [
 ]
 
 export const DEFAULT_BOOK_SETTINGS: BookSettings = {
-  title: 'Il Mio Libro',
+  title: 'Book Dashboard',
   subtitle: '',
   author: '',
   genre: '',
