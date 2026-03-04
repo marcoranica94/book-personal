@@ -1,11 +1,14 @@
 import {useEffect, useState} from 'react'
 import {motion} from 'framer-motion'
-import {Download, Loader2, LogOut, Save} from 'lucide-react'
+import {CheckCircle2, Download, Folder, Loader2, LogOut, Save} from 'lucide-react'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useAuthStore} from '@/stores/authStore'
 import {useChaptersStore} from '@/stores/chaptersStore'
+import {useDriveStore} from '@/stores/driveStore'
 import {toast} from '@/stores/toastStore'
 import type {BookSettings} from '@/types'
+import DriveConnectButton from '@/components/drive/DriveConnectButton'
+import FolderPicker from '@/components/drive/FolderPicker'
 
 function Field({
   label,
@@ -46,12 +49,17 @@ export default function SettingsPage() {
   const {settings, loadSettings, saveSettings, isSaving} = useSettingsStore()
   const {user, logout} = useAuthStore()
   const {chapters} = useChaptersStore()
+  const {config: driveConfig, isConnected: driveConnected, load: loadDrive} = useDriveStore()
   const [form, setForm] = useState<BookSettings>(settings)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     void loadSettings()
   }, [loadSettings])
+
+  useEffect(() => {
+    if (user) void loadDrive(user.uid)
+  }, [user, loadDrive])
 
   useEffect(() => {
     setForm(settings)
@@ -225,8 +233,47 @@ export default function SettingsPage() {
         </div>
       </Section>
 
+      {/* Google Drive */}
+      <Section title="Google Drive" delay={0.15}>
+        {driveConnected && driveConfig ? (
+          <div className="space-y-4">
+            {/* Status */}
+            <div className="flex items-center gap-2 text-sm text-emerald-400">
+              <CheckCircle2 className="h-4 w-4" />
+              Connesso
+            </div>
+
+            {/* Folder picker */}
+            <div>
+              <p className="mb-2 text-xs font-medium text-slate-400 flex items-center gap-1.5">
+                <Folder className="h-3.5 w-3.5" />
+                Cartella monitorata
+              </p>
+              <FolderPicker />
+              {!driveConfig.folderId && (
+                <p className="mt-2 text-xs text-amber-400">
+                  Seleziona una cartella Drive per abilitare la sincronizzazione
+                </p>
+              )}
+            </div>
+
+            <div className="border-t border-white/6 pt-3">
+              <DriveConnectButton />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-400">
+              Connetti il tuo Google Drive per sincronizzare automaticamente i file dei capitoli
+              e triggherare le analisi AI.
+            </p>
+            <DriveConnectButton />
+          </div>
+        )}
+      </Section>
+
       {/* Data export */}
-      <Section title="Dati e Export" delay={0.15}>
+      <Section title="Dati e Export" delay={0.2}>
         <p className="text-sm text-slate-400">
           Scarica un backup completo dei tuoi capitoli e impostazioni in formato JSON.
         </p>

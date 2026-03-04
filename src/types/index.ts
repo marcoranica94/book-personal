@@ -108,6 +108,30 @@ export interface StatsSnapshot {
   chaptersByStatus: Record<ChapterStatus, number>
 }
 
+// ─── Google Drive Types ───────────────────────────────────────────────────────
+
+export interface DriveTokens {
+  accessToken: string
+  refreshToken: string // AES-256-GCM encrypted
+  expiresAt: number   // timestamp ms
+}
+
+export interface DriveConfig {
+  uid: string
+  folderId: string
+  folderName: string
+  tokens: DriveTokens
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DriveFile {
+  id: string
+  name: string
+  mimeType: string
+  modifiedTime: string
+}
+
 // ─── UI / App Types ───────────────────────────────────────────────────────────
 
 export interface GitHubUser {

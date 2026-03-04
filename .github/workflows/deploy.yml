@@ -43,6 +43,8 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: book-personal.firebasestorage.app
           VITE_FIREBASE_MESSAGING_SENDER_ID: "333595170254"
           VITE_FIREBASE_APP_ID: 1:333595170254:web:29ce92c701e6fef553c79f
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_DRIVE_ENCRYPTION_KEY: ${{ secrets.VITE_DRIVE_ENCRYPTION_KEY }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

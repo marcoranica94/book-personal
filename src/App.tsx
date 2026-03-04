@@ -1,6 +1,9 @@
 import {useEffect} from 'react'
 import {HashRouter, Navigate, Route, Routes} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
+import {useDriveStore} from '@/stores/driveStore'
+import {handleDriveOAuthCallback} from '@/services/driveAuthService'
+import {toast} from '@/stores/toastStore'
 import ProtectedRoute from '@/components/layout/ProtectedRoute'
 import Layout from '@/components/layout/Layout'
 import ScrollToTop from '@/components/ScrollToTop'
@@ -12,13 +15,39 @@ import AnalysisPage from '@/pages/AnalysisPage'
 import SettingsPage from '@/pages/SettingsPage'
 
 export default function App() {
-  const {initialize} = useAuthStore()
+  const {initialize, user, isLoading} = useAuthStore()
 
   useEffect(() => {
     // initialize() registra onAuthStateChanged e restituisce l'unsubscribe
     const unsubscribe = initialize()
     return unsubscribe
   }, [initialize])
+
+  // Gestisce il callback OAuth di Google Drive (?code=...&state=...)
+  useEffect(() => {
+    if (isLoading) return
+    if (!user) return
+
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    const state = params.get('state')
+    if (!code || !state) return
+
+    // Pulisce subito i query params dall'URL
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash)
+
+    void (async () => {
+      try {
+        const tokens = await handleDriveOAuthCallback(code, state, user.uid)
+        await useDriveStore.getState().saveInitialConfig(user.uid, tokens)
+        toast.success('Google Drive connesso! Ora seleziona la cartella.')
+        // Naviga alle impostazioni per far selezionare la cartella
+        window.location.hash = '#/settings'
+      } catch (err) {
+        toast.error('Errore connessione Drive: ' + (err as Error).message)
+      }
+    })()
+  }, [user, isLoading])
 
   return (
     <HashRouter>
