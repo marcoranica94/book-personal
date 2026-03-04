@@ -26,12 +26,11 @@ export default function LoginPage() {
       setTimeout(() => navigate('/dashboard', {replace: true}), 800)
     } catch (err) {
       const msg = (err as Error).message ?? ''
-      // Ignora errori di popup chiuso dall'utente
       if (msg.includes('popup-closed') || msg.includes('cancelled')) {
         setStep('idle')
       } else {
         setStep('error')
-        setError('Accesso negato. Riprova o controlla i permessi.')
+        setError(msg || 'Errore sconosciuto')
       }
     }
   }
