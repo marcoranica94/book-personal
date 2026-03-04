@@ -1,8 +1,9 @@
 import {useEffect, useState} from 'react'
 import {useNavigate} from 'react-router-dom'
 import {AnimatePresence, motion} from 'framer-motion'
-import {BookOpen, CheckCircle2, Github, Loader2} from 'lucide-react'
+import {BookOpen, CheckCircle2, Github, KeyRound, Loader2} from 'lucide-react'
 import {useAuthStore} from '@/stores/authStore'
+import {ACCESS_CODE} from '@/utils/constants'
 
 type LoginStep = 'idle' | 'signing_in' | 'done' | 'error'
 
@@ -12,10 +13,25 @@ export default function LoginPage() {
 
   const [step, setStep] = useState<LoginStep>('idle')
   const [error, setError] = useState('')
+  const [code, setCode] = useState('')
+  const [codeError, setCodeError] = useState(false)
+  // Se ACCESS_CODE non è configurato, il gate è disabilitato
+  const gateEnabled = ACCESS_CODE.length > 0
+  const [gateOpen, setGateOpen] = useState(!gateEnabled)
 
   useEffect(() => {
     if (isAuthenticated) navigate('/dashboard', {replace: true})
   }, [isAuthenticated, navigate])
+
+  function handleCodeSubmit() {
+    if (code === ACCESS_CODE) {
+      setGateOpen(true)
+      setCodeError(false)
+    } else {
+      setCodeError(true)
+      setCode('')
+    }
+  }
 
   async function handleLogin() {
     setStep('signing_in')
@@ -82,8 +98,46 @@ export default function LoginPage() {
         >
           <AnimatePresence mode="wait">
 
+            {/* ── GATE codice di accesso ── */}
+            {!gateOpen && (
+              <motion.div
+                key="gate"
+                initial={{opacity: 0}}
+                animate={{opacity: 1}}
+                exit={{opacity: 0}}
+                className="space-y-5"
+              >
+                <div className="text-center">
+                  <KeyRound className="mx-auto mb-3 h-8 w-8 text-violet-400" />
+                  <h2 className="text-lg font-semibold text-white">Accesso riservato</h2>
+                  <p className="mt-1 text-xs text-slate-500">Inserisci il codice per continuare</p>
+                </div>
+                {codeError && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-900/20 px-3 py-2.5 text-sm text-red-300">
+                    Codice errato
+                  </div>
+                )}
+                <input
+                  type="password"
+                  value={code}
+                  onChange={(e) => {setCode(e.target.value); setCodeError(false)}}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCodeSubmit()}
+                  placeholder="Codice di accesso"
+                  autoFocus
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm text-white placeholder-slate-600 tracking-widest focus:border-violet-500/40 focus:outline-none"
+                />
+                <button
+                  onClick={handleCodeSubmit}
+                  disabled={!code}
+                  className="w-full rounded-xl bg-violet-600 py-3 text-sm font-semibold text-white transition-all hover:bg-violet-500 disabled:opacity-40"
+                >
+                  Continua
+                </button>
+              </motion.div>
+            )}
+
             {/* ── IDLE / ERROR ── */}
-            {(step === 'idle' || step === 'error') && (
+            {gateOpen && (step === 'idle' || step === 'error') && (
               <motion.div
                 key="idle"
                 initial={{opacity: 0}}
@@ -115,7 +169,7 @@ export default function LoginPage() {
             )}
 
             {/* ── SIGNING IN ── */}
-            {step === 'signing_in' && (
+            {gateOpen && step === 'signing_in' && (
               <motion.div
                 key="signing_in"
                 initial={{opacity: 0}}
@@ -129,7 +183,7 @@ export default function LoginPage() {
             )}
 
             {/* ── DONE ── */}
-            {step === 'done' && (
+            {gateOpen && step === 'done' && (
               <motion.div
                 key="done"
                 initial={{opacity: 0, scale: 0.9}}

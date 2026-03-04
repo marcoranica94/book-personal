@@ -38,6 +38,7 @@ jobs:
           VITE_GITHUB_REPO_OWNER: ${{ github.repository_owner }}
           VITE_GITHUB_REPO_NAME: ${{ github.event.repository.name }}
           VITE_ALLOWED_UID: ${{ secrets.VITE_ALLOWED_UID }}
+          VITE_ACCESS_CODE: ${{ secrets.VITE_ACCESS_CODE }}
           VITE_FIREBASE_API_KEY: AIzaSyBgtz6YM9AVN-JcfyHl3FajgCKuUDQL-B0
           VITE_FIREBASE_AUTH_DOMAIN: book-personal.firebaseapp.com
           VITE_FIREBASE_PROJECT_ID: book-personal
