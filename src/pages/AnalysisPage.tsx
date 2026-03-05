@@ -15,6 +15,7 @@ import {patchAnalysis} from '@/services/analysisService'
 import * as chaptersService from '@/services/chaptersService'
 import {getValidAccessToken} from '@/services/driveAuthService'
 import {getDriveFileContent} from '@/services/driveFileService'
+import {parseYamlFrontmatter} from '@/services/driveParserService'
 import {pushToDrive} from '@/services/driveSyncService'
 import {GITHUB_REPO_NAME, GITHUB_REPO_OWNER} from '@/utils/constants'
 import {formatRelativeDate} from '@/utils/formatters'
@@ -211,6 +212,7 @@ export default function AnalysisPage() {
   const selectedChapter = chapters.find((c) => c.id === selectedId) ?? null
   const analysis = selectedId ? (analyses[selectedId] ?? null) : null
   const isDirty = editorContent !== (selectedChapter?.driveContent ?? '')
+  const isPendingPush = isDirty || selectedChapter?.syncStatus === SyncStatus.PENDING_PUSH
 
   async function triggerAnalysis(chapterId: string) {
     const hasExisting =
@@ -337,17 +339,18 @@ export default function AnalysisPage() {
     try {
       const {accessToken, updatedTokens} = await getValidAccessToken(driveConfig, user.uid)
       if (updatedTokens) await patchTokens(user.uid, updatedTokens)
-      const content = await getDriveFileContent(accessToken, selectedChapter.driveFileId, selectedChapter.driveMimeType ?? 'text/plain')
+      const rawContent = await getDriveFileContent(accessToken, selectedChapter.driveFileId, selectedChapter.driveMimeType ?? 'text/plain')
+      const { body: bodyContent } = parseYamlFrontmatter(rawContent)
       await chaptersService.updateChapter(selectedChapter.id, {
-        driveContent: content,
-        currentChars: content.length,
-        wordCount: content.split(/\s+/).filter(Boolean).length,
+        driveContent: bodyContent,
+        currentChars: bodyContent.length,
+        wordCount: bodyContent.split(/\s+/).filter(Boolean).length,
         syncStatus: SyncStatus.SYNCED,
         syncSource: SyncSource.DRIVE,
         lastSyncAt: new Date().toISOString(),
       })
       await loadChapters()
-      setEditorContent(content)
+      setEditorContent(bodyContent)
       toast.success('Contenuto ricaricato da Drive')
     } catch (err) {
       toast.error('Errore: ' + (err as Error).message)
@@ -838,10 +841,10 @@ export default function AnalysisPage() {
                               {driveConfig?.folderId ? (
                                 <button
                                   onClick={() => void handlePushToDrive()}
-                                  disabled={isPushingToDrive || !editorContent || !isDirty}
+                                  disabled={isPushingToDrive || !editorContent || !isPendingPush}
                                   className={cn(
                                     'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-40',
-                                    isDirty
+                                    isPendingPush
                                       ? 'bg-amber-600 hover:bg-amber-500'
                                       : 'bg-slate-700 hover:bg-slate-600'
                                   )}
@@ -851,7 +854,7 @@ export default function AnalysisPage() {
                                   ) : (
                                     <FileEdit className="h-4 w-4" />
                                   )}
-                                  Salva su Drive{isDirty ? ' *' : ''}
+                                  Salva su Drive{isPendingPush ? ' *' : ''}
                                 </button>
                               ) : (
                                 <button
@@ -861,6 +864,7 @@ export default function AnalysisPage() {
                                 >
                                   {isSavingContent ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileEdit className="h-4 w-4" />}
                                   Salva bozza{isDirty ? ' *' : ''}
+
                                 </button>
                               )}
                             </div>

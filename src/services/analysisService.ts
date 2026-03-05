@@ -1,4 +1,4 @@
-import {addDoc, collection, doc, getDoc, getDocs, updateDoc} from 'firebase/firestore'
+import {addDoc, collection, deleteDoc, doc, getDoc, getDocs, updateDoc} from 'firebase/firestore'
 import {db} from './firebase'
 import type {ChapterAnalysis} from '@/types'
 
@@ -29,4 +29,9 @@ export async function patchAnalysis(
   patch: Partial<ChapterAnalysis>,
 ): Promise<void> {
   await updateDoc(doc(db, COL, chapterId), patch as Record<string, unknown>)
+}
+
+export async function deleteAllAnalyses(): Promise<void> {
+  const snap = await getDocs(collection(db, COL))
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)))
 }

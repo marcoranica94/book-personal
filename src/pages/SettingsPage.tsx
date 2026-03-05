@@ -13,6 +13,7 @@ import FolderPicker from '@/components/drive/FolderPicker'
 import ConflictResolver from '@/components/drive/ConflictResolver'
 import {fullSync} from '@/services/driveSyncService'
 import {getStoredPat, setStoredPat} from '@/services/githubWorkflow'
+import {deleteAllAnalyses} from '@/services/analysisService'
 import {getValidAccessToken} from '@/services/driveAuthService'
 import {getDriveFileContent, listDriveFiles} from '@/services/driveFileService'
 import {parseDriveFileToChapter} from '@/services/driveParserService'
@@ -181,9 +182,12 @@ export default function SettingsPage() {
     if (!confirm(`Conferma: verranno eliminati ${chapters.length} capitoli. Continuare?`)) return
     setIsResetting(true)
     try {
-      await Promise.all(chapters.map((c) => chaptersService.deleteChapter(c.id)))
+      await Promise.all([
+        Promise.all(chapters.map((c) => chaptersService.deleteChapter(c.id))),
+        deleteAllAnalyses(),
+      ])
       await loadChapters()
-      toast.success('Tutti i capitoli eliminati da Firebase')
+      toast.success('Tutti i capitoli e le analisi eliminati da Firebase')
     } catch (err) {
       toast.error('Errore reset: ' + (err as Error).message)
     } finally {

@@ -2,7 +2,7 @@ import type {Chapter, DriveConfig, DriveFile, DriveTokens} from '@/types'
 import {SyncSource, SyncStatus} from '@/types'
 import {getValidAccessToken} from './driveAuthService'
 import {createDriveFile, getDriveFileContent, listDriveFiles, updateDriveFileContent,} from './driveFileService'
-import {chapterToFilename, injectFrontmatter, parseDriveFileToChapter,} from './driveParserService'
+import {chapterToFilename, injectFrontmatter, parseDriveFileToChapter, parseYamlFrontmatter,} from './driveParserService'
 import * as chaptersService from './chaptersService'
 
 const MAX_CONTENT_BYTES = 100_000 // 100KB — limite cache Firestore
@@ -93,9 +93,11 @@ async function processDriveFile(
   result: SyncResult,
 ): Promise<void> {
   const content = await getDriveFileContent(accessToken, file.id, file.mimeType)
-  const truncated = content.length > MAX_CONTENT_BYTES
-  const cachedContent = truncated ? content.slice(0, MAX_CONTENT_BYTES) : content
   const hash = await sha256(content)
+  // Salva solo il corpo (senza frontmatter YAML) per evitare frontmatter duplicato al push
+  const { body: bodyOnly } = parseYamlFrontmatter(content)
+  const truncated = bodyOnly.length > MAX_CONTENT_BYTES
+  const cachedContent = truncated ? bodyOnly.slice(0, MAX_CONTENT_BYTES) : bodyOnly
 
   // Cerca il capitolo corrispondente
   const existing = currentChapters.find(
