@@ -49,7 +49,7 @@ const CORRECTION_TYPE_COLORS: Record<string, string> = {
   continuity: 'border-amber-800/30 bg-amber-900/30 text-amber-400',
 }
 
-type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor'
+type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor' | 'storico' | 'reazioni'
 
 // ─── Pending analysis (localStorage persistence) ──────────────────────────────
 
@@ -180,7 +180,7 @@ export default function AnalysisPage() {
   const {analyses, loadAnalysis, loadAllAnalyses, isLoading} = useAnalysisStore()
   const {config: driveConfig, patchTokens, load: loadDrive} = useDriveStore()
   const {user} = useAuthStore()
-  const {loadSettings} = useSettingsStore()
+  const {settings, loadSettings} = useSettingsStore()
   const [selectedId, setSelectedId] = useState<string>('')
   const [activeTab, setActiveTab] = useState<Tab>('strengths')
   const [triggering, setTriggering] = useState(false)
@@ -602,6 +602,12 @@ export default function AnalysisPage() {
     {id: 'weaknesses', label: 'Debolezze', count: analysis?.weaknesses.length},
     {id: 'suggestions', label: 'Suggerimenti', count: analysis?.suggestions.length},
     {id: 'corrections', label: 'Correzioni', count: analysis?.corrections.length},
+    ...(settings.bookType === 'storico' || analysis?.historicalAccuracy
+      ? [{id: 'storico' as Tab, label: 'Accuratezza Storica'}]
+      : []),
+    ...(analysis?.readerReactions?.length
+      ? [{id: 'reazioni' as Tab, label: 'Reazioni Lettori', count: analysis.readerReactions.length}]
+      : []),
     {id: 'editor', label: 'Editor'},
   ]
 
@@ -1070,6 +1076,154 @@ export default function AnalysisPage() {
                                   </div>
                                 )
                               })}
+                            </div>
+                          )}
+                        </motion.div>
+                      ) : activeTab === 'storico' ? (
+                        <motion.div
+                          key="storico"
+                          initial={{opacity: 0, x: -4}}
+                          animate={{opacity: 1, x: 0}}
+                          exit={{opacity: 0}}
+                          transition={{duration: 0.15}}
+                          className="space-y-4"
+                        >
+                          {analysis.historicalAccuracy ? (
+                            <>
+                              {/* Score e sintesi */}
+                              <div className="flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className={cn(
+                                    'text-3xl font-bold tabular-nums',
+                                    analysis.historicalAccuracy.score >= 8 ? 'text-emerald-400' :
+                                    analysis.historicalAccuracy.score >= 6 ? 'text-blue-400' :
+                                    analysis.historicalAccuracy.score >= 4 ? 'text-amber-400' : 'text-red-400'
+                                  )}>
+                                    {analysis.historicalAccuracy.score.toFixed(1)}
+                                  </span>
+                                  <span className="text-xs text-slate-600">/10</span>
+                                </div>
+                                <p className="flex-1 text-sm leading-relaxed text-slate-300">
+                                  {analysis.historicalAccuracy.summary}
+                                </p>
+                              </div>
+
+                              {/* Elementi corretti */}
+                              {analysis.historicalAccuracy.correct.length > 0 && (
+                                <div>
+                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-emerald-500">
+                                    Accurato ({analysis.historicalAccuracy.correct.length})
+                                  </p>
+                                  <ul className="space-y-1.5">
+                                    {analysis.historicalAccuracy.correct.map((item, i) => (
+                                      <li key={i} className="flex items-start gap-2.5 text-sm">
+                                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                        <span className="text-slate-300">{item}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Anacronismi */}
+                              {analysis.historicalAccuracy.anachronisms.length > 0 && (
+                                <div>
+                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-amber-500">
+                                    Anacronismi ({analysis.historicalAccuracy.anachronisms.length})
+                                  </p>
+                                  <ul className="space-y-1.5">
+                                    {analysis.historicalAccuracy.anachronisms.map((item, i) => (
+                                      <li key={i} className="flex items-start gap-2.5 text-sm">
+                                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                                        <span className="text-slate-300">{item}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Problemi specifici */}
+                              {analysis.historicalAccuracy.issues.length > 0 && (
+                                <div>
+                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-400">
+                                    Problemi da correggere ({analysis.historicalAccuracy.issues.length})
+                                  </p>
+                                  <div className="space-y-3">
+                                    {analysis.historicalAccuracy.issues.map((issue, i) => (
+                                      <div key={i} className="rounded-xl border border-red-800/30 bg-red-900/10 p-4 space-y-2">
+                                        <p className="rounded-lg bg-[var(--overlay)] px-3 py-2 text-xs text-slate-400 italic">
+                                          "{issue.quote}"
+                                        </p>
+                                        <p className="text-sm text-red-300">{issue.issue}</p>
+                                        <p className="flex items-start gap-1.5 text-xs text-slate-500">
+                                          <span className="shrink-0 font-medium text-blue-400">Suggerimento:</span>
+                                          {issue.suggestion}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-[var(--border)] py-10 text-center">
+                              <p className="text-sm text-slate-500">
+                                Dati sull'accuratezza storica non disponibili.
+                              </p>
+                              <p className="mt-1 text-xs text-slate-600">
+                                Rianalizza il capitolo per ottenere questa sezione.
+                              </p>
+                            </div>
+                          )}
+                        </motion.div>
+                      ) : activeTab === 'reazioni' ? (
+                        <motion.div
+                          key="reazioni"
+                          initial={{opacity: 0, x: -4}}
+                          animate={{opacity: 1, x: 0}}
+                          exit={{opacity: 0}}
+                          transition={{duration: 0.15}}
+                          className="space-y-3"
+                        >
+                          {analysis.readerReactions && analysis.readerReactions.length > 0 ? (
+                            analysis.readerReactions.map((r, i) => (
+                              <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xl">{r.emoji}</span>
+                                    <span className="text-sm font-medium text-slate-300">{r.persona}</span>
+                                  </div>
+                                  <div className="flex gap-0.5">
+                                    {Array.from({length: 5}).map((_, star) => (
+                                      <span key={star} className={star < r.rating ? 'text-amber-400' : 'text-slate-700'}>★</span>
+                                    ))}
+                                  </div>
+                                </div>
+                                <p className="text-sm italic text-slate-300">"{r.reaction}"</p>
+                                <p className="text-sm leading-relaxed text-slate-400">{r.comment}</p>
+                                {r.questions.length > 0 && (
+                                  <div className="rounded-lg border border-blue-800/30 bg-blue-900/10 p-3">
+                                    <p className="mb-2 text-xs font-semibold text-blue-400">Domande che si farebbe:</p>
+                                    <ul className="space-y-1">
+                                      {r.questions.map((q, qi) => (
+                                        <li key={qi} className="flex items-start gap-2 text-xs text-slate-400">
+                                          <span className="shrink-0 text-blue-600">?</span>
+                                          {q}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-[var(--border)] py-10 text-center">
+                              <p className="text-sm text-slate-500">
+                                Reazioni dei lettori non disponibili.
+                              </p>
+                              <p className="mt-1 text-xs text-slate-600">
+                                Rianalizza il capitolo per ottenere questa sezione.
+                              </p>
                             </div>
                           )}
                         </motion.div>

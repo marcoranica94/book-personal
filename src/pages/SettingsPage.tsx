@@ -7,7 +7,7 @@ import {useChaptersStore} from '@/stores/chaptersStore'
 import {useDriveStore} from '@/stores/driveStore'
 import {toast} from '@/stores/toastStore'
 import type {BookSettings, Chapter, DriveFile} from '@/types'
-import {SyncSource, SyncStatus} from '@/types'
+import {BookType, SyncSource, SyncStatus} from '@/types'
 import DriveConnectButton from '@/components/drive/DriveConnectButton'
 import FolderPicker from '@/components/drive/FolderPicker'
 import ConflictResolver from '@/components/drive/ConflictResolver'
@@ -289,13 +289,34 @@ export default function SettingsPage() {
           />
         </Field>
 
+        <Field label="Tipologia libro" sub="Determina le sezioni extra nell'analisi AI (es. accuratezza storica)">
+          <select
+            className={inputCls}
+            value={form.bookType ?? 'generico'}
+            onChange={(e) => update('bookType', e.target.value as typeof form.bookType)}
+          >
+            {Object.entries({
+              generico: 'Generico',
+              storico: 'Storico',
+              fantasy: 'Fantasy',
+              thriller: 'Thriller',
+              romanzo: 'Romanzo',
+              giallo: 'Giallo',
+              saggio: 'Saggio',
+              autobiografia: 'Autobiografia',
+            } satisfies Record<(typeof BookType)[keyof typeof BookType], string>).map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </select>
+        </Field>
+
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Genere">
+          <Field label="Sotto-genere / Ambientazione">
             <input
               className={inputCls}
               value={form.genre}
               onChange={(e) => update('genre', e.target.value)}
-              placeholder="es. Fantasy, Thriller..."
+              placeholder="es. Prima guerra mondiale, High fantasy..."
             />
           </Field>
           <Field label="Lingua">

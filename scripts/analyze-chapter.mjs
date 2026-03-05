@@ -32,6 +32,11 @@ async function getChapters() {
   return snap.docs.map((d) => ({...d.data(), id: d.id}))
 }
 
+async function getSettings() {
+  const snap = await db.collection('settings').doc('book').get()
+  return snap.exists ? snap.data() : {}
+}
+
 async function saveAnalysis(chapterId, analysis) {
   const ref = db.collection('analyses').doc(chapterId)
   await ref.set(analysis)
@@ -40,9 +45,58 @@ async function saveAnalysis(chapterId, analysis) {
 
 // ─── Prompt ─────────────────────────────────────────────────────────────────
 
-const ANALYSIS_PROMPT = (title, chapterText) => `
+const READER_PERSONAS = {
+  storico: [
+    'Studente liceale (16-18 anni)',
+    'Insegnante di storia',
+    'Appassionato di storia',
+    'Esperto del periodo storico',
+    'Lettore occasionale',
+  ],
+  default: [
+    'Lettore abituale',
+    'Studente universitario',
+    'Critico letterario',
+    'Lettore occasionale',
+    'Appassionato del genere',
+  ],
+}
+
+function buildHistoricalSection() {
+  return `
+  "historicalAccuracy": {
+    "score": <1-10, accuratezza storica complessiva>,
+    "summary": "<sintesi max 150 parole>",
+    "anachronisms": ["<anacronismo 1: parola/oggetto/concetto fuori epoca>", ...],
+    "correct": ["<elemento storicamente accurato e rilevante 1>", ...],
+    "issues": [
+      {
+        "quote": "<citazione esatta dal testo>",
+        "issue": "<descrizione del problema storico>",
+        "suggestion": "<come correggerlo>"
+      }
+    ]
+  },`
+}
+
+function buildReaderReactionsSection(personas) {
+  const personaList = personas.map(p => `    {"persona": "${p}", "emoji": "<emoji appropriata>", "rating": <1-5>, "reaction": "<frase breve in prima persona>", "questions": ["<domanda 1>", "<domanda 2>"], "comment": "<commento esteso max 80 parole>"}`).join(',\n')
+  return `
+  "readerReactions": [
+${personaList}
+  ],`
+}
+
+function buildPrompt(bookTitle, bookType, chapterText) {
+  const isHistorical = bookType === 'storico'
+  const personas = READER_PERSONAS[isHistorical ? 'storico' : 'default']
+
+  const historicalSection = isHistorical ? buildHistoricalSection() : ''
+  const reactionsSection = buildReaderReactionsSection(personas)
+
+  return `
 Sei un editor letterario italiano di alto livello. Analizza il seguente capitolo del libro
-intitolato "${title}" e fornisci un'analisi dettagliata e professionale.
+intitolato "${bookTitle}" (genere: ${bookType || 'generico'}) e fornisci un'analisi dettagliata e professionale.
 
 Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), con questa struttura:
 {
@@ -66,7 +120,8 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
       "type": "grammar|style|clarity|continuity",
       "note": "<spiegazione breve>"
     }
-  ]
+  ],${historicalSection}${reactionsSection}
+  "_placeholder": null
 }
 
 Criteri di valutazione:
@@ -76,15 +131,24 @@ Criteri di valutazione:
 - sviluppoPersonaggi: profondità, coerenza e crescita dei personaggi
 - trama: coerenza della trama, tensione narrativa, struttura della scena
 - originalita: freschezza delle idee, evitare i cliché
-
+${isHistorical ? `
+Criteri accuratezza storica (historicalAccuracy):
+- Verifica parole, oggetti, tecnologie, usi e costumi coerenti con il periodo
+- Segnala anacronismi anche sottili (espressioni moderne, concetti non ancora esistenti)
+- Valuta la plausibilità delle situazioni descritte nel contesto storico
+` : ''}
 --- CAPITOLO ---
 ${chapterText}
 `.trim()
+}
 
 // ─── Core ────────────────────────────────────────────────────────────────────
 
-async function analyzeChapter(chapter) {
+async function analyzeChapter(chapter, bookSettings) {
   console.log(`Analizzando: ${chapter.number} - ${chapter.title}`)
+
+  const bookTitle = bookSettings?.title || chapter.title
+  const bookType = bookSettings?.bookType || 'generico'
 
   // Priorità sorgente testo:
   // 1. driveContent (testo sincronizzato da Drive, salvato su Firestore)
@@ -112,12 +176,14 @@ async function analyzeChapter(chapter) {
     return null
   }
 
-  console.log(`  Sorgente: ${source} (${chapterText.length} chars)`)
+  console.log(`  Sorgente: ${source} (${chapterText.length} chars) | bookType: ${bookType}`)
+
+  const prompt = buildPrompt(bookTitle, bookType, chapterText)
 
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
-    messages: [{role: 'user', content: ANALYSIS_PROMPT(chapter.title, chapterText)}],
+    max_tokens: 6000,
+    messages: [{role: 'user', content: prompt}],
   })
 
   const rawContent = message.content[0]
@@ -126,11 +192,14 @@ async function analyzeChapter(chapter) {
   try {
     const jsonMatch = rawContent.text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('Nessun JSON nella risposta')
+    const parsed = JSON.parse(jsonMatch[0])
+    // Rimuovi il placeholder
+    delete parsed._placeholder
     return {
       chapterId: chapter.id,
       analyzedAt: new Date().toISOString(),
       model: 'claude-sonnet-4-6',
-      ...JSON.parse(jsonMatch[0]),
+      ...parsed,
     }
   } catch (err) {
     console.error(`  Errore parsing JSON per ${chapter.id}:`, err)
@@ -139,7 +208,8 @@ async function analyzeChapter(chapter) {
 }
 
 async function main() {
-  const chapters = await getChapters()
+  const [chapters, bookSettings] = await Promise.all([getChapters(), getSettings()])
+  console.log(`Impostazioni libro: tipo=${bookSettings?.bookType ?? 'generico'}, titolo=${bookSettings?.title ?? '?'}`)
 
   const toAnalyze =
     CHAPTER_ID === 'all'
@@ -152,7 +222,7 @@ async function main() {
   }
 
   for (const chapter of toAnalyze) {
-    const analysis = await analyzeChapter(chapter)
+    const analysis = await analyzeChapter(chapter, bookSettings)
     if (!analysis) continue
     await saveAnalysis(chapter.id, analysis)
     console.log(`  ✓ Analisi salvata su Firestore (analyses/${chapter.id})`)

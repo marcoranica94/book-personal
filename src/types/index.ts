@@ -26,6 +26,18 @@ export const CorrectionType = {
 } as const
 export type CorrectionType = (typeof CorrectionType)[keyof typeof CorrectionType]
 
+export const BookType = {
+  GENERICO: 'generico',
+  STORICO: 'storico',
+  FANTASY: 'fantasy',
+  THRILLER: 'thriller',
+  ROMANZO: 'romanzo',
+  GIALLO: 'giallo',
+  SAGGIO: 'saggio',
+  AUTOBIOGRAFIA: 'autobiografia',
+} as const
+export type BookType = (typeof BookType)[keyof typeof BookType]
+
 // ─── Core Domain Types ────────────────────────────────────────────────────────
 
 export interface ChecklistItem {
@@ -84,6 +96,29 @@ export interface AnalysisCorrection {
   note: string
 }
 
+export interface HistoricalAccuracyIssue {
+  quote: string
+  issue: string
+  suggestion: string
+}
+
+export interface HistoricalAccuracyAnalysis {
+  score: number
+  summary: string
+  anachronisms: string[]
+  correct: string[]
+  issues: HistoricalAccuracyIssue[]
+}
+
+export interface ReaderReaction {
+  persona: string
+  emoji: string
+  rating: number  // 1-5
+  reaction: string
+  questions: string[]
+  comment: string
+}
+
 export interface ChapterAnalysis {
   chapterId: string
   analyzedAt: string
@@ -95,9 +130,12 @@ export interface ChapterAnalysis {
   suggestions: string[]
   corrections: AnalysisCorrection[]
   // Accept/reject tracking
-  acceptedCorrections?: number[]  // indici delle correzioni accettate
-  rejectedCorrections?: number[]  // indici delle correzioni rifiutate
-  appliedAt?: string | null       // quando sono state applicate
+  acceptedCorrections?: number[]
+  rejectedCorrections?: number[]
+  appliedAt?: string | null
+  // Genere-specific sections
+  historicalAccuracy?: HistoricalAccuracyAnalysis
+  readerReactions?: ReaderReaction[]
 }
 
 export interface BookSettings {
@@ -105,6 +143,7 @@ export interface BookSettings {
   subtitle: string
   author: string
   genre: string
+  bookType: BookType
   targetWords: number
   targetChapters: number
   startDate: string
@@ -308,6 +347,7 @@ export const DEFAULT_BOOK_SETTINGS: BookSettings = {
   subtitle: '',
   author: '',
   genre: '',
+  bookType: 'generico',
   targetWords: 80000,
   targetChapters: 20,
   startDate: new Date().toISOString(),
