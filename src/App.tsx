@@ -15,6 +15,7 @@ import KanbanPage from '@/pages/KanbanPage'
 import ChapterPage from '@/pages/ChapterPage'
 import AnalysisPage from '@/pages/AnalysisPage'
 import SettingsPage from '@/pages/SettingsPage'
+import ReportsPage from '@/pages/ReportsPage'
 
 export default function App() {
   const {initialize, user, isLoading} = useAuthStore()
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="kanban" element={<KanbanPage />} />
           <Route path="chapters/:id" element={<ChapterPage />} />
           <Route path="analysis" element={<AnalysisPage />} />
+          <Route path="reports" element={<ReportsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

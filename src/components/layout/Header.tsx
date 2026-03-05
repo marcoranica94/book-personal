@@ -8,6 +8,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/kanban': 'Kanban Board',
   '/analysis': 'Analisi AI',
+  '/reports': 'Report & Statistiche',
   '/settings': 'Impostazioni',
   '/chapters': 'Dettaglio Capitolo',
 }

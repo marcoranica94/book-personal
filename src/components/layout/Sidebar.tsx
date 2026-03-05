@@ -1,6 +1,6 @@
 import {NavLink} from 'react-router-dom'
 import {AnimatePresence, motion} from 'framer-motion'
-import {BookOpen, ChevronLeft, ChevronRight, Kanban, LayoutDashboard, LogOut, Settings, Sparkles,} from 'lucide-react'
+import {BarChart2, BookOpen, ChevronLeft, ChevronRight, Kanban, LayoutDashboard, LogOut, Settings, Sparkles,} from 'lucide-react'
 import {useAuthStore} from '@/stores/authStore'
 import {useUIStore} from '@/stores/uiStore'
 import {useSettingsStore} from '@/stores/settingsStore'
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/kanban', icon: Kanban, label: 'Kanban' },
   { to: '/analysis', icon: Sparkles, label: 'Analisi AI' },
+  { to: '/reports', icon: BarChart2, label: 'Report' },
   { to: '/settings', icon: Settings, label: 'Impostazioni' },
 ]
 
