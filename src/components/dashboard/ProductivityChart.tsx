@@ -1,16 +1,25 @@
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { format } from 'date-fns'
-import { it } from 'date-fns/locale'
-import type { StatsSnapshot } from '@/types'
+import {Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts'
+import {format} from 'date-fns'
+import {it} from 'date-fns/locale'
+import type {StatsSnapshot} from '@/types'
+import {useChartColors} from '@/hooks/useChartColors'
 
 interface ProductivityChartProps {
   history: StatsSnapshot[]
 }
 
-function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
+function CustomTooltip({ active, payload, label, colors }: {
+  active?: boolean
+  payload?: { value: number }[]
+  label?: string
+  colors: ReturnType<typeof useChartColors>
+}) {
   if (!active || !payload?.length) return null
   return (
-    <div className="rounded-lg border border-white/10 bg-[#1A1A26] px-3 py-2 text-xs shadow-xl">
+    <div
+      className="rounded-lg px-3 py-2 text-xs shadow-xl"
+      style={{ background: colors.tooltip, border: `1px solid ${colors.tooltipBorder}` }}
+    >
       <p className="text-slate-400">{label}</p>
       <p className="mt-0.5 font-semibold text-cyan-300">+{payload[0].value.toLocaleString('it')} parole</p>
     </div>
@@ -18,6 +27,8 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 }
 
 export default function ProductivityChart({ history }: ProductivityChartProps) {
+  const colors = useChartColors()
+
   if (history.length < 2) {
     return (
       <div className="flex h-full items-center justify-center text-xs text-slate-600">
@@ -40,15 +51,15 @@ export default function ProductivityChart({ history }: ProductivityChartProps) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-        <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} />
-        <YAxis tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} />
-        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+        <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
+        <XAxis dataKey="date" tick={{ fill: colors.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fill: colors.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
+        <Tooltip content={<CustomTooltip colors={colors} />} cursor={{ fill: colors.grid }} />
         <Bar dataKey="parole" radius={[3, 3, 0, 0]}>
           {data.map((entry, index) => (
             <Cell
               key={`cell-${index}`}
-              fill={entry.parole >= avg ? '#06B6D4' : '#1E3A4A'}
+              fill={entry.parole >= avg ? '#06B6D4' : colors.productivityLow}
             />
           ))}
         </Bar>

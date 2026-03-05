@@ -2,6 +2,7 @@ import {useEffect} from 'react'
 import {HashRouter, Navigate, Route, Routes} from 'react-router-dom'
 import {useAuthStore} from '@/stores/authStore'
 import {useDriveStore} from '@/stores/driveStore'
+import {useUIStore} from '@/stores/uiStore'
 import {handleDriveOAuthCallback} from '@/services/driveAuthService'
 import {toast} from '@/stores/toastStore'
 import ProtectedRoute from '@/components/layout/ProtectedRoute'
@@ -16,6 +17,12 @@ import SettingsPage from '@/pages/SettingsPage'
 
 export default function App() {
   const {initialize, user, isLoading} = useAuthStore()
+  const {theme} = useUIStore()
+
+  useEffect(() => {
+    document.documentElement.classList.remove('dark', 'light')
+    document.documentElement.classList.add(theme)
+  }, [theme])
 
   useEffect(() => {
     // initialize() registra onAuthStateChanged e restituisce l'unsubscribe

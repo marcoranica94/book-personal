@@ -1,13 +1,13 @@
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { motion } from 'framer-motion'
-import { Calendar, FileText, CheckSquare, Tag, Pencil, Trash2, ExternalLink } from 'lucide-react'
+import {useSortable} from '@dnd-kit/sortable'
+import {CSS} from '@dnd-kit/utilities'
+import {motion} from 'framer-motion'
+import {Calendar, CheckSquare, ExternalLink, FileText, Pencil, Tag, Trash2} from 'lucide-react'
 import SyncStatusBadge from '@/components/drive/SyncStatusBadge'
-import { Link } from 'react-router-dom'
-import type { Chapter } from '@/types'
-import { PRIORITY_CONFIG } from '@/types'
-import { charsToPages, calcProgress, formatDate, isDueSoon, isOverdue } from '@/utils/formatters'
-import { cn } from '@/utils/cn'
+import {Link} from 'react-router-dom'
+import type {Chapter} from '@/types'
+import {PRIORITY_CONFIG} from '@/types'
+import {calcProgress, charsToPages, formatDate, isDueSoon, isOverdue} from '@/utils/formatters'
+import {cn} from '@/utils/cn'
 
 interface ChapterCardProps {
   chapter: Chapter
@@ -46,8 +46,8 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
       <motion.div
         whileHover={{ y: -1 }}
         className={cn(
-          'relative rounded-xl border bg-[#12121A] p-4 shadow-sm transition-shadow',
-          'border-white/8 hover:border-white/15 hover:shadow-lg hover:shadow-black/30',
+          'relative rounded-xl border bg-[var(--bg-card)] p-4 shadow-sm transition-shadow',
+          'border-[var(--border)] hover:border-[var(--border-strong)] hover:shadow-lg hover:shadow-black/30',
           isDragging && 'shadow-2xl ring-1 ring-violet-500/40'
         )}
       >
@@ -56,7 +56,7 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
           <Link
             to={`/chapters/${chapter.id}`}
             onPointerDown={(e) => e.stopPropagation()}
-            className="rounded-md p-1 text-slate-500 transition-colors hover:bg-white/8 hover:text-violet-400"
+            className="rounded-md p-1 text-slate-500 transition-colors hover:bg-[var(--overlay)] hover:text-violet-400"
             title="Apri dettaglio"
           >
             <ExternalLink className="h-3.5 w-3.5" />
@@ -64,7 +64,7 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => onEdit(chapter)}
-            className="rounded-md p-1 text-slate-500 transition-colors hover:bg-white/8 hover:text-slate-300"
+            className="rounded-md p-1 text-slate-500 transition-colors hover:bg-[var(--overlay)] hover:text-slate-300"
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
@@ -100,7 +100,7 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
               <span>{chapter.currentChars.toLocaleString('it')} car.</span>
               <span>{progress}%</span>
             </div>
-            <div className="h-1 overflow-hidden rounded-full bg-white/8">
+            <div className="h-1 overflow-hidden rounded-full bg-[var(--overlay)]">
               <div
                 className={cn(
                   'h-full rounded-full transition-all',
@@ -156,14 +156,14 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
               {chapter.tags.slice(0, 3).map((tag) => (
                 <span
                   key={tag}
-                  className="flex items-center gap-1 rounded-full bg-white/6 px-2 py-0.5 text-xs text-slate-400"
+                  className="flex items-center gap-1 rounded-full bg-[var(--overlay)] px-2 py-0.5 text-xs text-slate-400"
                 >
                   <Tag className="h-2.5 w-2.5" />
                   {tag}
                 </span>
               ))}
               {chapter.tags.length > 3 && (
-                <span className="rounded-full bg-white/6 px-2 py-0.5 text-xs text-slate-500">
+                <span className="rounded-full bg-[var(--overlay)] px-2 py-0.5 text-xs text-slate-500">
                   +{chapter.tags.length - 3}
                 </span>
               )}

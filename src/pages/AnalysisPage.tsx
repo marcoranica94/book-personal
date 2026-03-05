@@ -102,7 +102,7 @@ function ItemModal({
         exit={{opacity: 0, scale: 0.95}}
         transition={{duration: 0.15}}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#16161F] p-6 shadow-2xl"
+        className="w-full max-w-lg rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
       >
         <div className="mb-4 flex items-center justify-between">
           <span className={cn(
@@ -118,7 +118,7 @@ function ItemModal({
           </button>
         </div>
         <p className="mb-5 text-sm leading-relaxed text-slate-200">{text}</p>
-        <div className="rounded-xl border border-white/6 bg-white/3 p-4">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Come applicarlo</p>
           <ul className="space-y-2 text-sm text-slate-400">
             {type === 'suggestions' ? (
@@ -145,7 +145,7 @@ function ScoreBar({label, value}: {label: string; value: number}) {
   return (
     <div className="flex items-center gap-3">
       <span className="w-24 shrink-0 text-xs text-slate-400">{label}</span>
-      <div className="flex-1 h-1.5 rounded-full bg-white/8 overflow-hidden">
+      <div className="flex-1 h-1.5 rounded-full bg-[var(--overlay)] overflow-hidden">
         <motion.div
           className={cn(
             'h-full rounded-full',
@@ -398,7 +398,7 @@ export default function AnalysisPage() {
       {/* Header */}
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-white">Analisi AI</h1>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Analisi AI</h1>
           <p className="mt-0.5 text-sm text-slate-500">
             Feedback generato da Claude · {analyzedChapters.length}/{chapters.length} capitoli analizzati
           </p>
@@ -411,7 +411,7 @@ export default function AnalysisPage() {
             setSelectedId(e.target.value)
             setActiveTab('strengths')
           }}
-          className="rounded-lg border border-white/8 bg-[#12121A] px-3 py-2 text-sm text-slate-300 outline-none focus:border-violet-500/40"
+          className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm text-slate-300 outline-none focus:border-violet-500/40"
         >
           <option value="">— Seleziona capitolo —</option>
           {[...chapters].filter((c) => c.title.toLowerCase().startsWith('capitolo')).sort((a, b) => a.title.localeCompare(b.title, 'it')).map((c) => (
@@ -436,7 +436,7 @@ export default function AnalysisPage() {
           onClick={() => void triggerAnalysis('all')}
           disabled={triggering || chapters.length === 0}
           title="Analizza tutti i capitoli"
-          className="flex items-center gap-2 rounded-lg border border-white/8 px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200 disabled:opacity-40"
+          className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200 disabled:opacity-40"
         >
           <Sparkles className="h-4 w-4" />
           Tutti
@@ -447,7 +447,7 @@ export default function AnalysisPage() {
           <button
             onClick={() => void loadAnalysis(selectedId)}
             title="Ricarica analisi"
-            className="rounded-lg border border-white/8 p-2 text-slate-500 transition-colors hover:bg-white/5 hover:text-slate-300"
+            className="rounded-lg border border-[var(--border)] p-2 text-slate-500 transition-colors hover:bg-[var(--overlay)] hover:text-slate-300"
           >
             <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
           </button>
@@ -473,7 +473,7 @@ export default function AnalysisPage() {
                 {/* Score section */}
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                   {/* Radar + overall */}
-                  <div className="flex flex-col items-center gap-4 rounded-xl border border-white/8 bg-[#12121A] p-5">
+                  <div className="flex flex-col items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
                     <ProgressRing
                       value={analysis.scores.overall * 10}
                       size={96}
@@ -505,7 +505,7 @@ export default function AnalysisPage() {
 
                   {/* Score bars + summary */}
                   <div className="lg:col-span-2 space-y-4">
-                    <div className="rounded-xl border border-white/8 bg-[#12121A] p-5">
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
                       <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
                         Punteggi dettagliati
                       </h3>
@@ -519,7 +519,7 @@ export default function AnalysisPage() {
                         ))}
                       </div>
                     </div>
-                    <div className="rounded-xl border border-white/8 bg-[#12121A] p-5">
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
                       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Sintesi</h3>
                       <p className="text-sm leading-relaxed text-slate-300">{analysis.summary}</p>
                     </div>
@@ -527,8 +527,8 @@ export default function AnalysisPage() {
                 </div>
 
                 {/* Tabs */}
-                <div className="rounded-xl border border-white/8 bg-[#12121A]">
-                  <div className="flex overflow-x-auto border-b border-white/8">
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+                  <div className="flex overflow-x-auto border-b border-[var(--border)]">
                     {tabs.map((tab) => (
                       <button
                         key={tab.id}
@@ -542,7 +542,7 @@ export default function AnalysisPage() {
                       >
                         {tab.label}
                         {tab.count !== undefined && (
-                          <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-xs">{tab.count}</span>
+                          <span className="rounded-full bg-[var(--overlay)] px-1.5 py-0.5 text-xs">{tab.count}</span>
                         )}
                       </button>
                     ))}
@@ -571,7 +571,7 @@ export default function AnalysisPage() {
                                 onClick={isClickable ? () => setItemDetailModal({type: activeTab as 'weaknesses' | 'suggestions', text: item}) : undefined}
                                 className={cn(
                                   'flex items-start gap-2.5 rounded-lg px-2 py-1.5 text-sm',
-                                  isClickable && 'cursor-pointer transition-colors hover:bg-white/4'
+                                  isClickable && 'cursor-pointer transition-colors hover:bg-[var(--overlay)]'
                                 )}
                               >
                                 <span
@@ -633,14 +633,14 @@ export default function AnalysisPage() {
                               <div className="flex flex-wrap items-center gap-2">
                                 <button
                                   onClick={selectAllCorrections}
-                                  className="flex items-center gap-1.5 rounded-md border border-white/8 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
+                                  className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
                                 >
                                   <CheckCheck className="h-3 w-3" />
                                   Seleziona tutte
                                 </button>
                                 <button
                                   onClick={deselectAllCorrections}
-                                  className="flex items-center gap-1.5 rounded-md border border-white/8 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
+                                  className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
                                 >
                                   <Square className="h-3 w-3" />
                                   Deseleziona
@@ -682,7 +682,7 @@ export default function AnalysisPage() {
                                       'cursor-pointer rounded-lg border p-4 space-y-3 transition-colors',
                                       isSelected
                                         ? 'border-violet-600/50 bg-violet-900/15'
-                                        : 'border-white/6 hover:border-white/10 hover:bg-white/2'
+                                        : 'border-[var(--border)] hover:border-[var(--border-strong)] hover:bg-[var(--overlay)]'
                                     )}
                                   >
                                     <div className="flex items-center gap-2">
@@ -692,7 +692,7 @@ export default function AnalysisPage() {
                                           'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
                                           isSelected
                                             ? 'border-violet-500 bg-violet-600'
-                                            : 'border-white/20 bg-transparent'
+                                            : 'border-[var(--border-strong)] bg-transparent'
                                         )}
                                       >
                                         {isSelected && <X className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
@@ -700,7 +700,7 @@ export default function AnalysisPage() {
                                       <span
                                         className={cn(
                                           'inline-flex rounded-full border px-2 py-0.5 text-xs',
-                                          CORRECTION_TYPE_COLORS[c.type] ?? 'border-white/8 bg-white/8 text-slate-400'
+                                          CORRECTION_TYPE_COLORS[c.type] ?? 'border-[var(--border)] bg-[var(--overlay)] text-slate-400'
                                         )}
                                       >
                                         {CORRECTION_TYPE_LABELS[c.type] ?? c.type}
@@ -734,7 +734,7 @@ export default function AnalysisPage() {
                                       if (!ctx) return null
                                       const parts = ctx.split(c.original)
                                       return (
-                                        <div className="rounded-lg border border-white/6 bg-white/3 px-3 py-2 text-xs text-slate-500">
+                                        <div className="rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-xs text-slate-500">
                                           <p className="mb-1 text-slate-600">Contesto nel testo</p>
                                           <p className="leading-relaxed">
                                             {parts[0]}
@@ -793,7 +793,7 @@ export default function AnalysisPage() {
                             value={editorContent}
                             onChange={(e) => { setEditorContent(e.target.value); setAppliedChanges([]) }}
                             placeholder="Il testo del capitolo apparirà qui dopo la sincronizzazione Drive..."
-                            className="w-full min-h-[400px] resize-y rounded-lg border border-white/8 bg-white/3 px-4 py-3 font-mono text-sm text-slate-300 placeholder-slate-700 focus:border-violet-500/40 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+                            className="w-full min-h-[400px] resize-y rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-4 py-3 font-mono text-sm text-slate-300 placeholder-slate-700 focus:border-violet-500/40 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
                             spellCheck={false}
                           />
 
@@ -875,7 +875,7 @@ export default function AnalysisPage() {
               </>
             ) : (
               /* No analysis */
-              <div className="rounded-xl border border-dashed border-white/8 py-16 text-center">
+              <div className="rounded-xl border border-dashed border-[var(--border)] py-16 text-center">
                 <RadarIcon className="mx-auto mb-3 h-10 w-10 text-slate-700" />
                 <p className="text-sm font-medium text-slate-400">Nessuna analisi disponibile</p>
                 <p className="mt-1 text-xs text-slate-600 mb-5">
@@ -912,9 +912,9 @@ export default function AnalysisPage() {
           initial={{opacity: 0, y: 8}}
           animate={{opacity: 1, y: 0}}
           transition={{delay: 0.1}}
-          className="rounded-xl border border-white/8 bg-[#12121A]"
+          className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)]"
         >
-          <div className="border-b border-white/8 px-5 py-4">
+          <div className="border-b border-[var(--border)] px-5 py-4">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Confronto capitoli — {analyzedChapters.length} analizzati
             </h2>
@@ -922,7 +922,7 @@ export default function AnalysisPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/6 text-xs text-slate-600">
+                <tr className="border-b border-[var(--border)] text-xs text-slate-600">
                   <th className="px-5 py-2.5 text-left font-medium">Capitolo</th>
                   {Object.values(SCORE_LABELS).map((l) => (
                     <th key={l} className="px-3 py-2.5 text-center font-medium">{l}</th>
@@ -942,7 +942,7 @@ export default function AnalysisPage() {
                         window.scrollTo({top: 0, behavior: 'smooth'})
                       }}
                       className={cn(
-                        'cursor-pointer border-b border-white/4 transition-colors hover:bg-white/4',
+                        'cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--overlay)]',
                         selectedId === c.id && 'bg-violet-900/10'
                       )}
                     >
@@ -976,7 +976,7 @@ export default function AnalysisPage() {
 
       {/* Empty state */}
       {chapters.length === 0 && (
-        <div className="rounded-xl border border-dashed border-white/8 py-16 text-center">
+        <div className="rounded-xl border border-dashed border-[var(--border)] py-16 text-center">
           <Sparkles className="mx-auto mb-3 h-10 w-10 text-slate-700" />
           <p className="text-sm font-medium text-slate-400">Nessun capitolo trovato</p>
           <p className="mt-1 text-xs text-slate-600">Vai al Kanban per aggiungere capitoli</p>

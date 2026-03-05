@@ -67,7 +67,7 @@ export default function FolderPicker() {
         className={cn(
           'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors',
           config.folderId
-            ? 'border-white/8 bg-white/4 text-slate-200 hover:border-white/15'
+            ? 'border-[var(--border)] bg-[var(--overlay)] text-slate-200 hover:border-[var(--border-strong)]'
             : 'border-amber-700/40 bg-amber-900/10 text-amber-400 hover:bg-amber-900/20',
         )}
       >
@@ -81,9 +81,9 @@ export default function FolderPicker() {
           {/* Backdrop */}
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           {/* Dropdown */}
-          <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded-xl border border-white/10 bg-[#1A1A26] shadow-2xl">
+          <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] shadow-2xl">
             {/* Search input */}
-            <div className="flex items-center gap-2 border-b border-white/8 px-3 py-2">
+            <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
               <Search className="h-3.5 w-3.5 shrink-0 text-slate-500" />
               <input
                 ref={searchRef}
@@ -112,7 +112,7 @@ export default function FolderPicker() {
                     <button
                       onClick={() => handleSelect(f)}
                       className={cn(
-                        'flex w-full items-center gap-2.5 px-4 py-2.5 text-sm transition-colors hover:bg-white/6',
+                        'flex w-full items-center gap-2.5 px-4 py-2.5 text-sm transition-colors hover:bg-[var(--overlay)]',
                         config.folderId === f.id ? 'text-violet-400' : 'text-slate-300',
                       )}
                     >

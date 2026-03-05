@@ -13,6 +13,8 @@ interface UIStore {
   setFilter: (key: keyof KanbanFilters, value: string | Priority | string[] | null) => void
   clearFilters: () => void
   setLastSaved: () => void
+  setTheme: (t: Theme) => void
+  toggleTheme: () => void
 }
 
 const defaultFilters: KanbanFilters = {
@@ -21,9 +23,18 @@ const defaultFilters: KanbanFilters = {
   tags: [],
 }
 
+function applyTheme(theme: Theme) {
+  const root = document.documentElement
+  root.classList.remove('dark', 'light')
+  root.classList.add(theme)
+}
+
+const storedTheme = (localStorage.getItem('book-theme') as Theme | null) ?? 'dark'
+applyTheme(storedTheme)
+
 export const useUIStore = create<UIStore>((set) => ({
   viewMode: 'kanban',
-  theme: 'dark',
+  theme: storedTheme,
   sidebarCollapsed: false,
   filters: defaultFilters,
   lastSavedAt: null,
@@ -38,4 +49,19 @@ export const useUIStore = create<UIStore>((set) => ({
   clearFilters: () => set({ filters: defaultFilters }),
 
   setLastSaved: () => set({ lastSavedAt: new Date().toISOString() }),
+
+  setTheme: (theme) => {
+    localStorage.setItem('book-theme', theme)
+    applyTheme(theme)
+    set({ theme })
+  },
+
+  toggleTheme: () => {
+    set((s) => {
+      const next: Theme = s.theme === 'dark' ? 'light' : 'dark'
+      localStorage.setItem('book-theme', next)
+      applyTheme(next)
+      return { theme: next }
+    })
+  },
 }))

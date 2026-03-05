@@ -9,15 +9,7 @@ import {useAnalysisStore} from '@/stores/analysisStore'
 import type {StatsSnapshot} from '@/types'
 import {ChapterStatus} from '@/types'
 import {appendStatsSnapshot, getStatsHistory} from '@/services/statsService'
-import {
-  calcProgress,
-  calcProjectedEndDate,
-  charsToPages,
-  formatDate,
-  formatNumber,
-  wordsPerDay,
-  wordsToReadingTime,
-} from '@/utils/formatters'
+import {calcProgress, calcProjectedEndDate, charsToPages, formatDate, formatNumber, wordsPerDay, wordsToReadingTime,} from '@/utils/formatters'
 import {useCountUp} from '@/hooks/useCountUp'
 import {cn} from '@/utils/cn'
 import ProgressRing from '@/components/dashboard/ProgressRing'
@@ -47,12 +39,12 @@ function KpiCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.3 }}
-      className="rounded-xl border border-white/8 bg-[#12121A] p-4"
+      className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4"
     >
       <div className="flex items-start justify-between">
         <div className="min-w-0">
           <p className="text-xs font-medium text-slate-500 truncate">{label}</p>
-          <p className="mt-1 text-xl font-bold text-white">{value}</p>
+          <p className="mt-1 text-xl font-bold text-[var(--text-primary)]">{value}</p>
           {sub && <p className="mt-0.5 text-xs text-slate-600">{sub}</p>}
         </div>
         <span className={cn('flex shrink-0 h-9 w-9 items-center justify-center rounded-lg border ml-3', colors[color])}>
@@ -67,7 +59,7 @@ function KpiCard({
 
 function ChartCard({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn('rounded-xl border border-white/8 bg-[#12121A] p-5', className)}>
+    <div className={cn('rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5', className)}>
       <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</h3>
       {children}
     </div>
@@ -161,20 +153,20 @@ export default function DashboardPage() {
 
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white">Ciao, {greeting} 👋</h1>
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Ciao, {greeting} 👋</h1>
         <p className="mt-1 text-sm text-slate-500">{settings.title} — panoramica aggiornata</p>
       </motion.div>
 
       {/* Progress bar principale */}
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
-        className="rounded-xl border border-white/8 bg-[#12121A] p-5"
+        className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5"
       >
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-slate-300">Completamento libro</span>
           <span className="text-sm font-bold text-violet-400">{animProgress}%</span>
         </div>
-        <div className="h-2.5 overflow-hidden rounded-full bg-white/8">
+        <div className="h-2.5 overflow-hidden rounded-full bg-[var(--overlay)]">
           <motion.div
             className="h-full rounded-full bg-gradient-to-r from-violet-600 via-violet-500 to-cyan-500"
             initial={{ width: 0 }}
@@ -237,7 +229,7 @@ export default function DashboardPage() {
                 .filter(([, v]) => v > 0)
                 .map(([s, v]) => (
                   <div key={s} className="flex items-center gap-2 text-xs">
-                    <span className="font-medium text-white w-4 text-right">{v}</span>
+                    <span className="font-medium text-[var(--text-primary)] w-4 text-right">{v}</span>
                     <span className="text-slate-500">{s.replace('_', ' ')}</span>
                   </div>
                 ))}
@@ -270,9 +262,9 @@ export default function DashboardPage() {
       {chapters.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
-          className="rounded-xl border border-white/8 bg-[#12121A]"
+          className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)]"
         >
-          <div className="border-b border-white/8 px-5 py-4 flex items-center justify-between">
+          <div className="border-b border-[var(--border)] px-5 py-4 flex items-center justify-between">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Cartelle per capitolo
             </h3>
@@ -281,7 +273,7 @@ export default function DashboardPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/6 text-xs text-slate-600">
+                <tr className="border-b border-[var(--border)] text-xs text-slate-600">
                   <th className="px-5 py-2.5 text-left font-medium w-10">#</th>
                   <th className="px-3 py-2.5 text-left font-medium">Titolo</th>
                   <th className="px-3 py-2.5 text-right font-medium">Caratteri</th>
@@ -298,7 +290,7 @@ export default function DashboardPage() {
                     const targetCartelle = charsToPages(c.targetChars, settings.charsPerPage)
                     const pct = Math.min(100, c.targetChars > 0 ? Math.round((c.currentChars / c.targetChars) * 100) : 0)
                     return (
-                      <tr key={c.id} className="border-b border-white/4 last:border-0">
+                      <tr key={c.id} className="border-b border-[var(--border)] last:border-0">
                         <td className="px-5 py-3 text-xs text-slate-600 tabular-nums">
                           {String(c.number).padStart(2, '0')}
                         </td>
@@ -312,7 +304,7 @@ export default function DashboardPage() {
                         </td>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 rounded-full bg-white/8 overflow-hidden">
+                            <div className="flex-1 h-1.5 rounded-full bg-[var(--overlay)] overflow-hidden">
                               <div
                                 className={cn(
                                   'h-full rounded-full transition-all',
@@ -329,7 +321,7 @@ export default function DashboardPage() {
                   })}
               </tbody>
               <tfoot>
-                <tr className="border-t border-white/8 bg-white/2">
+                <tr className="border-t border-[var(--border)] bg-[var(--overlay)]">
                   <td colSpan={2} className="px-5 py-3 text-xs font-semibold text-slate-400">Totale</td>
                   <td className="px-3 py-3 text-right text-xs tabular-nums font-semibold text-slate-400">
                     {chars.toLocaleString('it-IT')}
@@ -369,7 +361,7 @@ export default function DashboardPage() {
       {chapters.length === 0 && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
-          className="rounded-xl border border-dashed border-white/8 bg-white/2 py-14 text-center"
+          className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--overlay)] py-14 text-center"
         >
           <BookOpen className="mx-auto mb-3 h-10 w-10 text-slate-700" />
           <p className="text-sm font-medium text-slate-400">Nessun capitolo ancora</p>

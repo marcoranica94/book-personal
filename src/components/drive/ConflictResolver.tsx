@@ -1,9 +1,9 @@
-import { motion, AnimatePresence } from 'framer-motion'
-import { AlertTriangle, Cloud, Monitor, X } from 'lucide-react'
-import { useState } from 'react'
-import type { Chapter, DriveConfig } from '@/types'
-import { resolveConflict } from '@/services/driveSyncService'
-import { toast } from '@/stores/toastStore'
+import {AnimatePresence, motion} from 'framer-motion'
+import {AlertTriangle, Cloud, Monitor, X} from 'lucide-react'
+import {useState} from 'react'
+import type {Chapter, DriveConfig} from '@/types'
+import {resolveConflict} from '@/services/driveSyncService'
+import {toast} from '@/stores/toastStore'
 
 interface ConflictResolverProps {
   chapter: Chapter
@@ -57,7 +57,7 @@ export default function ConflictResolver({
             initial={{ opacity: 0, scale: 0.95, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-[#12121A] p-6 shadow-2xl"
+            className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-card)] p-6 shadow-2xl"
           >
             {/* Header */}
             <div className="mb-5 flex items-start justify-between gap-3">
@@ -66,13 +66,13 @@ export default function ConflictResolver({
                   <AlertTriangle className="h-4 w-4 text-red-400" />
                 </span>
                 <div>
-                  <h2 className="font-semibold text-white">Conflitto rilevato</h2>
+                  <h2 className="font-semibold text-[var(--text-primary)]">Conflitto rilevato</h2>
                   <p className="text-xs text-slate-500">{chapter.title}</p>
                 </div>
               </div>
               <button
                 onClick={onClose}
-                className="rounded-lg p-1 text-slate-500 hover:bg-white/8 hover:text-slate-300"
+                className="rounded-lg p-1 text-slate-500 hover:bg-[var(--overlay)] hover:text-slate-300"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -85,7 +85,7 @@ export default function ConflictResolver({
 
             {/* Drive content preview */}
             {chapter.driveContent && (
-              <div className="mb-5 rounded-lg border border-white/8 bg-white/3 p-3">
+              <div className="mb-5 rounded-lg border border-[var(--border)] bg-[var(--overlay)] p-3">
                 <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-400">
                   <Cloud className="h-3.5 w-3.5" />
                   Contenuto Drive (prime 300 caratteri)

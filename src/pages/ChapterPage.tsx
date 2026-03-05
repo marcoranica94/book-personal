@@ -1,11 +1,7 @@
 import {useEffect, useRef, useState} from 'react'
 import {Link, useParams} from 'react-router-dom'
 import {motion} from 'framer-motion'
-import {
-  ArrowLeft, ArrowRight, BookOpen, Calendar,
-  CheckSquare, ChevronLeft, Clock, ExternalLink, FileText,
-  Loader2, Pencil, RefreshCw, Sparkles, Tag, Target,
-} from 'lucide-react'
+import {ArrowLeft, ArrowRight, BookOpen, Calendar, CheckSquare, ChevronLeft, Clock, ExternalLink, FileText, Loader2, Pencil, RefreshCw, Sparkles, Tag, Target,} from 'lucide-react'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
@@ -17,16 +13,13 @@ import type {Chapter, ChecklistItem} from '@/types'
 import {ChapterStatus, PRIORITY_CONFIG, STATUS_CONFIG, SyncSource, SyncStatus} from '@/types'
 import {getValidAccessToken} from '@/services/driveAuthService'
 import {getDriveFileContent} from '@/services/driveFileService'
-import {
-  calcProgress, charsToPages, formatDate,
-  formatNumber, formatRelativeDate, wordsToReadingTime,
-} from '@/utils/formatters'
+import {calcProgress, charsToPages, formatDate, formatNumber, formatRelativeDate, wordsToReadingTime,} from '@/utils/formatters'
 import {useDebounce} from '@/hooks/useDebounce'
 import {cn} from '@/utils/cn'
 import ChecklistEditor from '@/components/chapters/ChecklistEditor'
 
 const inputCls =
-  'w-full rounded-lg border border-white/8 bg-white/4 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-violet-500/40 focus:outline-none transition-colors'
+  'w-full rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-slate-600 focus:border-violet-500/40 focus:outline-none transition-colors'
 
 export default function ChapterPage() {
   const { id } = useParams<{ id: string }>()
@@ -182,7 +175,7 @@ export default function ChapterPage() {
           {editingTitle ? (
             <input
               ref={titleRef}
-              className="flex-1 rounded-lg border border-violet-500/40 bg-white/4 px-3 py-1 text-xl font-bold text-white outline-none"
+              className="flex-1 rounded-lg border border-violet-500/40 bg-[var(--overlay)] px-3 py-1 text-xl font-bold text-[var(--text-primary)] outline-none"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onBlur={saveTitle}
@@ -191,7 +184,7 @@ export default function ChapterPage() {
             />
           ) : (
             <h1
-              className="flex-1 cursor-pointer text-xl font-bold text-white hover:text-violet-300 transition-colors"
+              className="flex-1 cursor-pointer text-xl font-bold text-[var(--text-primary)] hover:text-violet-300 transition-colors"
               onClick={() => setEditingTitle(true)}
               title="Clicca per modificare"
             >
@@ -214,7 +207,7 @@ export default function ChapterPage() {
             )}
           >
             {Object.values(ChapterStatus).map((s) => (
-              <option key={s} value={s} className="bg-[#14141E]">
+              <option key={s} value={s} className="bg-[var(--bg-elevated)]">
                 {STATUS_CONFIG[s].label}
               </option>
             ))}
@@ -228,7 +221,7 @@ export default function ChapterPage() {
 
           {/* Tags */}
           {chapter.tags.map((tag) => (
-            <span key={tag} className="flex items-center gap-1 rounded-full bg-white/6 px-2.5 py-1 text-xs text-slate-400">
+            <span key={tag} className="flex items-center gap-1 rounded-full bg-[var(--overlay)] px-2.5 py-1 text-xs text-slate-400">
               <Tag className="h-3 w-3" />
               {tag}
             </span>
@@ -236,7 +229,7 @@ export default function ChapterPage() {
 
           {/* Due date */}
           {chapter.dueDate && (
-            <span className="flex items-center gap-1 rounded-full bg-white/6 px-2.5 py-1 text-xs text-slate-400">
+            <span className="flex items-center gap-1 rounded-full bg-[var(--overlay)] px-2.5 py-1 text-xs text-slate-400">
               <Calendar className="h-3 w-3" />
               {formatDate(chapter.dueDate)}
             </span>
@@ -248,7 +241,7 @@ export default function ChapterPage() {
               href={chapter.driveWebViewLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 rounded-full bg-white/6 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:text-slate-200"
+              className="flex items-center gap-1 rounded-full bg-[var(--overlay)] px-2.5 py-1 text-xs text-slate-400 transition-colors hover:text-slate-200"
             >
               <ExternalLink className="h-3 w-3" />
               Drive
@@ -259,7 +252,7 @@ export default function ChapterPage() {
               onClick={() => void handleForceSyncFromDrive()}
               disabled={isForceSyncing}
               title="Scarica contenuto aggiornato da Drive"
-              className="flex items-center gap-1 rounded-full bg-white/6 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:text-slate-200 disabled:opacity-50"
+              className="flex items-center gap-1 rounded-full bg-[var(--overlay)] px-2.5 py-1 text-xs text-slate-400 transition-colors hover:text-slate-200 disabled:opacity-50"
             >
               <RefreshCw className={cn('h-3 w-3', isForceSyncing && 'animate-spin')} />
               {chapter.lastSyncAt
@@ -285,23 +278,23 @@ export default function ChapterPage() {
           { icon: Clock, label: 'Lettura', value: wordsToReadingTime(wordCount, settings.wordsPerMinuteReading) },
           { icon: Target, label: 'Progresso', value: `${progress}%` },
         ].map(({ icon: Icon, label, value }) => (
-          <div key={label} className="rounded-xl border border-white/8 bg-[#12121A] p-4">
+          <div key={label} className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
               <Icon className="h-3.5 w-3.5" />
               {label}
             </div>
-            <p className="text-xl font-bold text-white">{value}</p>
+            <p className="text-xl font-bold text-[var(--text-primary)]">{value}</p>
           </div>
         ))}
       </motion.div>
 
       {/* Progress bar */}
-      <div className="rounded-xl border border-white/8 bg-[#12121A] p-4">
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
         <div className="flex justify-between text-xs text-slate-500 mb-2">
           <span>Caratteri scritti</span>
           <span>{progress}% di {formatNumber(chapter.targetChars)}</span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-white/8">
+        <div className="h-2 overflow-hidden rounded-full bg-[var(--overlay)]">
           <motion.div
             className="h-full rounded-full bg-gradient-to-r from-violet-600 to-cyan-500"
             initial={{ width: 0 }}
@@ -346,7 +339,7 @@ export default function ChapterPage() {
         className="grid grid-cols-1 gap-4 lg:grid-cols-5"
       >
         {/* Checklist */}
-        <div className="lg:col-span-2 rounded-xl border border-white/8 bg-[#12121A] p-5">
+        <div className="lg:col-span-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
           <div className="mb-4 flex items-center gap-2">
             <CheckSquare className="h-4 w-4 text-slate-500" />
             <h2 className="text-sm font-semibold text-slate-300">Checklist</h2>
@@ -359,7 +352,7 @@ export default function ChapterPage() {
 
         {/* Synopsis + Notes */}
         <div className="lg:col-span-3 space-y-4">
-          <div className="rounded-xl border border-white/8 bg-[#12121A] p-5">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
             <h2 className="mb-3 text-sm font-semibold text-slate-300">Synopsis</h2>
             <textarea
               className={cn(inputCls, 'min-h-[100px] resize-y')}
@@ -371,7 +364,7 @@ export default function ChapterPage() {
               }}
             />
           </div>
-          <div className="rounded-xl border border-white/8 bg-[#12121A] p-5">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
             <h2 className="mb-3 text-sm font-semibold text-slate-300">Note interne</h2>
             <textarea
               className={cn(inputCls, 'min-h-[80px] resize-y')}
@@ -408,7 +401,7 @@ export default function ChapterPage() {
           <div className="space-y-3">
             <div className="flex items-center gap-4">
               <div className="text-center">
-                <p className="text-2xl font-bold text-white">{analysis.scores.overall.toFixed(1)}</p>
+                <p className="text-2xl font-bold text-[var(--text-primary)]">{analysis.scores.overall.toFixed(1)}</p>
                 <p className="text-xs text-slate-500">Overall</p>
               </div>
               <div className="flex-1 grid grid-cols-3 gap-2">
@@ -451,7 +444,7 @@ export default function ChapterPage() {
         {prevChapter ? (
           <Link
             to={`/chapters/${prevChapter.id}`}
-            className="flex items-center gap-2 rounded-lg border border-white/8 px-4 py-2.5 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
+            className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2.5 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
           >
             <ArrowLeft className="h-4 w-4" />
             <div>
@@ -464,7 +457,7 @@ export default function ChapterPage() {
         {nextChapter ? (
           <Link
             to={`/chapters/${nextChapter.id}`}
-            className="flex items-center gap-2 rounded-lg border border-white/8 px-4 py-2.5 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
+            className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2.5 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
           >
             <div className="text-right">
               <p className="text-xs text-slate-600">Successivo</p>

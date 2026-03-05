@@ -1,6 +1,6 @@
-import { motion, AnimatePresence } from 'framer-motion'
-import { AlertTriangle, Loader2 } from 'lucide-react'
-import { cn } from '@/utils/cn'
+import {AnimatePresence, motion} from 'framer-motion'
+import {AlertTriangle, Loader2} from 'lucide-react'
+import {cn} from '@/utils/cn'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -43,7 +43,7 @@ export default function ConfirmDialog({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92 }}
             transition={{ duration: 0.18 }}
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/8 bg-[#1A1A26] p-6 shadow-2xl"
+            className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
           >
             <div className="flex items-start gap-4">
               <span
@@ -55,7 +55,7 @@ export default function ConfirmDialog({
                 <AlertTriangle className="h-5 w-5" />
               </span>
               <div>
-                <h3 className="text-base font-semibold text-white">{title}</h3>
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">{title}</h3>
                 <p className="mt-1 text-sm text-slate-400">{description}</p>
               </div>
             </div>
@@ -63,7 +63,7 @@ export default function ConfirmDialog({
               <button
                 onClick={onCancel}
                 disabled={isLoading}
-                className="rounded-lg px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
+                className="rounded-lg px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
               >
                 {cancelLabel}
               </button>

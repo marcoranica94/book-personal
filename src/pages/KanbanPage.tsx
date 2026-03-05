@@ -1,33 +1,23 @@
-import { useEffect, useState } from 'react'
-import {
-  DndContext,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragOverlay,
-  closestCorners,
-} from '@dnd-kit/core'
-import { arrayMove } from '@dnd-kit/sortable'
-import { motion } from 'framer-motion'
-import { Plus, LayoutGrid, List, Search, X } from 'lucide-react'
-import { useChaptersStore } from '@/stores/chaptersStore'
-import { useUIStore } from '@/stores/uiStore'
-import { useSettingsStore } from '@/stores/settingsStore'
-import { useDriveStore } from '@/stores/driveStore'
-import { useAuthStore } from '@/stores/authStore'
-import { toast } from '@/stores/toastStore'
-import { pullFromDrive } from '@/services/driveSyncService'
-import type { Chapter } from '@/types'
-import { ChapterStatus } from '@/types'
-import { KANBAN_COLUMNS_ORDER } from '@/utils/constants'
+import {useEffect, useState} from 'react'
+import {closestCorners, DndContext, type DragEndEvent, type DragOverEvent, DragOverlay, type DragStartEvent, PointerSensor, useSensor, useSensors,} from '@dnd-kit/core'
+import {arrayMove} from '@dnd-kit/sortable'
+import {motion} from 'framer-motion'
+import {LayoutGrid, List, Plus, Search, X} from 'lucide-react'
+import {useChaptersStore} from '@/stores/chaptersStore'
+import {useUIStore} from '@/stores/uiStore'
+import {useSettingsStore} from '@/stores/settingsStore'
+import {useDriveStore} from '@/stores/driveStore'
+import {useAuthStore} from '@/stores/authStore'
+import {toast} from '@/stores/toastStore'
+import {pullFromDrive} from '@/services/driveSyncService'
+import type {Chapter} from '@/types'
+import {ChapterStatus} from '@/types'
+import {KANBAN_COLUMNS_ORDER} from '@/utils/constants'
 import KanbanColumn from '@/components/kanban/KanbanColumn'
 import ChapterCard from '@/components/kanban/ChapterCard'
 import ChapterModal from '@/components/kanban/ChapterModal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
-import { cn } from '@/utils/cn'
+import {cn} from '@/utils/cn'
 
 export default function KanbanPage() {
   const { chapters, loadChapters, addChapter, updateChapter, deleteChapter, isLoading } =
@@ -220,12 +210,12 @@ export default function KanbanPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 border-b border-white/8 px-6 py-3">
+      <div className="flex items-center gap-3 border-b border-[var(--border)] px-6 py-3">
         {/* Search */}
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
           <input
-            className="w-full rounded-lg border border-white/8 bg-white/4 py-1.5 pl-8 pr-3 text-sm text-white placeholder-slate-600 focus:border-violet-500/40 focus:outline-none"
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--overlay)] py-1.5 pl-8 pr-3 text-sm text-[var(--text-primary)] placeholder-slate-600 focus:border-violet-500/40 focus:outline-none"
             placeholder="Cerca capitolo..."
             value={filters.search}
             onChange={(e) => setFilter('search', e.target.value)}
@@ -236,7 +226,7 @@ export default function KanbanPage() {
         {hasFilters && (
           <button
             onClick={clearFilters}
-            className="flex items-center gap-1.5 rounded-lg border border-white/8 px-2.5 py-1.5 text-xs text-slate-400 hover:bg-white/5"
+            className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs text-slate-400 hover:bg-[var(--overlay)]"
           >
             <X className="h-3 w-3" />
             Reset filtri
@@ -245,14 +235,14 @@ export default function KanbanPage() {
 
         <div className="ml-auto flex items-center gap-2">
           {/* View toggle */}
-          <div className="flex rounded-lg border border-white/8 p-0.5">
+          <div className="flex rounded-lg border border-[var(--border)] p-0.5">
             {(['kanban', 'list'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
                 className={cn(
                   'rounded-md p-1.5 transition-colors',
-                  viewMode === mode ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'
+                  viewMode === mode ? 'bg-[var(--overlay)] text-[var(--text-primary)]' : 'text-slate-500 hover:text-slate-300'
                 )}
               >
                 {mode === 'kanban' ? <LayoutGrid className="h-4 w-4" /> : <List className="h-4 w-4" />}
@@ -328,7 +318,7 @@ export default function KanbanPage() {
                     key={chapter.id}
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center gap-4 rounded-xl border border-white/8 bg-[#12121A] px-4 py-3"
+                    className="flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3"
                   >
                     <span className="w-8 shrink-0 text-xs font-medium text-slate-600">
                       {String(chapter.number).padStart(2, '0')}
@@ -344,7 +334,7 @@ export default function KanbanPage() {
                     <div className="flex gap-1">
                       <button
                         onClick={() => openEditChapter(chapter)}
-                        className="rounded-md p-1 text-slate-600 hover:bg-white/8 hover:text-slate-300"
+                        className="rounded-md p-1 text-slate-600 hover:bg-[var(--overlay)] hover:text-slate-300"
                       >
                         <Plus className="h-3.5 w-3.5" />
                       </button>

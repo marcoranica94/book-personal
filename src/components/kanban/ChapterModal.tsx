@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Trash2, GripVertical, Loader2 } from 'lucide-react'
-import { v4 as uuidv4 } from 'uuid'
-import type { Chapter, ChecklistItem } from '@/types'
-import { ChapterStatus, Priority, PRIORITY_CONFIG, DEFAULT_CHECKLIST } from '@/types'
-import { cn } from '@/utils/cn'
+import {useEffect, useRef, useState} from 'react'
+import {AnimatePresence, motion} from 'framer-motion'
+import {GripVertical, Loader2, Plus, Trash2, X} from 'lucide-react'
+import {v4 as uuidv4} from 'uuid'
+import type {Chapter, ChecklistItem} from '@/types'
+import {ChapterStatus, DEFAULT_CHECKLIST, Priority, PRIORITY_CONFIG} from '@/types'
+import {cn} from '@/utils/cn'
 
 interface ChapterModalProps {
   open: boolean
@@ -15,7 +15,7 @@ interface ChapterModalProps {
 }
 
 const inputCls =
-  'w-full rounded-lg border border-white/8 bg-white/4 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30 transition-colors'
+  'w-full rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-slate-600 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30 transition-colors'
 
 export default function ChapterModal({
   open,
@@ -149,14 +149,14 @@ export default function ChapterModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ duration: 0.2 }}
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-white/8 bg-[#14141E] shadow-2xl"
+            className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] shadow-2xl"
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-white/8 px-6 py-4">
-              <h2 className="text-base font-semibold text-white">
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
+              <h2 className="text-base font-semibold text-[var(--text-primary)]">
                 {isEdit ? 'Modifica capitolo' : 'Nuovo capitolo'}
               </h2>
-              <button onClick={onClose} className="rounded-lg p-1.5 text-slate-500 hover:bg-white/8 hover:text-slate-300">
+              <button onClick={onClose} className="rounded-lg p-1.5 text-slate-500 hover:bg-[var(--overlay)] hover:text-slate-300">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -198,7 +198,7 @@ export default function ChapterModal({
                       onChange={(e) => setStatus(e.target.value as ChapterStatus)}
                     >
                       {Object.values(ChapterStatus).map((s) => (
-                        <option key={s} value={s} className="bg-[#14141E]">
+                        <option key={s} value={s} className="bg-[var(--bg-elevated)]">
                           {s.replace('_', ' ')}
                         </option>
                       ))}
@@ -212,7 +212,7 @@ export default function ChapterModal({
                       onChange={(e) => setPriority(e.target.value as Priority)}
                     >
                       {Object.values(Priority).map((p) => (
-                        <option key={p} value={p} className="bg-[#14141E]">
+                        <option key={p} value={p} className="bg-[var(--bg-elevated)]">
                           {PRIORITY_CONFIG[p].label}
                         </option>
                       ))}
@@ -278,7 +278,7 @@ export default function ChapterModal({
                     <button
                       type="button"
                       onClick={addTag}
-                      className="rounded-lg border border-white/8 px-3 text-slate-400 hover:bg-white/8 hover:text-slate-200"
+                      className="rounded-lg border border-[var(--border)] px-3 text-slate-400 hover:bg-[var(--overlay)] hover:text-slate-200"
                     >
                       <Plus className="h-4 w-4" />
                     </button>
@@ -327,7 +327,7 @@ export default function ChapterModal({
                   <label className="mb-2 block text-xs font-medium text-slate-400">
                     Checklist ({checklist.filter((i) => i.done).length}/{checklist.length})
                   </label>
-                  <div className="space-y-1.5 rounded-xl border border-white/6 bg-white/2 p-3">
+                  <div className="space-y-1.5 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3">
                     {checklist.map((item) => (
                       <div key={item.id} className="group flex items-center gap-2">
                         <GripVertical className="h-4 w-4 shrink-0 text-slate-700" />
@@ -371,10 +371,10 @@ export default function ChapterModal({
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 border-t border-white/8 px-6 py-4">
+            <div className="flex items-center justify-end gap-3 border-t border-[var(--border)] px-6 py-4">
               <button
                 onClick={onClose}
-                className="rounded-lg px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
+                className="rounded-lg px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
               >
                 Annulla
               </button>

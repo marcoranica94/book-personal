@@ -1,13 +1,12 @@
-import { useDroppable } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { motion } from 'framer-motion'
-import { Plus } from 'lucide-react'
-import type { Chapter, ChapterStatus } from '@/types'
-import { STATUS_CONFIG } from '@/types'
+import {useDroppable} from '@dnd-kit/core'
+import {SortableContext, verticalListSortingStrategy} from '@dnd-kit/sortable'
+import {motion} from 'framer-motion'
+import {BookOpen, Plus} from 'lucide-react'
+import type {Chapter, ChapterStatus} from '@/types'
+import {STATUS_CONFIG} from '@/types'
 import ChapterCard from './ChapterCard'
 import EmptyState from '@/components/ui/EmptyState'
-import { BookOpen } from 'lucide-react'
-import { cn } from '@/utils/cn'
+import {cn} from '@/utils/cn'
 
 interface KanbanColumnProps {
   status: ChapterStatus
@@ -49,14 +48,14 @@ export default function KanbanColumn({
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
             {config.label}
           </span>
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/8 text-xs font-medium text-slate-500">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--overlay)] text-xs font-medium text-slate-500">
             {chapters.length}
           </span>
         </div>
         {onAddChapter && (
           <button
             onClick={onAddChapter}
-            className="rounded-lg p-1 text-slate-600 transition-colors hover:bg-white/8 hover:text-slate-300"
+            className="rounded-lg p-1 text-slate-600 transition-colors hover:bg-[var(--overlay)] hover:text-slate-300"
             title="Aggiungi capitolo"
           >
             <Plus className="h-4 w-4" />
@@ -71,7 +70,7 @@ export default function KanbanColumn({
           'flex-1 rounded-xl border border-dashed p-2 transition-colors',
           isOver
             ? 'border-violet-500/50 bg-violet-500/5'
-            : 'border-white/6 bg-white/2'
+            : 'border-[var(--border)] bg-[var(--overlay)]'
         )}
       >
         <SortableContext items={chapters.map((c) => c.id)} strategy={verticalListSortingStrategy}>

@@ -1,9 +1,9 @@
-import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, CheckCircle2, Circle } from 'lucide-react'
-import { v4 as uuidv4 } from 'uuid'
-import type { ChecklistItem } from '@/types'
-import { cn } from '@/utils/cn'
+import {useState} from 'react'
+import {AnimatePresence, motion} from 'framer-motion'
+import {CheckCircle2, Circle, Plus, Trash2} from 'lucide-react'
+import {v4 as uuidv4} from 'uuid'
+import type {ChecklistItem} from '@/types'
+import {cn} from '@/utils/cn'
 
 interface ChecklistEditorProps {
   items: ChecklistItem[]
@@ -37,7 +37,7 @@ export default function ChecklistEditor({ items, onChange, readOnly }: Checklist
     <div className="space-y-3">
       {/* Progress header */}
       <div className="flex items-center gap-3">
-        <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-white/8">
+        <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-[var(--overlay)]">
           <motion.div
             className="h-full rounded-full bg-emerald-500"
             initial={{ width: 0 }}
@@ -60,7 +60,7 @@ export default function ChecklistEditor({ items, onChange, readOnly }: Checklist
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.15 }}
-              className="group flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-white/4"
+              className="group flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-[var(--overlay)]"
             >
               <button
                 onClick={() => !readOnly && toggle(item.id)}
@@ -95,7 +95,7 @@ export default function ChecklistEditor({ items, onChange, readOnly }: Checklist
 
       {/* Add item */}
       {!readOnly && (
-        <div className="flex items-center gap-2 rounded-lg border border-dashed border-white/10 px-3 py-2">
+        <div className="flex items-center gap-2 rounded-lg border border-dashed border-[var(--border-strong)] px-3 py-2">
           <Plus className="h-3.5 w-3.5 shrink-0 text-slate-700" />
           <input
             className="flex-1 bg-transparent text-sm text-slate-400 placeholder-slate-700 outline-none"

@@ -44,7 +44,7 @@ function Section({title, delay = 0, children}: {title: string; delay?: number; c
       initial={{opacity: 0, y: 8}}
       animate={{opacity: 1, y: 0}}
       transition={{delay}}
-      className="rounded-xl border border-white/8 bg-[#12121A] p-6 space-y-5"
+      className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 space-y-5"
     >
       <h2 className="text-sm font-semibold text-slate-300">{title}</h2>
       {children}
@@ -53,7 +53,7 @@ function Section({title, delay = 0, children}: {title: string; delay?: number; c
 }
 
 const inputCls =
-  'w-full rounded-lg border border-white/8 bg-white/4 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50'
+  'w-full rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-slate-600 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50'
 
 export default function SettingsPage() {
   const {settings, loadSettings, saveSettings, isSaving} = useSettingsStore()
@@ -192,7 +192,7 @@ export default function SettingsPage() {
   return (
     <div className="p-6 max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Impostazioni</h1>
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Impostazioni</h1>
         <p className="mt-1 text-sm text-slate-400">Configura le informazioni del tuo libro</p>
       </div>
 
@@ -203,15 +203,15 @@ export default function SettingsPage() {
             <img
               src={user.photoURL}
               alt={user.displayName ?? ''}
-              className="h-12 w-12 rounded-full border border-white/10"
+              className="h-12 w-12 rounded-full border border-[var(--border-strong)]"
             />
           )}
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-white">{user?.displayName ?? user?.email}</p>
+            <p className="font-medium text-[var(--text-primary)]">{user?.displayName ?? user?.email}</p>
             <p className="text-sm text-slate-500">{user?.email}</p>
           </div>
         </div>
-        <div className="border-t border-white/6 pt-4 space-y-3">
+        <div className="border-t border-[var(--border)] pt-4 space-y-3">
           <Field label="GitHub Personal Access Token" sub="Necessario per avviare l'analisi AI (scope: workflow)">
             <div className="flex gap-2">
               <input
@@ -371,7 +371,7 @@ export default function SettingsPage() {
             </div>
 
             {/* Drive stats — E1.1 */}
-            <div className="grid grid-cols-3 gap-3 rounded-lg border border-white/6 bg-white/2 p-3 text-center">
+            <div className="grid grid-cols-3 gap-3 rounded-lg border border-[var(--border)] bg-[var(--overlay)] p-3 text-center">
               {(() => {
                 const linked = chapters.filter((c) => c.driveFileId).length
                 const pending = chapters.filter((c) => c.syncStatus === SyncStatus.PENDING_PUSH).length
@@ -379,18 +379,18 @@ export default function SettingsPage() {
                 return (
                   <>
                     <div>
-                      <p className="text-base font-bold text-white">{linked}</p>
+                      <p className="text-base font-bold text-[var(--text-primary)]">{linked}</p>
                       <p className="text-xs text-slate-500 flex items-center justify-center gap-1">
                         <Link2 className="h-3 w-3" />
                         Collegati
                       </p>
                     </div>
                     <div>
-                      <p className={cn('text-base font-bold', pending > 0 ? 'text-amber-400' : 'text-white')}>{pending}</p>
+                      <p className={cn('text-base font-bold', pending > 0 ? 'text-amber-400' : 'text-[var(--text-primary)]')}>{pending}</p>
                       <p className="text-xs text-slate-500">Da inviare</p>
                     </div>
                     <div>
-                      <p className={cn('text-base font-bold', conflicts > 0 ? 'text-red-400' : 'text-white')}>{conflicts}</p>
+                      <p className={cn('text-base font-bold', conflicts > 0 ? 'text-red-400' : 'text-[var(--text-primary)]')}>{conflicts}</p>
                       <p className="text-xs text-slate-500">Conflitti</p>
                     </div>
                   </>
@@ -417,7 +417,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleSyncNow}
                   disabled={isSyncing}
-                  className="flex items-center gap-2 rounded-lg border border-white/8 px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/5 disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-[var(--overlay)] disabled:opacity-50"
                 >
                   <RefreshCw className={cn('h-4 w-4', isSyncing && 'animate-spin')} />
                   {isSyncing ? 'Sincronizzazione...' : 'Sincronizza ora'}
@@ -434,7 +434,7 @@ export default function SettingsPage() {
                 <button
                   onClick={() => void handleSearchUnlinked()}
                   disabled={isSearchingUnlinked || !driveConfig.folderId}
-                  className="flex items-center gap-2 rounded-lg border border-white/8 px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/5 disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-[var(--overlay)] disabled:opacity-50"
                 >
                   {isSearchingUnlinked
                     ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -448,7 +448,7 @@ export default function SettingsPage() {
                 )}
               </div>
               {unlinkedFiles && unlinkedFiles.length > 0 && (
-                <div className="rounded-lg border border-white/6 divide-y divide-white/4">
+                <div className="rounded-lg border border-[var(--border)] divide-y divide-[var(--border)]">
                   {unlinkedFiles.map((file) => (
                     <div key={file.id} className="flex items-center gap-3 px-3 py-2.5">
                       <div className="min-w-0 flex-1">
@@ -507,7 +507,7 @@ export default function SettingsPage() {
               )
             })()}
 
-            <div className="border-t border-white/6 pt-3">
+            <div className="border-t border-[var(--border)] pt-3">
               <DriveConnectButton />
             </div>
           </div>
@@ -530,7 +530,7 @@ export default function SettingsPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 rounded-lg border border-white/8 px-4 py-2 text-sm text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
+            className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-slate-300 transition-colors hover:bg-[var(--overlay)] hover:text-[var(--text-primary)]"
           >
             <Download className="h-4 w-4" />
             Esporta JSON ({chapters.length} capitoli)

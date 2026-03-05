@@ -52,7 +52,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#0A0A0F]">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[var(--bg-base)]">
       {/* Ambient glow */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-1/3 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-900/20 blur-[120px]" />
@@ -85,7 +85,7 @@ export default function LoginPage() {
           >
             <BookOpen className="h-8 w-8 text-violet-400" />
           </motion.div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Book Dashboard</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-[var(--text-primary)]">Book Dashboard</h1>
           <p className="mt-2 text-sm text-slate-400">Il tuo studio di scrittura personale</p>
         </div>
 
@@ -94,7 +94,7 @@ export default function LoginPage() {
           initial={{opacity: 0, y: 16}}
           animate={{opacity: 1, y: 0}}
           transition={{delay: 0.15}}
-          className="rounded-2xl border border-white/8 bg-white/4 p-8 shadow-2xl backdrop-blur-sm"
+          className="rounded-2xl border border-[var(--border)] bg-[var(--overlay)] p-8 shadow-2xl backdrop-blur-sm"
         >
           <AnimatePresence mode="wait">
 
@@ -109,7 +109,7 @@ export default function LoginPage() {
               >
                 <div className="text-center">
                   <KeyRound className="mx-auto mb-3 h-8 w-8 text-violet-400" />
-                  <h2 className="text-lg font-semibold text-white">Accesso riservato</h2>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Accesso riservato</h2>
                   <p className="mt-1 text-xs text-slate-500">Inserisci il codice per continuare</p>
                 </div>
                 {codeError && (
@@ -124,7 +124,7 @@ export default function LoginPage() {
                   onKeyDown={(e) => e.key === 'Enter' && handleCodeSubmit()}
                   placeholder="Codice di accesso"
                   autoFocus
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm text-white placeholder-slate-600 tracking-widest focus:border-violet-500/40 focus:outline-none"
+                  className="w-full rounded-xl border border-[var(--border-strong)] bg-[var(--overlay)] px-4 py-3 text-center text-sm text-[var(--text-primary)] placeholder-slate-600 tracking-widest focus:border-violet-500/40 focus:outline-none"
                 />
                 <button
                   onClick={handleCodeSubmit}
@@ -146,7 +146,7 @@ export default function LoginPage() {
                 className="space-y-6"
               >
                 <div className="text-center">
-                  <h2 className="text-lg font-semibold text-white">Accedi con GitHub</h2>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Accedi con GitHub</h2>
                   <p className="mt-1 text-xs text-slate-500">
                     Si aprirà una finestra per autorizzare l'accesso
                   </p>
@@ -198,7 +198,7 @@ export default function LoginPage() {
                 >
                   <CheckCircle2 className="h-12 w-12 text-emerald-400" />
                 </motion.div>
-                <p className="font-semibold text-white">Accesso effettuato!</p>
+                <p className="font-semibold text-[var(--text-primary)]">Accesso effettuato!</p>
               </motion.div>
             )}
 
