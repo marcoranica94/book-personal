@@ -1,6 +1,6 @@
-import { v4 as uuidv4 } from 'uuid'
-import type { Chapter, DriveFile } from '@/types'
-import { ChapterStatus, Priority } from '@/types'
+import {v4 as uuidv4} from 'uuid'
+import type {Chapter, DriveFile} from '@/types'
+import {ChapterStatus, Priority} from '@/types'
 
 // ─── Tipi interni ─────────────────────────────────────────────────────────────
 
@@ -272,8 +272,8 @@ export function injectFrontmatter(body: string, chapter: Partial<Chapter>): stri
   if (chapter.targetChars) lines.push(`targetChars: ${chapter.targetChars}`)
   if (chapter.synopsis) lines.push(`synopsis: "${chapter.synopsis.replace(/"/g, "'")}"`)
 
-  lines.push('---', '')
-  return lines.join('\n') + body
+  lines.push('---')
+  return lines.join('\n') + '\n\n' + body
 }
 
 /**

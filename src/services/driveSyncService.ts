@@ -1,7 +1,7 @@
 import type {Chapter, DriveConfig, DriveFile, DriveTokens} from '@/types'
 import {SyncSource, SyncStatus} from '@/types'
 import {getValidAccessToken} from './driveAuthService'
-import {createDriveFile, getDriveFileContent, listDriveFiles, updateDriveFileContent,} from './driveFileService'
+import {createDriveFile, getDriveFileContent, GOOGLE_DOC_MIME, listDriveFiles, updateDriveFileContent,} from './driveFileService'
 import {chapterToFilename, injectFrontmatter, parseDriveFileToChapter, parseYamlFrontmatter,} from './driveParserService'
 import * as chaptersService from './chaptersService'
 
@@ -191,6 +191,12 @@ export async function pushToDrive(
   uid: string,
   onTokenRefresh?: OnTokenRefresh,
 ): Promise<void> {
+  // I Google Doc non possono essere sovrascritti via Drive upload API senza perdere la formattazione.
+  // Usa l'API Google Docs per modifiche su documenti nativi.
+  if (chapter.driveMimeType === GOOGLE_DOC_MIME) {
+    throw new Error('GOOGLE_DOC_READONLY')
+  }
+
   const { accessToken, updatedTokens } = await getValidAccessToken(config, uid)
   if (updatedTokens) onTokenRefresh?.(updatedTokens)
 

@@ -213,6 +213,7 @@ export default function AnalysisPage() {
   const analysis = selectedId ? (analyses[selectedId] ?? null) : null
   const isDirty = editorContent !== (selectedChapter?.driveContent ?? '')
   const isPendingPush = isDirty || selectedChapter?.syncStatus === SyncStatus.PENDING_PUSH
+  const isGoogleDoc = selectedChapter?.driveMimeType === 'application/vnd.google-apps.document'
 
   async function triggerAnalysis(chapterId: string) {
     const hasExisting =
@@ -327,7 +328,12 @@ export default function AnalysisPage() {
       await loadChapters()
       toast.success('Testo salvato su Drive')
     } catch (err) {
-      toast.error('Errore salvataggio Drive: ' + (err as Error).message)
+      const msg = (err as Error).message
+      if (msg === 'GOOGLE_DOC_READONLY') {
+        toast.info('File Google Doc: le modifiche sono salvate qui nell\'app. Applicale manualmente nel documento Google.')
+      } else {
+        toast.error('Errore salvataggio Drive: ' + msg)
+      }
     } finally {
       setIsPushingToDrive(false)
     }
@@ -838,7 +844,12 @@ export default function AnalysisPage() {
                                 </span>
                               )}
                               {/* Salva su Drive */}
-                              {driveConfig?.folderId ? (
+                              {isGoogleDoc && (
+                                <span className="rounded-lg border border-amber-800/30 bg-amber-900/20 px-3 py-1.5 text-xs text-amber-400">
+                                  Google Doc — modifiche salvate in app, applica manualmente nel Doc
+                                </span>
+                              )}
+                              {driveConfig?.folderId && !isGoogleDoc && (
                                 <button
                                   onClick={() => void handlePushToDrive()}
                                   disabled={isPushingToDrive || !editorContent || !isPendingPush}
@@ -856,7 +867,8 @@ export default function AnalysisPage() {
                                   )}
                                   Salva su Drive{isPendingPush ? ' *' : ''}
                                 </button>
-                              ) : (
+                              )}
+                              {!driveConfig?.folderId && (
                                 <button
                                   onClick={() => void handleSaveEditorContent()}
                                   disabled={isSavingContent || !editorContent || !isDirty}
@@ -864,7 +876,6 @@ export default function AnalysisPage() {
                                 >
                                   {isSavingContent ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileEdit className="h-4 w-4" />}
                                   Salva bozza{isDirty ? ' *' : ''}
-
                                 </button>
                               )}
                             </div>

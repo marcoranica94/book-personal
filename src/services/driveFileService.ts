@@ -35,19 +35,26 @@ export async function listDriveFiles(
   return data.files ?? []
 }
 
+const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document'
+
 /**
  * Scarica il contenuto testuale di un file Drive.
- * Google Docs vengono esportati come text/plain.
+ * Google Docs vengono esportati come text/markdown per preservare grassetti, heading, a capo.
+ * .docx vengono esportati come text/plain.
  */
 export async function getDriveFileContent(
   accessToken: string,
   fileId: string,
   mimeType: string,
 ): Promise<string> {
-  const needsExport = mimeType === 'application/vnd.google-apps.document' || mimeType === DOCX_MIME
-  const url = needsExport
-    ? `${DRIVE_API}/files/${fileId}/export?mimeType=text/plain`
-    : `${DRIVE_API}/files/${fileId}?alt=media`
+  let url: string
+  if (mimeType === GOOGLE_DOC_MIME) {
+    url = `${DRIVE_API}/files/${fileId}/export?mimeType=text/markdown`
+  } else if (mimeType === DOCX_MIME) {
+    url = `${DRIVE_API}/files/${fileId}/export?mimeType=text/plain`
+  } else {
+    url = `${DRIVE_API}/files/${fileId}?alt=media`
+  }
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -55,6 +62,8 @@ export async function getDriveFileContent(
   if (!res.ok) throw new Error(`Errore lettura file Drive (${fileId}): ${res.status}`)
   return res.text()
 }
+
+export { GOOGLE_DOC_MIME }
 
 /**
  * Legge i metadati di un singolo file.
