@@ -8,7 +8,6 @@ import {useDriveStore} from '@/stores/driveStore'
 import {useAuthStore} from '@/stores/authStore'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {toast} from '@/stores/toastStore'
-import type {AnalysisCorrection} from '@/types'
 import {getScoreColor, SyncSource, SyncStatus} from '@/types'
 import type {WorkflowRunInfo} from '@/services/githubWorkflow'
 import {getLatestWorkflowRun, triggerWorkflow} from '@/services/githubWorkflow'
@@ -22,6 +21,7 @@ import {applyTextReplacements} from '@/services/googleDocsService'
 import {GITHUB_REPO_NAME, GITHUB_REPO_OWNER} from '@/utils/constants'
 import {formatRelativeDate} from '@/utils/formatters'
 import {cn} from '@/utils/cn'
+import {applyCorrectionsToContent} from '@/utils/corrections'
 import ProgressRing from '@/components/dashboard/ProgressRing'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -78,29 +78,6 @@ function formatElapsed(secs: number): string {
   const m = Math.floor(secs / 60)
   const s = secs % 60
   return `${m}m ${s > 0 ? ` ${s}s` : ''}`
-}
-
-// ─── Correzione applicazione ──────────────────────────────────────────────────
-
-function applyCorrectionsToContent(
-  content: string,
-  corrections: AnalysisCorrection[],
-  selected: Set<number>,
-): { content: string; applied: number; notFound: string[] } {
-  let result = content
-  let applied = 0
-  const notFound: string[] = []
-  for (const idx of Array.from(selected).sort((a, b) => a - b)) {
-    const c = corrections[idx]
-    if (!c) continue
-    if (result.includes(c.original)) {
-      result = result.replace(c.original, c.suggested)
-      applied++
-    } else {
-      notFound.push(c.original.slice(0, 40))
-    }
-  }
-  return { content: result, applied, notFound }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

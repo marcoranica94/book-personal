@@ -265,11 +265,16 @@
 
 ## EPIC 11 — Testing & QA
 
-- 🔲 `E11-1` Setup Vitest + Testing Library
-- 🔲 `E11-2` Test unitari `formatters.ts`
-- 🔲 `E11-3` Test unitari store (chaptersStore)
-- 🔲 `E11-4` Test E2E Playwright (login flow + add chapter)
-- 🔲 `E11-5` Audit Lighthouse (performance, a11y, SEO)
+- ✅ `E11-1` Setup Vitest + Testing Library + jsdom (`vitest.config.ts`, `src/test/setup.ts`)
+- ✅ `E11-2` Test unitari `formatters.ts` (37 test: charsToPages, wordsToReadingTime, calcProgress, calcProjectedEndDate, wordsPerDay, formatDate, formatNumber, isDueSoon, isOverdue)
+- ✅ `E11-3` Test unitari store `chaptersStore` (15 test: selectors, loadChapters, addChapter, updateChapter, deleteChapter, toggleChecklistItem — Firebase mockato)
+- ✅ `E11-4b` Test unitari `driveParserService` (28 test: parseYamlFrontmatter, parseFilename, injectFrontmatter, chapterToFilename, parseDriveFileToChapter)
+- ✅ `E11-5b` Test unitari `cn.ts` (5 test: merge Tailwind conflitti, falsy, condizionali)
+- ✅ `E11-6` Test unitari `corrections.ts` — logica accept/reject/pending (7 test: apply, notFound, set vuoto, index fuori range, prima occorrenza)
+- ✅ `E11-7` Test unitari `googleDocsService.applyTextReplacements` (7 test: mock fetch, conteggio occurrencesChanged, errori HTTP, formato request)
+- ✅ `E11-8` Passo `test` nel workflow `deploy.yml` — build fallisce se i test non passano
+- 🔲 `E11-4` Test E2E Playwright (login flow + add chapter) — richiede Firebase test env
+- 🔲 `E11-9` Audit Lighthouse (performance, a11y, SEO)
 
 ---
 
@@ -303,5 +308,5 @@
 | E8 | Impostazioni | ✅ Quasi completo |
 | E9 | Zustand Stores | ✅ Completo |
 | E10 | Utilities & Helpers | ✅ Completo |
-| E11 | Testing & QA | 🔲 Non iniziato |
+| E11 | Testing & QA | ✅ Quasi completo (mancano E2E e Lighthouse) |
 | E12 | Polish & UX | 🔲 Parziale |
