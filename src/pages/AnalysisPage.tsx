@@ -207,8 +207,9 @@ export default function AnalysisPage() {
   const [selectedId, setSelectedId] = useState<string>('')
   const [activeTab, setActiveTab] = useState<Tab>('strengths')
   const [triggering, setTriggering] = useState(false)
-  // Correzioni
-  const [selectedCorrections, setSelectedCorrections] = useState<Set<number>>(new Set())
+  // Correzioni — 3 stati: accettata / rifiutata / da rivedere (default)
+  const [acceptedCorrections, setAcceptedCorrections] = useState<Set<number>>(new Set())
+  const [rejectedCorrections, setRejectedCorrections] = useState<Set<number>>(new Set())
   const [isApplying, setIsApplying] = useState(false)
   // Editor inline
   const [editorContent, setEditorContent] = useState('')
@@ -241,7 +242,8 @@ export default function AnalysisPage() {
   // Reset editor + corrections when switching chapter
   useEffect(() => {
     if (selectedId) void loadAnalysis(selectedId)
-    setSelectedCorrections(new Set())
+    setAcceptedCorrections(new Set())
+    setRejectedCorrections(new Set())
     setAppliedChanges([])
     const chapter = chapters.find((c) => c.id === selectedId)
     setEditorContent(chapter?.driveContent ?? '')
@@ -369,7 +371,7 @@ export default function AnalysisPage() {
   }
 
   async function handleApplyCorrections() {
-    if (!selectedChapter || !analysis || selectedCorrections.size === 0) return
+    if (!selectedChapter || !analysis || acceptedCorrections.size === 0) return
     setIsApplying(true)
     isApplyingRef.current = true
     try {
@@ -377,12 +379,10 @@ export default function AnalysisPage() {
       const { content, applied, notFound } = applyCorrectionsToContent(
         baseContent,
         analysis.corrections,
-        selectedCorrections,
+        acceptedCorrections,
       )
-      const accepted = Array.from(selectedCorrections)
-      const rejected = analysis.corrections
-        .map((_, i) => i)
-        .filter((i) => !selectedCorrections.has(i))
+      const accepted = Array.from(acceptedCorrections)
+      const rejected = Array.from(rejectedCorrections)
 
       // Scritture in parallelo per ridurre la latenza
       await Promise.all([
@@ -406,7 +406,8 @@ export default function AnalysisPage() {
         .map((c) => ({original: c!.original, suggested: c!.suggested}))
       setAppliedChanges(changes)
       setEditorContent(content)
-      setSelectedCorrections(new Set())
+      setAcceptedCorrections(new Set())
+      setRejectedCorrections(new Set())
 
       if (notFound.length) {
         toast.success(`${applied} correzioni applicate — ${notFound.length} non trovate nel testo`)
@@ -521,22 +522,45 @@ export default function AnalysisPage() {
     }
   }
 
-  function toggleCorrection(idx: number) {
-    setSelectedCorrections((prev) => {
+  function toggleAccept(idx: number) {
+    setAcceptedCorrections((prev) => {
       const next = new Set(prev)
       if (next.has(idx)) next.delete(idx)
       else next.add(idx)
+      return next
+    })
+    setRejectedCorrections((prev) => {
+      if (!prev.has(idx)) return prev
+      const next = new Set(prev)
+      next.delete(idx)
+      return next
+    })
+  }
+
+  function toggleReject(idx: number) {
+    setRejectedCorrections((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+    setAcceptedCorrections((prev) => {
+      if (!prev.has(idx)) return prev
+      const next = new Set(prev)
+      next.delete(idx)
       return next
     })
   }
 
   function selectAllCorrections() {
     if (!analysis) return
-    setSelectedCorrections(new Set(analysis.corrections.map((_, i) => i)))
+    setAcceptedCorrections(new Set(analysis.corrections.map((_, i) => i)))
+    setRejectedCorrections(new Set())
   }
 
   function deselectAllCorrections() {
-    setSelectedCorrections(new Set())
+    setAcceptedCorrections(new Set())
+    setRejectedCorrections(new Set())
   }
 
   // Chapters with analysis sorted by overall score desc
@@ -830,9 +854,17 @@ export default function AnalysisPage() {
                                 <div className="flex items-center gap-2 rounded-lg border border-emerald-800/30 bg-emerald-900/15 px-3 py-2">
                                   <CheckCheck className="h-3.5 w-3.5 text-emerald-400" />
                                   <span className="text-xs text-emerald-400">
-                                    Correzioni applicate il {new Date(analysis.appliedAt).toLocaleDateString('it-IT')}
-                                    {' '}· {analysis.acceptedCorrections?.length ?? 0} accettate,{' '}
-                                    {analysis.rejectedCorrections?.length ?? 0} rifiutate
+                                    Correzioni revisionate il {new Date(analysis.appliedAt).toLocaleDateString('it-IT')}
+                                    {' '}· {analysis.acceptedCorrections?.length ?? 0} accettate
+                                    {analysis.rejectedCorrections && analysis.rejectedCorrections.length > 0 && (
+                                      <>, {analysis.rejectedCorrections.length} rifiutate</>
+                                    )}
+                                    {(() => {
+                                      const pending = analysis.corrections.length
+                                        - (analysis.acceptedCorrections?.length ?? 0)
+                                        - (analysis.rejectedCorrections?.length ?? 0)
+                                      return pending > 0 ? <>, {pending} da rivedere</> : null
+                                    })()}
                                   </span>
                                 </div>
                               )}
@@ -849,25 +881,35 @@ export default function AnalysisPage() {
                                   className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
                                 >
                                   <CheckCheck className="h-3 w-3" />
-                                  Seleziona tutte
+                                  Accetta tutte
                                 </button>
                                 <button
                                   onClick={deselectAllCorrections}
                                   className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
                                 >
                                   <Square className="h-3 w-3" />
-                                  Deseleziona
+                                  Resetta tutte
                                 </button>
-                                {selectedCorrections.size > 0 && (
+                                {(acceptedCorrections.size > 0 || rejectedCorrections.size > 0) && (
                                   <span className="text-xs text-slate-500">
-                                    {selectedCorrections.size} selezionat{selectedCorrections.size === 1 ? 'a' : 'e'}
+                                    {acceptedCorrections.size > 0 && (
+                                      <span className="text-emerald-500">{acceptedCorrections.size} ✓</span>
+                                    )}
+                                    {acceptedCorrections.size > 0 && rejectedCorrections.size > 0 && <span className="mx-1 text-slate-700">·</span>}
+                                    {rejectedCorrections.size > 0 && (
+                                      <span className="text-red-400">{rejectedCorrections.size} ✗</span>
+                                    )}
+                                    {(() => {
+                                      const pending = analysis!.corrections.length - acceptedCorrections.size - rejectedCorrections.size
+                                      return pending > 0 ? <span className="text-slate-600 ml-1">· {pending} da rivedere</span> : null
+                                    })()}
                                   </span>
                                 )}
                                 <div className="flex-1" />
                                 <button
                                   onClick={() => void handleApplyCorrections()}
                                   disabled={
-                                    selectedCorrections.size === 0 ||
+                                    acceptedCorrections.size === 0 ||
                                     isApplying ||
                                     !selectedChapter?.driveContent
                                   }
@@ -878,41 +920,58 @@ export default function AnalysisPage() {
                                   ) : (
                                     <FileEdit className="h-3 w-3" />
                                   )}
-                                  Applica {selectedCorrections.size > 0 ? selectedCorrections.size : ''} correzioni
+                                  Applica {acceptedCorrections.size > 0 ? acceptedCorrections.size : ''} correzioni
                                 </button>
                               </div>
 
                               {/* Correction list */}
                               {analysis.corrections.map((c, i) => {
-                                const isSelected = selectedCorrections.has(i)
+                                const isAccepted = acceptedCorrections.has(i)
+                                const isRejected = rejectedCorrections.has(i)
                                 const wasAccepted = analysis.acceptedCorrections?.includes(i)
                                 const wasRejected = analysis.rejectedCorrections?.includes(i)
                                 return (
                                   <div
                                     key={i}
-                                    onClick={() => toggleCorrection(i)}
+                                    onClick={() => toggleAccept(i)}
                                     className={cn(
                                       'cursor-pointer rounded-lg border p-4 space-y-3 transition-colors',
-                                      isSelected
-                                        ? 'border-violet-600/50 bg-violet-900/15'
-                                        : wasAccepted
-                                          ? 'border-emerald-700/50 bg-emerald-900/20'
-                                          : wasRejected
-                                            ? 'border-slate-700/40 bg-slate-900/20 opacity-60'
-                                            : 'border-[var(--border)] hover:border-[var(--border-strong)] hover:bg-[var(--overlay)]'
+                                      isAccepted
+                                        ? 'border-emerald-600/50 bg-emerald-900/15'
+                                        : isRejected
+                                          ? 'border-red-800/40 bg-red-950/10 opacity-60'
+                                          : wasAccepted
+                                            ? 'border-emerald-700/30 bg-emerald-900/10'
+                                            : wasRejected
+                                              ? 'border-slate-700/40 bg-slate-900/20 opacity-50'
+                                              : 'border-[var(--border)] hover:border-[var(--border-strong)] hover:bg-[var(--overlay)]'
                                     )}
                                   >
                                     <div className="flex items-center gap-2">
-                                      {/* Checkbox */}
+                                      {/* Accetta checkbox */}
                                       <div
+                                        onClick={(e) => { e.stopPropagation(); toggleAccept(i) }}
                                         className={cn(
                                           'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-                                          isSelected
-                                            ? 'border-violet-500 bg-violet-600'
-                                            : 'border-[var(--border-strong)] bg-transparent'
+                                          isAccepted
+                                            ? 'border-emerald-500 bg-emerald-600'
+                                            : 'border-[var(--border-strong)] bg-transparent hover:border-emerald-600'
                                         )}
                                       >
-                                        {isSelected && <X className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                                        {isAccepted && <CheckCheck className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                                      </div>
+                                      {/* Rifiuta button */}
+                                      <div
+                                        onClick={(e) => { e.stopPropagation(); toggleReject(i) }}
+                                        title={isRejected ? 'Annulla rifiuto' : 'Rifiuta correzione'}
+                                        className={cn(
+                                          'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
+                                          isRejected
+                                            ? 'border-red-500 bg-red-600'
+                                            : 'border-[var(--border-strong)] bg-transparent hover:border-red-600'
+                                        )}
+                                      >
+                                        {isRejected && <X className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
                                       </div>
                                       <span
                                         className={cn(
@@ -922,16 +981,33 @@ export default function AnalysisPage() {
                                       >
                                         {CORRECTION_TYPE_LABELS[c.type] ?? c.type}
                                       </span>
-                                      {wasAccepted && (
+                                      {/* Stato sessione corrente */}
+                                      {isAccepted && (
                                         <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-900/40 border border-emerald-700/50 px-2 py-0.5 text-xs font-medium text-emerald-400">
                                           <CheckCheck className="h-3 w-3" />
-                                          accettata
+                                          da applicare
                                         </span>
                                       )}
-                                      {wasRejected && (
-                                        <span className="ml-auto flex items-center gap-1 rounded-full bg-slate-800/60 border border-slate-700/40 px-2 py-0.5 text-xs text-slate-500">
+                                      {isRejected && (
+                                        <span className="ml-auto flex items-center gap-1 rounded-full bg-red-900/30 border border-red-800/40 px-2 py-0.5 text-xs text-red-400">
                                           <X className="h-3 w-3" />
                                           rifiutata
+                                        </span>
+                                      )}
+                                      {!isAccepted && !isRejected && (
+                                        <span className="ml-auto text-xs text-slate-700 italic">da rivedere</span>
+                                      )}
+                                      {/* Badge storico (dopo apply precedente) */}
+                                      {!isAccepted && !isRejected && wasAccepted && (
+                                        <span className="flex items-center gap-1 rounded-full bg-emerald-900/30 border border-emerald-800/30 px-2 py-0.5 text-xs text-emerald-600">
+                                          <CheckCheck className="h-3 w-3" />
+                                          già accettata
+                                        </span>
+                                      )}
+                                      {!isAccepted && !isRejected && wasRejected && (
+                                        <span className="flex items-center gap-1 rounded-full bg-slate-800/40 border border-slate-700/30 px-2 py-0.5 text-xs text-slate-600">
+                                          <X className="h-3 w-3" />
+                                          già rifiutata
                                         </span>
                                       )}
                                     </div>
