@@ -1,9 +1,8 @@
 @import "tailwindcss";
-@variant dark (&:where(.dark, .dark *));
 
 /* ── Theme tokens ─────────────────────────────────────────────────────────── */
 
-:root, .dark {
+:root {
   color-scheme: dark;
   --bg-base:       #0A0A0F;
   --bg-sidebar:    #0D0D14;
@@ -19,7 +18,7 @@
   --chart-tooltip: #1A1A26;
 }
 
-.light {
+html[data-theme="light"] {
   color-scheme: light;
   --bg-base:       #F4F4F8;
   --bg-sidebar:    #EEEEF4;

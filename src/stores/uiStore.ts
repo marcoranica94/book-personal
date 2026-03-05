@@ -25,8 +25,11 @@ const defaultFilters: KanbanFilters = {
 
 function applyTheme(theme: Theme) {
   const root = document.documentElement
-  root.classList.remove('dark', 'light')
-  root.classList.add(theme)
+  if (theme === 'light') {
+    root.setAttribute('data-theme', 'light')
+  } else {
+    root.removeAttribute('data-theme')
+  }
 }
 
 const storedTheme = (localStorage.getItem('book-theme') as Theme | null) ?? 'dark'

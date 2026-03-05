@@ -1,6 +1,6 @@
 import {useEffect, useState} from 'react'
 import {motion} from 'framer-motion'
-import {AlertTriangle, CheckCircle2, Download, ExternalLink, Folder, Link2, Loader2, LogOut, Package, RefreshCw, Save, Search} from 'lucide-react'
+import {AlertTriangle, CheckCircle2, Download, ExternalLink, Folder, Link2, Loader2, LogOut, Package, RefreshCw, Save, Search, Trash2} from 'lucide-react'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useAuthStore} from '@/stores/authStore'
 import {useChaptersStore} from '@/stores/chaptersStore'
@@ -70,6 +70,7 @@ export default function SettingsPage() {
   const [unlinkedFiles, setUnlinkedFiles] = useState<DriveFile[] | null>(null)
   const [isSearchingUnlinked, setIsSearchingUnlinked] = useState(false)
   const [importingFileId, setImportingFileId] = useState<string | null>(null)
+  const [isResetting, setIsResetting] = useState(false)
 
   useEffect(() => {
     void loadSettings()
@@ -172,6 +173,21 @@ export default function SettingsPage() {
       toast.error('Errore importazione: ' + (err as Error).message)
     } finally {
       setImportingFileId(null)
+    }
+  }
+
+  async function handleResetChapters() {
+    if (!confirm('Sei sicuro? Questa operazione elimina TUTTI i capitoli da Firebase. Non è reversibile.')) return
+    if (!confirm(`Conferma: verranno eliminati ${chapters.length} capitoli. Continuare?`)) return
+    setIsResetting(true)
+    try {
+      await Promise.all(chapters.map((c) => chaptersService.deleteChapter(c.id)))
+      await loadChapters()
+      toast.success('Tutti i capitoli eliminati da Firebase')
+    } catch (err) {
+      toast.error('Errore reset: ' + (err as Error).message)
+    } finally {
+      setIsResetting(false)
     }
   }
 
@@ -522,6 +538,21 @@ export default function SettingsPage() {
             <DriveConnectButton />
           </div>
         )}
+      </Section>
+
+      {/* Reset dati */}
+      <Section title="Reset Dati" delay={0.18}>
+        <p className="text-sm text-slate-400">
+          Elimina tutti i capitoli da Firebase (Firestore). Operazione irreversibile — i file su Google Drive non vengono toccati.
+        </p>
+        <button
+          onClick={() => void handleResetChapters()}
+          disabled={isResetting || chapters.length === 0}
+          className="flex items-center gap-2 rounded-lg border border-red-800/40 px-4 py-2 text-sm text-red-400 transition-colors hover:bg-red-900/20 hover:text-red-300 disabled:opacity-50"
+        >
+          {isResetting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          {isResetting ? 'Reset in corso...' : `Elimina tutti i capitoli (${chapters.length})`}
+        </button>
       </Section>
 
       {/* Data export */}

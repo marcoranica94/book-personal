@@ -20,8 +20,11 @@ export default function App() {
   const {theme} = useUIStore()
 
   useEffect(() => {
-    document.documentElement.classList.remove('dark', 'light')
-    document.documentElement.classList.add(theme)
+    if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light')
+    } else {
+      document.documentElement.removeAttribute('data-theme')
+    }
   }, [theme])
 
   useEffect(() => {
