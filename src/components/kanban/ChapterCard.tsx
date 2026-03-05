@@ -45,6 +45,7 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
     >
       <motion.div
         whileHover={{ y: -1 }}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(chapter) }}
         className={cn(
           'relative rounded-xl border bg-[var(--bg-card)] p-4 shadow-sm transition-shadow',
           'border-[var(--border)] hover:border-[var(--border-strong)] hover:shadow-lg hover:shadow-black/30',
@@ -78,11 +79,8 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
         </div>
 
         <div>
-          {/* Chapter number + priority */}
+          {/* Priority */}
           <div className="mb-2 flex items-center gap-2">
-            <span className="text-xs font-medium text-slate-600">
-              Cap. {String(chapter.number).padStart(2, '0')}
-            </span>
             <span className={cn('flex items-center gap-1 text-xs font-medium', prio.color)}>
               <span className={cn('h-1.5 w-1.5 rounded-full', prio.dot)} />
               {prio.label}

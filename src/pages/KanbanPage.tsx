@@ -275,7 +275,7 @@ export default function KanbanPage() {
             onDragOver={onDragOver}
             onDragEnd={onDragEnd}
           >
-            <div className="flex gap-2">
+            <div className="flex gap-2 h-full">
               {KANBAN_COLUMNS_ORDER.map((status) => (
                 <KanbanColumn
                   key={status}
