@@ -4,7 +4,7 @@ import {DRIVE_ENCRYPTION_KEY_B64, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET} from '
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const DRIVE_API_URL = 'https://www.googleapis.com/drive/v3'
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive'
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents'
 
 const CV_KEY = 'drive_code_verifier'
 const STATE_KEY = 'drive_oauth_state'

@@ -18,6 +18,7 @@ import {getValidAccessToken} from '@/services/driveAuthService'
 import {getDriveFileContent} from '@/services/driveFileService'
 import {parseYamlFrontmatter} from '@/services/driveParserService'
 import {pushToDrive} from '@/services/driveSyncService'
+import {applyTextReplacements} from '@/services/googleDocsService'
 import {GITHUB_REPO_NAME, GITHUB_REPO_OWNER} from '@/utils/constants'
 import {formatRelativeDate} from '@/utils/formatters'
 import {cn} from '@/utils/cn'
@@ -331,6 +332,7 @@ export default function AnalysisPage() {
   const analysis = selectedId ? (analyses[selectedId] ?? null) : null
   const isDirty = editorContent !== (selectedChapter?.driveContent ?? '')
   const isPendingPush = isDirty || selectedChapter?.syncStatus === SyncStatus.PENDING_PUSH
+  const isGoogleDoc = selectedChapter?.driveMimeType === 'application/vnd.google-apps.document'
 
   async function triggerAnalysis(chapterId: string) {
     const hasExisting =
@@ -443,19 +445,51 @@ export default function AnalysisPage() {
     if (!selectedChapter || !driveConfig || !user) return
     setIsPushingToDrive(true)
     try {
-      await chaptersService.updateChapter(selectedChapter.id, {
-        driveContent: editorContent,
-        currentChars: editorContent.length,
-        wordCount: editorContent.split(/\s+/).filter(Boolean).length,
-        syncStatus: SyncStatus.PENDING_PUSH,
-        syncSource: SyncSource.MANUAL,
-      })
-      const updated = {...selectedChapter, driveContent: editorContent}
-      await pushToDrive(updated, driveConfig, user.uid, (tokens) => patchTokens(user.uid, tokens))
-      await loadChapters()
-      toast.success('Testo salvato su Drive')
+      const {accessToken, updatedTokens} = await getValidAccessToken(driveConfig, user.uid)
+      if (updatedTokens) await patchTokens(user.uid, updatedTokens)
+
+      if (isGoogleDoc && selectedChapter.driveFileId) {
+        // Google Doc: usa Google Docs API replaceAllText per preservare font/grassetti/spaziatura
+        // Applica solo le modifiche accettate (appliedChanges) oppure le modifiche manuali
+        const replacements =
+          appliedChanges.length > 0
+            ? appliedChanges
+            : [{original: selectedChapter.driveContent ?? '', suggested: editorContent}]
+        const filtered = replacements.filter(
+          ({original, suggested}) => original && original !== suggested,
+        )
+        const {applied} = await applyTextReplacements(accessToken, selectedChapter.driveFileId, filtered)
+        await chaptersService.updateChapter(selectedChapter.id, {
+          driveContent: editorContent,
+          currentChars: editorContent.length,
+          wordCount: editorContent.split(/\s+/).filter(Boolean).length,
+          syncStatus: SyncStatus.SYNCED,
+          syncSource: SyncSource.DASHBOARD,
+          lastSyncAt: new Date().toISOString(),
+        })
+        await loadChapters()
+        toast.success(`${applied} sostituzion${applied === 1 ? 'e' : 'i'} applicat${applied === 1 ? 'a' : 'e'} nel Doc — font e formattazione preservati`)
+      } else {
+        // File markdown: upload completo
+        await chaptersService.updateChapter(selectedChapter.id, {
+          driveContent: editorContent,
+          currentChars: editorContent.length,
+          wordCount: editorContent.split(/\s+/).filter(Boolean).length,
+          syncStatus: SyncStatus.PENDING_PUSH,
+          syncSource: SyncSource.MANUAL,
+        })
+        const updated = {...selectedChapter, driveContent: editorContent}
+        await pushToDrive(updated, driveConfig, user.uid, (tokens) => patchTokens(user.uid, tokens))
+        await loadChapters()
+        toast.success('Testo salvato su Drive')
+      }
     } catch (err) {
-      toast.error('Errore salvataggio Drive: ' + (err as Error).message)
+      const msg = (err as Error).message
+      if (msg.includes('403') || msg.includes('insufficient')) {
+        toast.error('Permesso negato — disconnetti e riconnetti Drive per aggiornare le autorizzazioni')
+      } else {
+        toast.error('Errore salvataggio Drive: ' + msg)
+      }
     } finally {
       setIsPushingToDrive(false)
     }
