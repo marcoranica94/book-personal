@@ -117,7 +117,7 @@ function ItemModal({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="mb-5 text-sm leading-relaxed text-slate-200">{text}</p>
+        <p className="mb-5 text-sm leading-relaxed text-[var(--text-primary)]">{text}</p>
         <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Come applicarlo</p>
           <ul className="space-y-2 text-sm text-slate-400">

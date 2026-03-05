@@ -350,7 +350,7 @@ export default function DashboardPage() {
             {dueSoon.map((c) => (
               <div key={c.id} className="flex items-center gap-3 text-sm">
                 <span className="text-slate-500">Cap. {c.number}</span>
-                <span className="flex-1 font-medium text-slate-200">{c.title}</span>
+                <span className="flex-1 font-medium text-[var(--text-primary)]">{c.title}</span>
                 <span className="text-amber-400">{formatDate(c.dueDate)}</span>
               </div>
             ))}

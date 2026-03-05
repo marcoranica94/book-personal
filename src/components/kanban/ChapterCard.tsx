@@ -88,7 +88,7 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
           </div>
 
           {/* Title */}
-          <h3 className="mb-3 line-clamp-2 text-sm font-semibold leading-snug text-slate-100">
+          <h3 className="mb-3 line-clamp-2 text-sm font-semibold leading-snug text-[var(--text-primary)]">
             {chapter.title}
           </h3>
 

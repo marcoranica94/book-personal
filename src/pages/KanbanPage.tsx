@@ -323,7 +323,7 @@ export default function KanbanPage() {
                     <span className="w-8 shrink-0 text-xs font-medium text-slate-600">
                       {String(chapter.number).padStart(2, '0')}
                     </span>
-                    <span className="flex-1 text-sm font-medium text-slate-200">{chapter.title}</span>
+                    <span className="flex-1 text-sm font-medium text-[var(--text-primary)]">{chapter.title}</span>
                     <span className="text-xs text-slate-500">{chapter.currentChars.toLocaleString('it')} car.</span>
                     <span className={cn(
                       'rounded-full px-2.5 py-0.5 text-xs font-medium',
