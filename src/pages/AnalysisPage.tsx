@@ -6,6 +6,7 @@ import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
 import {useDriveStore} from '@/stores/driveStore'
 import {useAuthStore} from '@/stores/authStore'
+import {useSettingsStore} from '@/stores/settingsStore'
 import {toast} from '@/stores/toastStore'
 import type {AnalysisCorrection} from '@/types'
 import {getScoreColor, SyncSource, SyncStatus} from '@/types'
@@ -170,6 +171,7 @@ export default function AnalysisPage() {
   const {analyses, loadAnalysis, loadAllAnalyses, isLoading} = useAnalysisStore()
   const {config: driveConfig, patchTokens} = useDriveStore()
   const {user} = useAuthStore()
+  const {loadSettings} = useSettingsStore()
   const [selectedId, setSelectedId] = useState<string>('')
   const [activeTab, setActiveTab] = useState<Tab>('strengths')
   const [triggering, setTriggering] = useState(false)
@@ -187,7 +189,8 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     void loadChapters()
-  }, [loadChapters])
+    void loadSettings()
+  }, [loadChapters, loadSettings])
 
   useEffect(() => {
     if (chapters.length > 0) void loadAllAnalyses()

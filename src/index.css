@@ -54,6 +54,20 @@
   --color-cyan-400: #0E6780;
   --color-blue-300: #1D4ED8;
   --color-blue-400: #1E40AF;
+
+  /* Shades scure (800/900/950): invertite in chiare per bg-*/900/X su sfondo bianco */
+  --color-amber-800:  #FDE68A;
+  --color-amber-900:  #FEF3C7;
+  --color-red-800:    #FECACA;
+  --color-red-900:    #FEE2E2;
+  --color-red-950:    #FFF1F1;
+  --color-emerald-800: #A7F3D0;
+  --color-emerald-900: #D1FAE5;
+  --color-emerald-950: #ECFDF5;
+  --color-violet-800: #DDD6FE;
+  --color-violet-900: #EDE9FE;
+  --color-blue-800:   #BFDBFE;
+  --color-blue-900:   #DBEAFE;
 }
 
 @layer base {

@@ -281,57 +281,65 @@ export default function DashboardPage() {
                   <th className="px-5 py-2.5 text-left font-medium w-40">Avanzamento</th>
                 </tr>
               </thead>
-              <tbody>
-                {[...chapters]
+              {(() => {
+                const filtered = [...chapters]
                   .filter((c) => c.title.toLowerCase().startsWith('capitolo'))
                   .sort((a, b) => a.title.localeCompare(b.title, 'it', { numeric: true }))
-                  .map((c) => {
-                    const cartelle = charsToPages(c.currentChars, settings.charsPerPage)
-                    const targetCartelle = charsToPages(c.targetChars, settings.charsPerPage)
-                    const pct = Math.min(100, c.targetChars > 0 ? Math.round((c.currentChars / c.targetChars) * 100) : 0)
-                    return (
-                      <tr key={c.id} className="border-b border-[var(--border)] last:border-0">
-                        <td className="px-5 py-3 text-xs text-slate-600 tabular-nums">
-                          {String(c.number).padStart(2, '0')}
-                        </td>
-                        <td className="px-3 py-3 text-slate-300 max-w-[180px] truncate">{c.title}</td>
-                        <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-500">
-                          {c.currentChars.toLocaleString('it-IT')}
+                const totalCharsFiltered = filtered.reduce((sum, c) => sum + c.currentChars, 0)
+                const totalPagesFiltered = charsToPages(totalCharsFiltered, settings.charsPerPage)
+                return (
+                  <>
+                    <tbody>
+                      {filtered.map((c) => {
+                        const cartelle = charsToPages(c.currentChars, settings.charsPerPage)
+                        const targetCartelle = charsToPages(c.targetChars, settings.charsPerPage)
+                        const pct = Math.min(100, c.targetChars > 0 ? Math.round((c.currentChars / c.targetChars) * 100) : 0)
+                        return (
+                          <tr key={c.id} className="border-b border-[var(--border)] last:border-0">
+                            <td className="px-5 py-3 text-xs text-slate-600 tabular-nums">
+                              {String(c.number).padStart(2, '0')}
+                            </td>
+                            <td className="px-3 py-3 text-[var(--text-primary)] max-w-[180px] truncate">{c.title}</td>
+                            <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-500">
+                              {c.currentChars.toLocaleString('it-IT')}
+                            </td>
+                            <td className="px-3 py-3 text-right tabular-nums">
+                              <span className="font-semibold text-cyan-400">{cartelle}</span>
+                              <span className="text-xs text-slate-600">/{targetCartelle}</span>
+                            </td>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 rounded-full bg-[var(--overlay)] overflow-hidden">
+                                  <div
+                                    className={cn(
+                                      'h-full rounded-full transition-all',
+                                      pct >= 100 ? 'bg-emerald-500' : pct >= 60 ? 'bg-cyan-500' : pct >= 30 ? 'bg-violet-500' : 'bg-slate-600'
+                                    )}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-slate-600 w-8 text-right tabular-nums">{pct}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-[var(--border)] bg-[var(--overlay)]">
+                        <td colSpan={2} className="px-5 py-3 text-xs font-semibold text-slate-400">Totale</td>
+                        <td className="px-3 py-3 text-right text-xs tabular-nums font-semibold text-slate-400">
+                          {totalCharsFiltered.toLocaleString('it-IT')}
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">
-                          <span className="font-semibold text-cyan-400">{cartelle}</span>
-                          <span className="text-xs text-slate-600">/{targetCartelle}</span>
+                          <span className="font-bold text-cyan-400">{totalPagesFiltered}</span>
                         </td>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 rounded-full bg-[var(--overlay)] overflow-hidden">
-                              <div
-                                className={cn(
-                                  'h-full rounded-full transition-all',
-                                  pct >= 100 ? 'bg-emerald-500' : pct >= 60 ? 'bg-cyan-500' : pct >= 30 ? 'bg-violet-500' : 'bg-slate-600'
-                                )}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                            <span className="text-xs text-slate-600 w-8 text-right tabular-nums">{pct}%</span>
-                          </div>
-                        </td>
+                        <td className="px-5 py-3" />
                       </tr>
-                    )
-                  })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-[var(--border)] bg-[var(--overlay)]">
-                  <td colSpan={2} className="px-5 py-3 text-xs font-semibold text-slate-400">Totale</td>
-                  <td className="px-3 py-3 text-right text-xs tabular-nums font-semibold text-slate-400">
-                    {chars.toLocaleString('it-IT')}
-                  </td>
-                  <td className="px-3 py-3 text-right tabular-nums">
-                    <span className="font-bold text-cyan-400">{pages}</span>
-                  </td>
-                  <td className="px-5 py-3" />
-                </tr>
-              </tfoot>
+                    </tfoot>
+                  </>
+                )
+              })()}
             </table>
           </div>
         </motion.div>
