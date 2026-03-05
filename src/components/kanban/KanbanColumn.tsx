@@ -39,7 +39,7 @@ export default function KanbanColumn({
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex w-72 shrink-0 flex-col"
+      className="flex w-48 shrink-0 flex-col"
     >
       {/* Column header */}
       <div className="mb-3 flex items-center justify-between px-1">

@@ -284,7 +284,7 @@ export default function DashboardPage() {
               <tbody>
                 {[...chapters]
                   .filter((c) => c.title.toLowerCase().startsWith('capitolo'))
-                  .sort((a, b) => a.title.localeCompare(b.title, 'it'))
+                  .sort((a, b) => a.title.localeCompare(b.title, 'it', { numeric: true }))
                   .map((c) => {
                     const cartelle = charsToPages(c.currentChars, settings.charsPerPage)
                     const targetCartelle = charsToPages(c.targetChars, settings.charsPerPage)

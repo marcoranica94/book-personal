@@ -262,7 +262,7 @@ export default function KanbanPage() {
       </div>
 
       {/* Board / List */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-3">
         {isLoading ? (
           <div className="flex h-full items-center justify-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
@@ -275,7 +275,7 @@ export default function KanbanPage() {
             onDragOver={onDragOver}
             onDragEnd={onDragEnd}
           >
-            <div className="flex gap-5">
+            <div className="flex gap-2">
               {KANBAN_COLUMNS_ORDER.map((status) => (
                 <KanbanColumn
                   key={status}
