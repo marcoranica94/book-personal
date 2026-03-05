@@ -451,25 +451,69 @@ export default function AnalysisPage() {
 
       if (isGoogleDoc && selectedChapter.driveFileId) {
         // Google Doc: usa Google Docs API replaceAllText per preservare font/grassetti/spaziatura
-        // Applica solo le modifiche accettate (appliedChanges) oppure le modifiche manuali
-        const replacements =
-          appliedChanges.length > 0
-            ? appliedChanges
-            : [{original: selectedChapter.driveContent ?? '', suggested: editorContent}]
+        let replacements: Array<{original: string; suggested: string}>
+        let analysisUpdate: Parameters<typeof patchAnalysis>[1] | null = null
+
+        if (appliedChanges.length > 0) {
+          // Flusso 2-step: l'utente ha già cliccato "Applica N correzioni"
+          replacements = appliedChanges
+        } else if (acceptedCorrections.size > 0 && analysis?.corrections) {
+          // Flusso diretto: l'utente ha accettato correzioni e salva senza passare per "Applica"
+          replacements = Array.from(acceptedCorrections)
+            .map((i) => analysis!.corrections[i])
+            .filter(Boolean)
+            .map((c) => ({original: c.original, suggested: c.suggested}))
+          // Salviamo anche lo stato delle correzioni sull'analisi
+          analysisUpdate = {
+            acceptedCorrections: Array.from(acceptedCorrections),
+            rejectedCorrections: Array.from(rejectedCorrections),
+            appliedAt: new Date().toISOString(),
+          }
+        } else {
+          // Nessuna correzione selezionata: salva il contenuto dell'editor così com'è
+          replacements = [{original: selectedChapter.driveContent ?? '', suggested: editorContent}]
+        }
+
         const filtered = replacements.filter(
           ({original, suggested}) => original && original !== suggested,
         )
         const {applied} = await applyTextReplacements(accessToken, selectedChapter.driveFileId, filtered)
-        await chaptersService.updateChapter(selectedChapter.id, {
-          driveContent: editorContent,
-          currentChars: editorContent.length,
-          wordCount: editorContent.split(/\s+/).filter(Boolean).length,
-          syncStatus: SyncStatus.SYNCED,
-          syncSource: SyncSource.DASHBOARD,
-          lastSyncAt: new Date().toISOString(),
-        })
+
+        const newContent = (() => {
+          if (appliedChanges.length > 0) return editorContent
+          if (acceptedCorrections.size > 0 && analysis?.corrections) {
+            // Applica le stesse sostituzioni al driveContent locale per tenerlo in sync
+            let content = selectedChapter.driveContent ?? ''
+            for (const {original, suggested} of filtered) {
+              content = content.replace(original, suggested)
+            }
+            return content
+          }
+          return editorContent
+        })()
+
+        await Promise.all([
+          chaptersService.updateChapter(selectedChapter.id, {
+            driveContent: newContent,
+            currentChars: newContent.length,
+            wordCount: newContent.split(/\s+/).filter(Boolean).length,
+            syncStatus: SyncStatus.SYNCED,
+            syncSource: SyncSource.DASHBOARD,
+            lastSyncAt: new Date().toISOString(),
+          }),
+          ...(analysisUpdate ? [patchAnalysis(selectedChapter.id, analysisUpdate)] : []),
+        ])
         await loadChapters()
-        toast.success(`${applied} sostituzion${applied === 1 ? 'e' : 'i'} applicat${applied === 1 ? 'a' : 'e'} nel Doc — font e formattazione preservati`)
+        if (applied === 0 && filtered.length === 0 && acceptedCorrections.size === 0) {
+          toast.info('Nessuna modifica da inviare al Doc')
+        } else if (applied === 0 && filtered.length > 0) {
+          toast.warning(`Testo non trovato nel Doc per ${filtered.length} correzioni — verifica che il contenuto sia sincronizzato`)
+        } else {
+          toast.success(`${applied} sostituzion${applied === 1 ? 'e' : 'i'} applicat${applied === 1 ? 'a' : 'e'} nel Doc — font e formattazione preservati`)
+        }
+        setAcceptedCorrections(new Set())
+        setRejectedCorrections(new Set())
+        setAppliedChanges([])
       } else {
         // File markdown: upload completo
         await chaptersService.updateChapter(selectedChapter.id, {
