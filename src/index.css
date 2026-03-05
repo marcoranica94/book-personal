@@ -40,6 +40,20 @@
   --color-slate-400: #516070;
   --color-slate-500: #3D4F5F;
   --color-slate-600: #2E3D4A;
+
+  /* Colori accent: versioni più scure — le "300/400" sono nate per testo su sfondo scuro */
+  --color-violet-300: #6D28D9;
+  --color-violet-400: #5B21B6;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #065F46;
+  --color-amber-300: #B45309;
+  --color-amber-400: #92400E;
+  --color-red-300: #B91C1C;
+  --color-red-400: #991B1B;
+  --color-cyan-300: #0E7490;
+  --color-cyan-400: #0E6780;
+  --color-blue-300: #1D4ED8;
+  --color-blue-400: #1E40AF;
 }
 
 @layer base {
