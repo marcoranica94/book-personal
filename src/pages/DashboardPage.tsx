@@ -194,7 +194,7 @@ export default function DashboardPage() {
           <KpiCard icon={FileText} label="Parole totali" value={formatNumber(animWords)} color="violet" delay={0.1} />
         </div>
         <div className="col-span-2 sm:col-span-2 lg:col-span-2">
-          <KpiCard icon={BookOpen} label="Pagine stimate" value={String(animPages)} sub={`chars/${settings.charsPerPage}`} color="cyan" delay={0.15} />
+          <KpiCard icon={BookOpen} label="Cartelle" value={String(animPages)} sub={`car. incl. spazi ÷ ${settings.charsPerPage}`} color="cyan" delay={0.15} />
         </div>
         <div className="col-span-2 sm:col-span-2 lg:col-span-2">
           <KpiCard icon={CheckCircle2} label="Cap. completati" value={`${done}/${chapters.length}`} color="emerald" delay={0.2} />
@@ -265,6 +265,84 @@ export default function DashboardPage() {
           </div>
         </ChartCard>
       </motion.div>
+
+      {/* Tabella cartelle per capitolo */}
+      {chapters.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
+          className="rounded-xl border border-white/8 bg-[#12121A]"
+        >
+          <div className="border-b border-white/8 px-5 py-4 flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Cartelle per capitolo
+            </h3>
+            <span className="text-xs text-slate-600">car. incl. spazi ÷ {settings.charsPerPage}</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/6 text-xs text-slate-600">
+                  <th className="px-5 py-2.5 text-left font-medium w-10">#</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Titolo</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Caratteri</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Cartelle</th>
+                  <th className="px-5 py-2.5 text-left font-medium w-40">Avanzamento</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...chapters]
+                  .sort((a, b) => a.number - b.number)
+                  .map((c) => {
+                    const cartelle = charsToPages(c.currentChars, settings.charsPerPage)
+                    const targetCartelle = charsToPages(c.targetChars, settings.charsPerPage)
+                    const pct = Math.min(100, c.targetChars > 0 ? Math.round((c.currentChars / c.targetChars) * 100) : 0)
+                    return (
+                      <tr key={c.id} className="border-b border-white/4 last:border-0">
+                        <td className="px-5 py-3 text-xs text-slate-600 tabular-nums">
+                          {String(c.number).padStart(2, '0')}
+                        </td>
+                        <td className="px-3 py-3 text-slate-300 max-w-[180px] truncate">{c.title}</td>
+                        <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-500">
+                          {c.currentChars.toLocaleString('it-IT')}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          <span className="font-semibold text-cyan-400">{cartelle}</span>
+                          <span className="text-xs text-slate-600">/{targetCartelle}</span>
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 rounded-full bg-white/8 overflow-hidden">
+                              <div
+                                className={cn(
+                                  'h-full rounded-full transition-all',
+                                  pct >= 100 ? 'bg-emerald-500' : pct >= 60 ? 'bg-cyan-500' : pct >= 30 ? 'bg-violet-500' : 'bg-slate-600'
+                                )}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-slate-600 w-8 text-right tabular-nums">{pct}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-white/8 bg-white/2">
+                  <td colSpan={2} className="px-5 py-3 text-xs font-semibold text-slate-400">Totale</td>
+                  <td className="px-3 py-3 text-right text-xs tabular-nums font-semibold text-slate-400">
+                    {chars.toLocaleString('it-IT')}
+                  </td>
+                  <td className="px-3 py-3 text-right tabular-nums">
+                    <span className="font-bold text-cyan-400">{pages}</span>
+                  </td>
+                  <td className="px-5 py-3" />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </motion.div>
+      )}
 
       {/* Due soon + empty state */}
       {dueSoon.length > 0 && (
