@@ -114,6 +114,7 @@ export interface BookSettings {
   charsPerPage: number
   wordsPerPage: number
   wordsPerMinuteReading: number
+  githubPat?: string
 }
 
 export interface StatsSnapshot {

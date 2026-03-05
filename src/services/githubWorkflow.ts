@@ -1,6 +1,6 @@
 // Servizio minimale per triggerare GitHub Actions workflow_dispatch.
 // Richiede un GitHub Personal Access Token (scope: repo o workflow).
-// Il token viene letto da localStorage (chiave: book_github_pat).
+// Il token viene persistito su Firestore (settings.githubPat) e cachato in localStorage.
 
 const LS_PAT_KEY = 'book_github_pat'
 

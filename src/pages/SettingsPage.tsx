@@ -14,7 +14,7 @@ import ConflictResolver from '@/components/drive/ConflictResolver'
 import {fullSync} from '@/services/driveSyncService'
 import {getStoredPat, setStoredPat} from '@/services/githubWorkflow'
 import {getValidAccessToken} from '@/services/driveAuthService'
-import {listDriveFiles, getDriveFileContent} from '@/services/driveFileService'
+import {getDriveFileContent, listDriveFiles} from '@/services/driveFileService'
 import {parseDriveFileToChapter} from '@/services/driveParserService'
 import * as chaptersService from '@/services/chaptersService'
 import {formatRelativeDate} from '@/utils/formatters'
@@ -62,7 +62,7 @@ export default function SettingsPage() {
   const {config: driveConfig, isConnected: driveConnected, load: loadDrive, patchTokens} = useDriveStore()
   const [form, setForm] = useState<BookSettings>(settings)
   const [saved, setSaved] = useState(false)
-  const [pat, setPat] = useState(getStoredPat)
+  const [pat, setPat] = useState(() => settings.githubPat ?? getStoredPat())
   const [patSaved, setPatSaved] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [lastSyncResult, setLastSyncResult] = useState<string | null>(null)
@@ -222,7 +222,12 @@ export default function SettingsPage() {
                 placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
               />
               <button
-                onClick={() => { setStoredPat(pat); setPatSaved(true); setTimeout(() => setPatSaved(false), 2000) }}
+                onClick={async () => {
+                  setStoredPat(pat)
+                  await saveSettings({...settings, githubPat: pat})
+                  setPatSaved(true)
+                  setTimeout(() => setPatSaved(false), 2000)
+                }}
                 className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors"
               >
                 {patSaved ? <CheckCircle2 className="h-4 w-4" /> : <Save className="h-4 w-4" />}

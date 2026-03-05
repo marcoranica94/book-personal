@@ -3,6 +3,7 @@ import * as settingsService from '@/services/settingsService'
 import type {BookSettings} from '@/types'
 import {DEFAULT_BOOK_SETTINGS} from '@/types'
 import {toast} from '@/stores/toastStore'
+import {setStoredPat} from '@/services/githubWorkflow'
 
 interface SettingsStore {
   settings: BookSettings
@@ -25,6 +26,8 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     set({isLoading: true, error: null})
     try {
       const settings = await settingsService.getSettings()
+      // Sincronizza PAT da Firestore a localStorage per uso immediato
+      if (settings.githubPat) setStoredPat(settings.githubPat)
       set({settings, isLoading: false})
     } catch (err) {
       const msg = (err as Error).message
