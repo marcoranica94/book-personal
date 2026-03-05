@@ -10,7 +10,8 @@ import {useSettingsStore} from '@/stores/settingsStore'
 import {toast} from '@/stores/toastStore'
 import type {AnalysisCorrection} from '@/types'
 import {getScoreColor, SyncSource, SyncStatus} from '@/types'
-import {triggerWorkflow} from '@/services/githubWorkflow'
+import type {WorkflowRunInfo} from '@/services/githubWorkflow'
+import {getLatestWorkflowRun, triggerWorkflow} from '@/services/githubWorkflow'
 import {patchAnalysis} from '@/services/analysisService'
 import * as chaptersService from '@/services/chaptersService'
 import {getValidAccessToken} from '@/services/driveAuthService'
@@ -48,6 +49,35 @@ const CORRECTION_TYPE_COLORS: Record<string, string> = {
 }
 
 type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor'
+
+// ─── Pending analysis (localStorage persistence) ──────────────────────────────
+
+const LS_PENDING_KEY = 'book_pending_analysis'
+
+interface PendingAnalysis {
+  chapterId: string
+  chapterTitle: string
+  triggeredAt: string
+}
+
+function loadPending(): PendingAnalysis | null {
+  try {
+    const raw = localStorage.getItem(LS_PENDING_KEY)
+    return raw ? (JSON.parse(raw) as PendingAnalysis) : null
+  } catch { return null }
+}
+
+function savePending(p: PendingAnalysis | null) {
+  if (p) localStorage.setItem(LS_PENDING_KEY, JSON.stringify(p))
+  else localStorage.removeItem(LS_PENDING_KEY)
+}
+
+function formatElapsed(secs: number): string {
+  if (secs < 60) return `${secs}s`
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
+  return `${m}m ${s > 0 ? ` ${s}s` : ''}`
+}
 
 // ─── Correzione applicazione ──────────────────────────────────────────────────
 
@@ -170,7 +200,7 @@ function ScoreBar({label, value}: {label: string; value: number}) {
 export default function AnalysisPage() {
   const {chapters, loadChapters} = useChaptersStore()
   const {analyses, loadAnalysis, loadAllAnalyses, isLoading} = useAnalysisStore()
-  const {config: driveConfig, patchTokens} = useDriveStore()
+  const {config: driveConfig, patchTokens, load: loadDrive} = useDriveStore()
   const {user} = useAuthStore()
   const {loadSettings} = useSettingsStore()
   const [selectedId, setSelectedId] = useState<string>('')
@@ -186,28 +216,116 @@ export default function AnalysisPage() {
   const [isPushingToDrive, setIsPushingToDrive] = useState(false)
   const [appliedChanges, setAppliedChanges] = useState<Array<{original: string; suggested: string}>>([])
   const [itemDetailModal, setItemDetailModal] = useState<{type: 'weaknesses' | 'suggestions'; text: string} | null>(null)
+  // Pending analysis progress
+  const [pendingAnalysis, setPendingAnalysis] = useState<PendingAnalysis | null>(() => loadPending())
+  const [workflowRun, setWorkflowRun] = useState<WorkflowRunInfo | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const editorRef = useRef<HTMLTextAreaElement>(null)
+  const isApplyingRef = useRef(false)
 
   useEffect(() => {
     void loadChapters()
     void loadSettings()
   }, [loadChapters, loadSettings])
 
+  // Load drive config if not already in store
+  useEffect(() => {
+    if (user && !driveConfig) void loadDrive(user.uid)
+  }, [user, driveConfig, loadDrive])
+
   useEffect(() => {
     if (chapters.length > 0) void loadAllAnalyses()
   }, [chapters, loadAllAnalyses])
 
+  // Reset editor + corrections when switching chapter
   useEffect(() => {
     if (selectedId) void loadAnalysis(selectedId)
     setSelectedCorrections(new Set())
     setAppliedChanges([])
-  }, [selectedId, loadAnalysis])
-
-  useEffect(() => {
     const chapter = chapters.find((c) => c.id === selectedId)
     setEditorContent(chapter?.driveContent ?? '')
-    setAppliedChanges([])
-  }, [selectedId, chapters])
+  }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync editor content when driveContent changes (e.g. after Drive pull)
+  // but not while we're in the middle of applying corrections
+  useEffect(() => {
+    if (isApplyingRef.current) return
+    const chapter = chapters.find((c) => c.id === selectedId)
+    if (chapter) setEditorContent(chapter.driveContent ?? '')
+  }, [chapters, selectedId])
+
+  // ─── Analysis progress polling ────────────────────────────────────────────
+  useEffect(() => {
+    if (!pendingAnalysis) {
+      setElapsedSeconds(0)
+      return
+    }
+    // Capture in local const so TypeScript/closures treat it as non-null
+    const pending = pendingAnalysis
+    setElapsedSeconds(Math.floor((Date.now() - new Date(pending.triggeredAt).getTime()) / 1000))
+    const tickId = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - new Date(pending.triggeredAt).getTime()) / 1000))
+    }, 1000)
+
+    async function poll() {
+      try {
+        const run = await getLatestWorkflowRun(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'ai-analysis.yml')
+        if (run) setWorkflowRun(run)
+
+        if (pending.chapterId === 'all') {
+          await loadAllAnalyses()
+        } else {
+          await loadAnalysis(pending.chapterId)
+        }
+        const freshAnalyses = useAnalysisStore.getState().analyses
+        const isComplete =
+          pending.chapterId === 'all'
+            ? Object.values(freshAnalyses).some(
+                (a) => a && new Date(a.analyzedAt) > new Date(pending.triggeredAt),
+              )
+            : !!freshAnalyses[pending.chapterId] &&
+              new Date(freshAnalyses[pending.chapterId]!.analyzedAt) > new Date(pending.triggeredAt)
+
+        if (isComplete) {
+          toast.success(`Analisi completata per "${pending.chapterTitle}"!`)
+          if (pending.chapterId !== 'all') {
+            setSelectedId(pending.chapterId)
+            setActiveTab('strengths')
+            window.scrollTo({top: 0, behavior: 'smooth'})
+          }
+          savePending(null)
+          setPendingAnalysis(null)
+          setWorkflowRun(null)
+          return
+        }
+
+        if (run?.conclusion === 'failure') {
+          toast.error(`Analisi fallita per "${pending.chapterTitle}"`)
+          savePending(null)
+          setPendingAnalysis(null)
+          setWorkflowRun(null)
+          return
+        }
+
+        // Timeout after 10 minutes
+        if (Date.now() - new Date(pending.triggeredAt).getTime() > 10 * 60 * 1000) {
+          toast.warning(`Timeout analisi "${pending.chapterTitle}" — controlla GitHub Actions`)
+          savePending(null)
+          setPendingAnalysis(null)
+          setWorkflowRun(null)
+        }
+      } catch {
+        // Ignore transient poll errors
+      }
+    }
+
+    void poll()
+    const pollId = setInterval(() => void poll(), 15_000)
+    return () => {
+      clearInterval(tickId)
+      clearInterval(pollId)
+    }
+  }, [pendingAnalysis, loadAnalysis, loadAllAnalyses])
 
   const selectedChapter = chapters.find((c) => c.id === selectedId) ?? null
   const analysis = selectedId ? (analyses[selectedId] ?? null) : null
@@ -233,7 +351,15 @@ export default function AnalysisPage() {
       await triggerWorkflow(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'ai-analysis.yml', {
         chapter_id: chapterId,
       })
-      toast.success('Analisi avviata! Attendi qualche minuto, poi clicca Ricarica.')
+      const chapterTitle =
+        chapterId === 'all'
+          ? 'tutti i capitoli'
+          : (chapters.find((c) => c.id === chapterId)?.title ?? chapterId)
+      const pending: PendingAnalysis = {chapterId, chapterTitle, triggeredAt: new Date().toISOString()}
+      savePending(pending)
+      setPendingAnalysis(pending)
+      setElapsedSeconds(0)
+      toast.success(`Analisi avviata per "${chapterTitle}"! Monitoraggio automatico attivato.`)
     } catch (err) {
       toast.error('Errore: ' + (err as Error).message)
     } finally {
@@ -244,6 +370,7 @@ export default function AnalysisPage() {
   async function handleApplyCorrections() {
     if (!selectedChapter || !analysis || selectedCorrections.size === 0) return
     setIsApplying(true)
+    isApplyingRef.current = true
     try {
       const baseContent = selectedChapter.driveContent ?? ''
       const { content, applied, notFound } = applyCorrectionsToContent(
@@ -289,6 +416,7 @@ export default function AnalysisPage() {
       toast.error('Errore applicazione: ' + (err as Error).message)
     } finally {
       setIsApplying(false)
+      isApplyingRef.current = false
     }
   }
 
@@ -436,7 +564,8 @@ export default function AnalysisPage() {
         {/* Trigger chapter */}
         <button
           onClick={() => selectedId && void triggerAnalysis(selectedId)}
-          disabled={!selectedId || triggering}
+          disabled={!selectedId || triggering || pendingAnalysis?.chapterId === selectedId}
+          title={pendingAnalysis?.chapterId === selectedId ? 'Analisi già in corso per questo capitolo' : undefined}
           className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
         >
           {triggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -446,7 +575,7 @@ export default function AnalysisPage() {
         {/* Trigger all */}
         <button
           onClick={() => void triggerAnalysis('all')}
-          disabled={triggering || chapters.length === 0}
+          disabled={triggering || chapters.length === 0 || pendingAnalysis?.chapterId === 'all'}
           title="Analizza tutti i capitoli"
           className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200 disabled:opacity-40"
         >
@@ -466,6 +595,50 @@ export default function AnalysisPage() {
         )}
       </div>
 
+      {/* Pending analysis banner */}
+      <AnimatePresence>
+        {pendingAnalysis && (
+          <motion.div
+            key="pending-banner"
+            initial={{opacity: 0, y: -8}}
+            animate={{opacity: 1, y: 0}}
+            exit={{opacity: 0, y: -8}}
+            className="flex items-center gap-3 rounded-xl border border-violet-800/40 bg-violet-900/20 px-4 py-3"
+          >
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-violet-400" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-violet-300">
+                Analisi in corso — {pendingAnalysis.chapterTitle}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {workflowRun ? (
+                  <>
+                    GitHub Actions:{' '}
+                    <span className={
+                      workflowRun.status === 'in_progress' ? 'text-amber-400' :
+                      workflowRun.status === 'queued' ? 'text-blue-400' : 'text-slate-400'
+                    }>
+                      {workflowRun.status === 'queued' ? 'In coda' :
+                       workflowRun.status === 'in_progress' ? 'In esecuzione' :
+                       workflowRun.status}
+                    </span>
+                    {' · '}
+                  </>
+                ) : null}
+                Avviata {formatElapsed(elapsedSeconds)} fa · aggiornamento ogni 15s
+              </p>
+            </div>
+            <button
+              onClick={() => {savePending(null); setPendingAnalysis(null); setWorkflowRun(null)}}
+              title="Chiudi monitoraggio"
+              className="rounded p-1 text-slate-600 transition-colors hover:text-slate-300"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Analysis panel */}
       <AnimatePresence mode="wait">
         {selectedId && (
@@ -476,7 +649,7 @@ export default function AnalysisPage() {
             exit={{opacity: 0}}
             className="space-y-4"
           >
-            {isLoading ? (
+            {isLoading && !analysis ? (
               <div className="flex h-40 items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
               </div>
