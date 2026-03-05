@@ -89,7 +89,7 @@ export default function SettingsPage() {
         patchTokens(user.uid, tokens),
       )
       await loadChapters()
-      const msg = `✓ ${result.created} creati, ${result.updated} aggiornati, ${result.pushed} caricati`
+      const msg = `✓ ${result.created} creati, ${result.updated} aggiornati, ${result.pushed} caricati, ${result.deleted} eliminati`
       setLastSyncResult(result.errors.length ? `${msg} — ${result.errors.length} errori` : msg)
       if (result.created > 0)
         toast.info(`${result.created} nuov${result.created === 1 ? 'o capitolo trovato' : 'i capitoli trovati'} su Drive`)
@@ -97,11 +97,13 @@ export default function SettingsPage() {
         toast.success(`${result.updated} capitol${result.updated === 1 ? 'o aggiornato' : 'i aggiornati'} da Drive`)
       if (result.pushed > 0)
         toast.success(`${result.pushed} capitol${result.pushed === 1 ? 'o inviato' : 'i inviati'} su Drive`)
+      if (result.deleted > 0)
+        toast.warning(`${result.deleted} capitol${result.deleted === 1 ? 'o eliminato' : 'i eliminati'} (file rimosso da Drive)`)
       if (result.conflicts > 0)
         toast.warning(`${result.conflicts} conflitt${result.conflicts === 1 ? 'o' : 'i'} da risolvere`)
       if (result.errors.length > 0)
         toast.error(`${result.errors.length} error${result.errors.length === 1 ? 'e' : 'i'} durante la sync`)
-      if (result.created === 0 && result.updated === 0 && result.pushed === 0 && result.conflicts === 0)
+      if (result.created === 0 && result.updated === 0 && result.pushed === 0 && result.deleted === 0 && result.conflicts === 0)
         toast.success('Tutto aggiornato — nessuna modifica')
     } catch (err) {
       toast.error('Errore sync: ' + (err as Error).message)

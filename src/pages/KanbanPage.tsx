@@ -51,12 +51,13 @@ export default function KanbanPage() {
           const { result } = await pullFromDrive(config, user.uid, currentChapters, (tokens) =>
             patchTokens(user.uid, tokens),
           )
-          if (result.created > 0 || result.updated > 0) {
+          if (result.created > 0 || result.updated > 0 || result.deleted > 0) {
             await loadChapters()
             const parts: string[] = []
             if (result.created > 0) parts.push(`${result.created} nuov${result.created === 1 ? 'o' : 'i'}`)
             if (result.updated > 0) parts.push(`${result.updated} aggiornat${result.updated === 1 ? 'o' : 'i'}`)
-            toast.success(`Drive: ${parts.join(', ')} capitol${result.created + result.updated === 1 ? 'o' : 'i'}`)
+            if (result.deleted > 0) parts.push(`${result.deleted} eliminat${result.deleted === 1 ? 'o' : 'i'}`)
+            toast.success(`Drive: ${parts.join(', ')} capitol${result.created + result.updated + result.deleted === 1 ? 'o' : 'i'}`)
           }
           if (result.errors.length > 0) toast.error(`Drive: ${result.errors.length} errori`)
         } catch {

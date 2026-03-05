@@ -32,7 +32,7 @@ function applyTheme(theme: Theme) {
 const storedTheme = (localStorage.getItem('book-theme') as Theme | null) ?? 'dark'
 applyTheme(storedTheme)
 
-export const useUIStore = create<UIStore>((set) => ({
+export const useUIStore = create<UIStore>((set, get) => ({
   viewMode: 'kanban',
   theme: storedTheme,
   sidebarCollapsed: false,
@@ -57,11 +57,9 @@ export const useUIStore = create<UIStore>((set) => ({
   },
 
   toggleTheme: () => {
-    set((s) => {
-      const next: Theme = s.theme === 'dark' ? 'light' : 'dark'
-      localStorage.setItem('book-theme', next)
-      applyTheme(next)
-      return { theme: next }
-    })
+    const next: Theme = get().theme === 'dark' ? 'light' : 'dark'
+    localStorage.setItem('book-theme', next)
+    applyTheme(next)
+    set({ theme: next })
   },
 }))

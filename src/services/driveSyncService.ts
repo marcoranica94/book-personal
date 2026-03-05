@@ -1,17 +1,8 @@
-import type { Chapter, DriveConfig, DriveFile, DriveTokens } from '@/types'
-import { SyncSource, SyncStatus } from '@/types'
-import { getValidAccessToken } from './driveAuthService'
-import {
-  createDriveFile,
-  getDriveFileContent,
-  listDriveFiles,
-  updateDriveFileContent,
-} from './driveFileService'
-import {
-  chapterToFilename,
-  injectFrontmatter,
-  parseDriveFileToChapter,
-} from './driveParserService'
+import type {Chapter, DriveConfig, DriveFile, DriveTokens} from '@/types'
+import {SyncSource, SyncStatus} from '@/types'
+import {getValidAccessToken} from './driveAuthService'
+import {createDriveFile, getDriveFileContent, listDriveFiles, updateDriveFileContent,} from './driveFileService'
+import {chapterToFilename, injectFrontmatter, parseDriveFileToChapter,} from './driveParserService'
 import * as chaptersService from './chaptersService'
 
 const MAX_CONTENT_BYTES = 100_000 // 100KB — limite cache Firestore
@@ -30,6 +21,7 @@ export interface SyncResult {
   updated: number
   pushed: number
   skipped: number
+  deleted: number
   conflicts: number
   errors: string[]
 }
@@ -67,13 +59,26 @@ export async function pullFromDrive(
 
   const driveFiles = await listDriveFiles(accessToken, config.folderId)
   const now = new Date().toISOString()
-  const result: SyncResult = { created: 0, updated: 0, pushed: 0, skipped: 0, conflicts: 0, errors: [] }
+  const result: SyncResult = { created: 0, updated: 0, pushed: 0, skipped: 0, deleted: 0, conflicts: 0, errors: [] }
 
   for (const file of driveFiles) {
     try {
       await processDriveFile(file, accessToken, currentChapters, now, result)
     } catch (err) {
       result.errors.push(`${file.name}: ${(err as Error).message}`)
+    }
+  }
+
+  // Rimuovi capitoli il cui file Drive è stato eliminato
+  const driveFileIds = new Set(driveFiles.map((f) => f.id))
+  for (const chapter of currentChapters) {
+    if (chapter.driveFileId && !driveFileIds.has(chapter.driveFileId)) {
+      try {
+        await chaptersService.deleteChapter(chapter.id)
+        result.deleted++
+      } catch (err) {
+        result.errors.push(`Elimina "${chapter.title}": ${(err as Error).message}`)
+      }
     }
   }
 
