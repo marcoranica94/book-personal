@@ -46,43 +46,60 @@ function shouldSkipPull(chapter: Chapter, newHash: string, driveModifiedTime: st
 
 type OnTokenRefresh = (tokens: DriveTokens) => void
 
+// ─── Lock globale anti-duplicati ─────────────────────────────────────────────
+
+let syncInProgress = false
+
 // ─── Pull: Drive → Firestore ──────────────────────────────────────────────────
 
 export async function pullFromDrive(
   config: DriveConfig,
   uid: string,
-  currentChapters: Chapter[],
+  _currentChapters: Chapter[], // ignorato: leggiamo sempre da Firestore per evitare snapshot stale
   onTokenRefresh?: OnTokenRefresh,
 ): Promise<{ accessToken: string; result: SyncResult }> {
-  const { accessToken, updatedTokens } = await getValidAccessToken(config, uid)
-  if (updatedTokens) onTokenRefresh?.(updatedTokens)
-
-  const driveFiles = await listDriveFiles(accessToken, config.folderId)
-  const now = new Date().toISOString()
-  const result: SyncResult = { created: 0, updated: 0, pushed: 0, skipped: 0, deleted: 0, conflicts: 0, errors: [] }
-
-  for (const file of driveFiles) {
-    try {
-      await processDriveFile(file, accessToken, currentChapters, now, result)
-    } catch (err) {
-      result.errors.push(`${file.name}: ${(err as Error).message}`)
+  if (syncInProgress) {
+    return {
+      accessToken: '',
+      result: { created: 0, updated: 0, pushed: 0, skipped: 0, deleted: 0, conflicts: 0, errors: [] },
     }
   }
+  syncInProgress = true
+  try {
+    const { accessToken, updatedTokens } = await getValidAccessToken(config, uid)
+    if (updatedTokens) onTokenRefresh?.(updatedTokens)
 
-  // Rimuovi capitoli il cui file Drive è stato eliminato
-  const driveFileIds = new Set(driveFiles.map((f) => f.id))
-  for (const chapter of currentChapters) {
-    if (chapter.driveFileId && !driveFileIds.has(chapter.driveFileId)) {
+    // Leggi sempre i capitoli freschi da Firestore — mai lo snapshot passato dal chiamante
+    const currentChapters = await chaptersService.getChapters()
+    const driveFiles = await listDriveFiles(accessToken, config.folderId)
+    const now = new Date().toISOString()
+    const result: SyncResult = { created: 0, updated: 0, pushed: 0, skipped: 0, deleted: 0, conflicts: 0, errors: [] }
+
+    for (const file of driveFiles) {
       try {
-        await chaptersService.deleteChapter(chapter.id)
-        result.deleted++
+        await processDriveFile(file, accessToken, currentChapters, now, result)
       } catch (err) {
-        result.errors.push(`Elimina "${chapter.title}": ${(err as Error).message}`)
+        result.errors.push(`${file.name}: ${(err as Error).message}`)
       }
     }
-  }
 
-  return { accessToken, result }
+    // Rimuovi capitoli il cui file Drive è stato eliminato
+    const driveFileIds = new Set(driveFiles.map((f) => f.id))
+    for (const chapter of currentChapters) {
+      if (chapter.driveFileId && !driveFileIds.has(chapter.driveFileId)) {
+        try {
+          await chaptersService.deleteChapter(chapter.id)
+          result.deleted++
+        } catch (err) {
+          result.errors.push(`Elimina "${chapter.title}": ${(err as Error).message}`)
+        }
+      }
+    }
+
+    return { accessToken, result }
+  } finally {
+    syncInProgress = false
+  }
 }
 
 async function processDriveFile(
