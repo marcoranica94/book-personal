@@ -1018,9 +1018,19 @@ export default function AnalysisPage() {
                               )}
                               {/* Salva su Drive */}
                               {isGoogleDoc && (
-                                <span className="rounded-lg border border-amber-800/30 bg-amber-900/20 px-3 py-1.5 text-xs text-amber-400">
-                                  Google Doc — modifiche salvate in app, applica manualmente nel Doc
-                                </span>
+                                <>
+                                  <span className="rounded-lg border border-amber-800/30 bg-amber-900/20 px-3 py-1.5 text-xs text-amber-400">
+                                    Google Doc — non modificabile via API
+                                  </span>
+                                  <button
+                                    onClick={() => void handleSaveEditorContent()}
+                                    disabled={isSavingContent || !editorContent || !isDirty}
+                                    className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                                  >
+                                    {isSavingContent ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileEdit className="h-4 w-4" />}
+                                    Salva in app{isDirty ? ' *' : ''}
+                                  </button>
+                                </>
                               )}
                               {driveConfig?.folderId && !isGoogleDoc && (
                                 <button
