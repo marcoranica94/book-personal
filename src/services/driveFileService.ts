@@ -1,11 +1,12 @@
-import type { DriveFile } from '@/types'
+import type {DriveFile} from '@/types'
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3'
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3'
 
-// MIME types supportati (markdown, testo plain, Google Docs)
+// MIME types supportati (markdown, testo plain, Google Docs, Word .docx)
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 const SUPPORTED_MIME_QUERY =
-  "(mimeType='text/markdown' or mimeType='text/plain' or mimeType='application/vnd.google-apps.document')"
+  `(mimeType='text/markdown' or mimeType='text/plain' or mimeType='application/vnd.google-apps.document' or mimeType='${DOCX_MIME}')`
 
 // Multipart boundary stabile
 const BOUNDARY = 'book_dashboard_boundary_20260304'
@@ -43,8 +44,8 @@ export async function getDriveFileContent(
   fileId: string,
   mimeType: string,
 ): Promise<string> {
-  const isGoogleDoc = mimeType === 'application/vnd.google-apps.document'
-  const url = isGoogleDoc
+  const needsExport = mimeType === 'application/vnd.google-apps.document' || mimeType === DOCX_MIME
+  const url = needsExport
     ? `${DRIVE_API}/files/${fileId}/export?mimeType=text/plain`
     : `${DRIVE_API}/files/${fileId}?alt=media`
 

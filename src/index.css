@@ -33,6 +33,13 @@
   --chart-axis:    #94A3B8;
   --chart-grid:    rgba(0,0,0,0.06);
   --chart-tooltip: #FFFFFF;
+
+  /* Scala slate più scura per leggibilità su sfondo chiaro */
+  --color-slate-200: #8599B0;
+  --color-slate-300: #6B7F96;
+  --color-slate-400: #516070;
+  --color-slate-500: #3D4F5F;
+  --color-slate-600: #2E3D4A;
 }
 
 @layer base {

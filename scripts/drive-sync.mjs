@@ -11,9 +11,9 @@
  *   SYNC_DIRECTION                — 'pull' | 'push' | 'both' (default: 'both')
  */
 
-import { webcrypto } from 'crypto'
-import { cert, initializeApp } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
+import {webcrypto} from 'crypto'
+import {cert, initializeApp} from 'firebase-admin/app'
+import {getFirestore} from 'firebase-admin/firestore'
 
 const { subtle } = webcrypto
 
@@ -88,8 +88,9 @@ async function sha256(text) {
 // ─── Drive API helpers ────────────────────────────────────────────────────────
 
 const BOUNDARY = 'book_dashboard_boundary_20260304'
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 const MIME_QUERY =
-  "(mimeType='text/markdown' or mimeType='text/plain' or mimeType='application/vnd.google-apps.document')"
+  `(mimeType='text/markdown' or mimeType='text/plain' or mimeType='application/vnd.google-apps.document' or mimeType='${DOCX_MIME}')`
 
 async function listDriveFiles(accessToken, folderId) {
   const params = new URLSearchParams({
@@ -107,8 +108,8 @@ async function listDriveFiles(accessToken, folderId) {
 }
 
 async function getDriveFileContent(accessToken, fileId, mimeType) {
-  const isDoc = mimeType === 'application/vnd.google-apps.document'
-  const url = isDoc
+  const needsExport = mimeType === 'application/vnd.google-apps.document' || mimeType === DOCX_MIME
+  const url = needsExport
     ? `${DRIVE_API}/files/${fileId}/export?mimeType=text/plain`
     : `${DRIVE_API}/files/${fileId}?alt=media`
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
