@@ -331,7 +331,6 @@ export default function AnalysisPage() {
   const analysis = selectedId ? (analyses[selectedId] ?? null) : null
   const isDirty = editorContent !== (selectedChapter?.driveContent ?? '')
   const isPendingPush = isDirty || selectedChapter?.syncStatus === SyncStatus.PENDING_PUSH
-  const isGoogleDoc = selectedChapter?.driveMimeType === 'application/vnd.google-apps.document'
 
   async function triggerAnalysis(chapterId: string) {
     const hasExisting =
@@ -456,12 +455,7 @@ export default function AnalysisPage() {
       await loadChapters()
       toast.success('Testo salvato su Drive')
     } catch (err) {
-      const msg = (err as Error).message
-      if (msg === 'GOOGLE_DOC_READONLY') {
-        toast.info('File Google Doc: le modifiche sono salvate qui nell\'app. Applicale manualmente nel documento Google.')
-      } else {
-        toast.error('Errore salvataggio Drive: ' + msg)
-      }
+      toast.error('Errore salvataggio Drive: ' + (err as Error).message)
     } finally {
       setIsPushingToDrive(false)
     }
@@ -867,7 +861,11 @@ export default function AnalysisPage() {
                                       'cursor-pointer rounded-lg border p-4 space-y-3 transition-colors',
                                       isSelected
                                         ? 'border-violet-600/50 bg-violet-900/15'
-                                        : 'border-[var(--border)] hover:border-[var(--border-strong)] hover:bg-[var(--overlay)]'
+                                        : wasAccepted
+                                          ? 'border-emerald-700/50 bg-emerald-900/20'
+                                          : wasRejected
+                                            ? 'border-slate-700/40 bg-slate-900/20 opacity-60'
+                                            : 'border-[var(--border)] hover:border-[var(--border-strong)] hover:bg-[var(--overlay)]'
                                     )}
                                   >
                                     <div className="flex items-center gap-2">
@@ -891,10 +889,16 @@ export default function AnalysisPage() {
                                         {CORRECTION_TYPE_LABELS[c.type] ?? c.type}
                                       </span>
                                       {wasAccepted && (
-                                        <span className="ml-auto text-xs text-emerald-500">✓ accettata</span>
+                                        <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-900/40 border border-emerald-700/50 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                                          <CheckCheck className="h-3 w-3" />
+                                          accettata
+                                        </span>
                                       )}
                                       {wasRejected && (
-                                        <span className="ml-auto text-xs text-slate-600">✗ rifiutata</span>
+                                        <span className="ml-auto flex items-center gap-1 rounded-full bg-slate-800/60 border border-slate-700/40 px-2 py-0.5 text-xs text-slate-500">
+                                          <X className="h-3 w-3" />
+                                          rifiutata
+                                        </span>
                                       )}
                                     </div>
                                     <div className="grid grid-cols-2 gap-3 text-xs">
@@ -1017,22 +1021,7 @@ export default function AnalysisPage() {
                                 </span>
                               )}
                               {/* Salva su Drive */}
-                              {isGoogleDoc && (
-                                <>
-                                  <span className="rounded-lg border border-amber-800/30 bg-amber-900/20 px-3 py-1.5 text-xs text-amber-400">
-                                    Google Doc — non modificabile via API
-                                  </span>
-                                  <button
-                                    onClick={() => void handleSaveEditorContent()}
-                                    disabled={isSavingContent || !editorContent || !isDirty}
-                                    className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
-                                  >
-                                    {isSavingContent ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileEdit className="h-4 w-4" />}
-                                    Salva in app{isDirty ? ' *' : ''}
-                                  </button>
-                                </>
-                              )}
-                              {driveConfig?.folderId && !isGoogleDoc && (
+                              {driveConfig?.folderId && (
                                 <button
                                   onClick={() => void handlePushToDrive()}
                                   disabled={isPushingToDrive || !editorContent || !isPendingPush}
