@@ -14,9 +14,10 @@ interface ChapterCardProps {
   onEdit: (chapter: Chapter) => void
   onDelete: (chapter: Chapter) => void
   isDragging?: boolean
+  index?: number
 }
 
-export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: ChapterCardProps) {
+export default function ChapterCard({ chapter, onEdit, onDelete, isDragging, index = 0 }: ChapterCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, active } = useSortable({
     id: chapter.id,
   })
@@ -44,7 +45,10 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging }: C
       className={cn('group cursor-grab active:cursor-grabbing', isBeingDragged && 'opacity-40')}
     >
       <motion.div
-        whileHover={{ y: -1 }}
+        initial={{opacity: 0, y: 8}}
+        animate={{opacity: 1, y: 0}}
+        transition={{duration: 0.22, delay: Math.min(index * 0.04, 0.3), ease: 'easeOut'}}
+        whileHover={{y: -2, boxShadow: '0 8px 24px rgba(0,0,0,0.35)'}}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(chapter) }}
         className={cn(
           'relative rounded-xl border bg-[var(--bg-card)] p-4 shadow-sm transition-shadow',

@@ -75,12 +75,13 @@ export default function KanbanColumn({
       >
         <SortableContext items={chapters.map((c) => c.id)} strategy={verticalListSortingStrategy}>
           <div className="flex flex-col gap-2">
-            {chapters.map((chapter) => (
+            {chapters.map((chapter, i) => (
               <ChapterCard
                 key={chapter.id}
                 chapter={chapter}
                 onEdit={onEditChapter}
                 onDelete={onDeleteChapter}
+                index={i}
               />
             ))}
           </div>

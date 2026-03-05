@@ -11,43 +11,49 @@ import {ChapterStatus} from '@/types'
 import {appendStatsSnapshot, getStatsHistory} from '@/services/statsService'
 import {calcProgress, calcProjectedEndDate, charsToPages, formatDate, formatNumber, wordsPerDay, wordsToReadingTime,} from '@/utils/formatters'
 import {useCountUp} from '@/hooks/useCountUp'
+import {useTypewriter} from '@/hooks/useTypewriter'
 import {cn} from '@/utils/cn'
 import ProgressRing from '@/components/dashboard/ProgressRing'
 import WordCountChart from '@/components/dashboard/WordCountChart'
 import StatusDonutChart from '@/components/dashboard/StatusDonutChart'
 import ProductivityChart from '@/components/dashboard/ProductivityChart'
+import {SkeletonGrid} from '@/components/ui/SkeletonCard'
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
 function KpiCard({
-  icon: Icon, label, value, sub, color = 'violet', delay = 0,
+  icon: Icon, label, value, sub, color = 'violet', delay = 0, shimmer = false,
 }: {
-  icon: React.ComponentType<{ className?: string }>
+  icon: React.ComponentType<{className?: string}>
   label: string; value: string; sub?: string
   color?: 'violet' | 'cyan' | 'emerald' | 'amber' | 'slate'
   delay?: number
+  shimmer?: boolean
 }) {
   const colors = {
-    violet: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
-    cyan:   'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
-    emerald:'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-    amber:  'text-amber-400 bg-amber-500/10 border-amber-500/20',
-    slate:  'text-slate-400 bg-slate-500/10 border-slate-500/20',
+    violet:  'text-violet-400 bg-violet-500/10 border-violet-500/20',
+    cyan:    'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
+    emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+    amber:   'text-amber-400 bg-amber-500/10 border-amber-500/20',
+    slate:   'text-slate-400 bg-slate-500/10 border-slate-500/20',
   }
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.3 }}
+      initial={{opacity: 0, y: 10}}
+      animate={{opacity: 1, y: 0}}
+      transition={{delay, duration: 0.3}}
+      whileHover={{scale: 1.02, transition: {duration: 0.15}}}
       className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4"
     >
       <div className="flex items-start justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-medium text-slate-500 truncate">{label}</p>
-          <p className="mt-1 text-xl font-bold text-[var(--text-primary)]">{value}</p>
+          <p className="truncate text-xs font-medium text-slate-500">{label}</p>
+          <p className={cn('mt-1 text-xl font-bold', shimmer ? 'text-shimmer' : 'text-[var(--text-primary)]')}>
+            {value}
+          </p>
           {sub && <p className="mt-0.5 text-xs text-slate-600">{sub}</p>}
         </div>
-        <span className={cn('flex shrink-0 h-9 w-9 items-center justify-center rounded-lg border ml-3', colors[color])}>
+        <span className={cn('ml-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border', colors[color])}>
           <Icon className="h-4 w-4" />
         </span>
       </div>
@@ -70,7 +76,7 @@ function ChartCard({ title, children, className }: { title: string; children: Re
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
-  const { chapters, loadChapters, totalWords, totalChars, completedCount } = useChaptersStore()
+  const { chapters, loadChapters, totalWords, totalChars, completedCount, isLoading } = useChaptersStore()
   const { settings, loadSettings } = useSettingsStore()
   const { loadAllAnalyses } = useAnalysisStore()
   const [history, setHistory] = useState<StatsSnapshot[]>([])
@@ -147,13 +153,18 @@ export default function DashboardPage() {
     .slice(0, 3)
 
   const greeting = user?.displayName?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'scrittore'
+  const greetingFull = `Ciao, ${greeting} ✦`
+  const typedGreeting = useTypewriter(greetingFull, 38, 100)
 
   return (
     <div className="space-y-6 p-6">
 
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Ciao, {greeting} 👋</h1>
+      <motion.div initial={{opacity: 0, y: -8}} animate={{opacity: 1, y: 0}}>
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">
+          {typedGreeting}
+          <span className="ml-0.5 inline-block h-5 w-0.5 animate-pulse bg-violet-400 align-middle" />
+        </h1>
         <p className="mt-1 text-sm text-slate-500">{settings.title} — panoramica aggiornata</p>
       </motion.div>
 
@@ -181,9 +192,12 @@ export default function DashboardPage() {
       </motion.div>
 
       {/* KPI grid */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+      {isLoading && chapters.length === 0 ? (
+        <SkeletonGrid count={8} />
+      ) : null}
+      <div className={cn('grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8', isLoading && chapters.length === 0 && 'hidden')}>
         <div className="col-span-2 sm:col-span-2 lg:col-span-2">
-          <KpiCard icon={FileText} label="Parole totali" value={formatNumber(animWords)} color="violet" delay={0.1} />
+          <KpiCard icon={FileText} label="Parole totali" value={formatNumber(animWords)} color="violet" delay={0.1} shimmer />
         </div>
         <div className="col-span-2 sm:col-span-2 lg:col-span-2">
           <KpiCard icon={BookOpen} label="Cartelle" value={String(animPages)} sub={`car. incl. spazi ÷ ${settings.charsPerPage}`} color="cyan" delay={0.15} />

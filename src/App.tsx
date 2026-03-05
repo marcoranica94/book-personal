@@ -6,6 +6,7 @@ import {useUIStore} from '@/stores/uiStore'
 import {handleDriveOAuthCallback} from '@/services/driveAuthService'
 import {toast} from '@/stores/toastStore'
 import ProtectedRoute from '@/components/layout/ProtectedRoute'
+import ErrorBoundary from '@/components/ui/ErrorBoundary'
 import Layout from '@/components/layout/Layout'
 import ScrollToTop from '@/components/ScrollToTop'
 import LoginPage from '@/pages/LoginPage'
@@ -60,6 +61,7 @@ export default function App() {
   }, [user, isLoading])
 
   return (
+    <ErrorBoundary>
     <HashRouter>
       <ScrollToTop />
       <Routes>
@@ -82,5 +84,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </HashRouter>
+    </ErrorBoundary>
   )
 }

@@ -3,6 +3,7 @@ import {closestCorners, DndContext, type DragEndEvent, type DragOverEvent, DragO
 import {arrayMove} from '@dnd-kit/sortable'
 import {motion} from 'framer-motion'
 import {LayoutGrid, List, Plus, Search, X} from 'lucide-react'
+import Confetti from '@/components/ui/Confetti'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useUIStore} from '@/stores/uiStore'
 import {useSettingsStore} from '@/stores/settingsStore'
@@ -33,6 +34,7 @@ export default function KanbanPage() {
   const [defaultStatus, setDefaultStatus] = useState<ChapterStatus>(ChapterStatus.TODO)
   const [deleteTarget, setDeleteTarget] = useState<Chapter | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [confettiTrigger, setConfettiTrigger] = useState(0)
 
   useEffect(() => {
     async function init() {
@@ -155,8 +157,13 @@ export default function KanbanPage() {
     // Persist solo se lo status è cambiato rispetto all'originale
     if (originalChapter.status !== currentChapter.status) {
       try {
-        await updateChapter(activeId, { status: currentChapter.status })
-        toast.success(`Spostato in "${currentChapter.status.replace('_', ' ')}"`)
+        await updateChapter(activeId, {status: currentChapter.status})
+        if (currentChapter.status === ChapterStatus.DONE) {
+          setConfettiTrigger((n) => n + 1)
+          toast.success(`"${currentChapter.title}" completato! 🎉`)
+        } else {
+          toast.success(`Spostato in "${currentChapter.status.replace('_', ' ')}"`)
+        }
       } catch {
         // Rollback visivo
         useChaptersStore.setState((s) => ({
@@ -210,6 +217,7 @@ export default function KanbanPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <Confetti trigger={confettiTrigger} originX={50} originY={40} />
       {/* Toolbar */}
       <div className="flex items-center gap-3 border-b border-[var(--border)] px-6 py-3">
         {/* Search */}

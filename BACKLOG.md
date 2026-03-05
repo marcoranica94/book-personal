@@ -282,14 +282,21 @@
 
 - 🔲 `E12-1` Onboarding wizard primo accesso
 - 🔲 `E12-2` Filtri Kanban per priorità e tag (uiStore pronto, manca UI)
-- 🔲 `E12-3` Loading skeletons per sezioni
+- ✅ `E12-3` Loading skeletons per KPI Dashboard (`SkeletonCard`, `SkeletonGrid`)
 - 🔲 `E12-4` Responsive mobile (hamburger sidebar)
-- 🔲 `E12-5` Error boundary globale
+- ✅ `E12-5` Error boundary globale (`ErrorBoundary.tsx` — class component, wrappa App)
 - 🔲 `E12-6` Storico analisi per capitolo (trend chart)
 - 🔲 `E12-7` Editor markdown per testo capitolo (upload file `.md`)
 - 💡 `E12-8` Checklist template personalizzabile in Impostazioni
-- 💡 `E12-9` Confetti animation al completamento capitolo
+- ✅ `E12-9` Confetti animation al completamento capitolo (drag → DONE in Kanban)
 - 💡 `E12-10` Pomodoro timer integrato
+- ✅ `E12-11` Typewriter effect greeting Dashboard (`useTypewriter` hook, cursore lampeggiante)
+- ✅ `E12-12` Ambient gradient orbs animati in Layout (3 orbs, 18-28s loop, opacity 6-10%)
+- ✅ `E12-13` Cursor glow tracking nel content area (radial-gradient CSS var `--cx`/`--cy`)
+- ✅ `E12-14` Stagger animazione card Kanban (cascata 40ms per card, max 300ms)
+- ✅ `E12-15` Shimmer gradient text su "Parole totali" KPI
+- ✅ `E12-16` Hover scale sulle KpiCard (scale 1.02)
+- ✅ `E12-17` Exit animation pagine migliorata (y:-4 + opacity:0)
 
 ---
 
@@ -309,4 +316,4 @@
 | E9 | Zustand Stores | ✅ Completo |
 | E10 | Utilities & Helpers | ✅ Completo |
 | E11 | Testing & QA | ✅ Quasi completo (mancano E2E e Lighthouse) |
-| E12 | Polish & UX | 🔲 Parziale |
+| E12 | Polish & UX | ✅ Quasi completo (mancano mobile, filtri kanban, trend chart) |
