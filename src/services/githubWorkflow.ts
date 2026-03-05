@@ -81,7 +81,15 @@ export async function triggerWorkflow(
   )
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as {message?: string}).message ?? `HTTP ${res.status}`)
+    const body = await res.text().catch(() => '')
+    let message = `HTTP ${res.status}`
+    try {
+      const err = JSON.parse(body) as {message?: string}
+      if (err.message) message = err.message
+    } catch { /* body non è JSON */ }
+    if (res.status === 500) {
+      message = `GitHub ha restituito un errore interno (500). Verifica che GitHub Actions sia abilitato nel repo (Settings → Actions → General) e riprova.`
+    }
+    throw new Error(message)
   }
 }
