@@ -229,7 +229,7 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
     "trama": <1-10>,
     "originalita": <1-10>,
     "overall": <media pesata 1-10>
-  },
+  },${reactionsSection}
   "summary": "<sintesi dell'analisi, max 200 parole>",
   "strengths": ["<punto di forza 1>", "<punto di forza 2>", ...],
   "weaknesses": [
@@ -246,7 +246,7 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
       "type": "grammar|style|clarity|continuity",
       "note": "<spiegazione breve>"
     }
-  ],${historicalSection}${reactionsSection}
+  ],${historicalSection}
   "_placeholder": null
 }
 
@@ -301,7 +301,7 @@ async function callGemini(prompt, previousContext, retryCount = 0) {
       body: JSON.stringify({
         contents: [{parts: [{text: prompt}]}],
         generationConfig: {
-          maxOutputTokens: previousContext ? 8000 : 6000,
+          maxOutputTokens: previousContext ? 12000 : 10000,
           temperature: 0.7,
           responseMimeType: 'application/json',
         },
