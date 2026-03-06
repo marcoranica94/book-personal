@@ -1764,7 +1764,6 @@ export default function AnalysisPage() {
                             if (!a) return (
                               <td key={p} className="px-3 py-3 text-center text-xs text-slate-700">—</td>
                             )
-                            const isDeleting = deletingAnalysis?.chapterId === c.id && deletingAnalysis?.provider === p
                             return (
                               <td key={p} className="px-3 py-3 text-center">
                                 <div className="flex flex-col items-center gap-0.5">
