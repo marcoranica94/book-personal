@@ -1,56 +1,57 @@
 name: AI Chapter Analysis
-
 on:
   workflow_dispatch:
     inputs:
       chapter_id:
-        description: 'Chapter ID to analyze (or "all" for all chapters)'
+        description: 'ID capitolo (o "all" per tutti)'
         required: true
         default: 'all'
-        type: string
       include_previous:
-        description: 'Include previous analysis context for progress tracking'
+        description: 'Includi contesto analisi precedente (true/false)'
         required: false
         default: 'false'
-        type: string
       ai_provider:
-        description: 'AI provider to use: claude or gemini'
+        description: 'Provider AI (claude / gemini / chatgpt)'
         required: false
         default: 'claude'
-        type: string
       author_comment:
-        description: 'Optional author note to guide the AI analysis'
+        description: "Nota autore per orientare l'analisi (opzionale)"
         required: false
         default: ''
-        type: string
-
-permissions:
-  contents: read
-
+      with_weakness_solutions:
+        description: 'Includi soluzioni proposte per le debolezze (true/false)'
+        required: false
+        default: 'true'
+      with_suggestion_solutions:
+        description: 'Includi soluzioni proposte per i suggerimenti (true/false)'
+        required: false
+        default: 'true'
 jobs:
   analyze:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
-
+          node-version: '20'
       - name: Install script dependencies
         working-directory: scripts
         run: npm install
-
-      - name: Run analysis
+      - name: Run AI analysis
         working-directory: scripts
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           CHAPTER_ID: ${{ inputs.chapter_id }}
           INCLUDE_PREVIOUS: ${{ inputs.include_previous }}
           AI_PROVIDER: ${{ inputs.ai_provider }}
           AUTHOR_COMMENT: ${{ inputs.author_comment }}
+          WITH_WEAKNESS_SOLUTIONS: ${{ inputs.with_weakness_solutions }}
+          WITH_SUGGESTION_SOLUTIONS: ${{ inputs.with_suggestion_solutions }}
           REPO_DIR: ${{ github.workspace }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: node analyze-chapter.mjs

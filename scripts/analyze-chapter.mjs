@@ -28,6 +28,10 @@ const REPO_DIR = process.env.REPO_DIR ?? '.'
 const INCLUDE_PREVIOUS = (process.env.INCLUDE_PREVIOUS ?? 'false') === 'true'
 const AI_PROVIDER = process.env.AI_PROVIDER ?? 'claude'
 const AUTHOR_COMMENT = (process.env.AUTHOR_COMMENT ?? '').trim()
+/** Se true, l'IA includerà la soluzione proposta per ogni debolezza */
+const WITH_WEAKNESS_SOLUTIONS = (process.env.WITH_WEAKNESS_SOLUTIONS ?? 'true') === 'true'
+/** Se true, l'IA includerà la soluzione proposta per ogni suggerimento */
+const WITH_SUGGESTION_SOLUTIONS = (process.env.WITH_SUGGESTION_SOLUTIONS ?? 'true') === 'true'
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
 initializeApp({credential: cert(serviceAccount)})
@@ -194,7 +198,7 @@ function buildPreviousAnalysisContext(prev) {
   return parts.join('\n')
 }
 
-function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorComment) {
+function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorComment, withWeaknessSolutions = true, withSuggestionSolutions = true) {
   const isHistorical = bookType === 'storico'
   const personas = READER_PERSONAS[isHistorical ? 'storico' : 'default']
 
@@ -223,6 +227,36 @@ NOTA DELL'AUTORE (considera questo come contesto prioritario per l'analisi):
 
 ` : ''
 
+  const weaknessSchema = withWeaknessSolutions
+    ? `  "weaknesses": [
+    {
+      "text": "<descrizione del punto debole>",
+      "quotes": ["<citazione esatta dal testo (max 2)>"],
+      "solution": "<testo sostitutivo concreto o indicazione su come correggere il passaggio citato — max 60 parole>"
+    }
+  ],`
+    : `  "weaknesses": [
+    {
+      "text": "<descrizione del punto debole>",
+      "quotes": ["<citazione esatta dal testo (max 2)>"]
+    }
+  ],`
+
+  const suggestionSchema = withSuggestionSolutions
+    ? `  "suggestions": [
+    {
+      "text": "<suggerimento specifico>",
+      "solution": "<esempio concreto di come applicarlo al testo (riscrittura parziale o indicazione precisa) — max 60 parole>"
+    }
+  ],`
+    : `  "suggestions": ["<suggerimento specifico 1>", "<suggerimento specifico 2>", ...],`
+
+  const solutionInstructions = (withWeaknessSolutions || withSuggestionSolutions) ? `
+IMPORTANTE su ${withWeaknessSolutions && withSuggestionSolutions ? 'weaknesses e suggestions' : withWeaknessSolutions ? 'weaknesses' : 'suggestions'}:
+${withWeaknessSolutions ? '- Per ogni debolezza, il campo "solution" deve contenere un testo sostitutivo concreto o una riscrittura del passaggio citato (max 60 parole). Se non è possibile proporre una riscrittura, scrivi almeno un\'indicazione operativa precisa.' : ''}
+${withSuggestionSolutions ? '- Per ogni suggerimento, il campo "solution" deve contenere un esempio pratico su come applicarlo: una riscrittura di una frase/paragrafo del capitolo oppure un\'indicazione concreta (max 60 parole).' : ''}
+- Il campo "solution" NON deve essere una ripetizione del testo del punto debole/suggerimento, ma una proposta operativa.` : ''
+
   return `
 Sei un editor letterario italiano di alto livello. Analizza il seguente capitolo del libro
 intitolato "${bookTitle}" (genere: ${bookType || 'generico'}) e fornisci un'analisi dettagliata e professionale.
@@ -241,19 +275,8 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
   },${reactionsSection}
   "summary": "<sintesi dell'analisi, max 200 parole>",
   "strengths": ["<punto di forza 1>", "<punto di forza 2>", ...],
-  "weaknesses": [
-    {
-      "text": "<descrizione del punto debole>",
-      "quotes": ["<citazione esatta dal testo (max 2)>"],
-      "solution": "<testo sostitutivo concreto o indicazione su come correggere il passaggio citato — max 60 parole>"
-    }
-  ],
-  "suggestions": [
-    {
-      "text": "<suggerimento specifico>",
-      "solution": "<esempio concreto di come applicarlo al testo (riscrittura parziale o indicazione precisa) — max 60 parole>"
-    }
-  ],
+${weaknessSchema}
+${suggestionSchema}
   "corrections": [
     {
       "original": "<testo originale>",
@@ -269,11 +292,7 @@ IMPORTANTE sulle correzioni:
 - Sii ESAUSTIVO: elenca le correzioni che trovi (grammatica, stile, chiarezza, continuità), con limite di 20.
 - Non fermarti alle prime 5-10: analizza ogni paragrafo del capitolo e segnala ogni problema.
 - Per ogni correzione, "original" deve essere il testo ESATTO presente nel capitolo (copia-incolla) per permettere la sostituzione automatica.
-
-IMPORTANTE su weaknesses e suggestions:
-- Per ogni debolezza, il campo "solution" deve contenere un testo sostitutivo concreto o una riscrittura del passaggio citato (max 60 parole). Se non è possibile proporre una riscrittura, scrivi almeno un'indicazione operativa precisa.
-- Per ogni suggerimento, il campo "solution" deve contenere un esempio pratico su come applicarlo: una riscrittura di una frase/paragrafo del capitolo oppure un'indicazione concreta (max 60 parole).
-- Il campo "solution" NON deve essere una ripetizione del testo del punto debole/suggerimento, ma una proposta operativa.
+${solutionInstructions}
 
 Criteri di valutazione:
 - stile: qualità della prosa, varietà lessicale, originalità dello stile
@@ -434,10 +453,11 @@ async function analyzeChapter(chapter, bookSettings) {
     }
   }
 
-  const prompt = buildPrompt(bookTitle, bookType, chapterText, previousContext || null, AUTHOR_COMMENT)
+  const prompt = buildPrompt(bookTitle, bookType, chapterText, previousContext || null, AUTHOR_COMMENT, WITH_WEAKNESS_SOLUTIONS, WITH_SUGGESTION_SOLUTIONS)
   if (AUTHOR_COMMENT) {
     console.log(`  Nota autore inclusa nel prompt (${AUTHOR_COMMENT.length} chars)`)
   }
+  console.log(`  Opzioni soluzioni: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'}`)
 
   const modelName = PROVIDER_MODELS[AI_PROVIDER] ?? PROVIDER_MODELS.claude
   let responseText = ''
@@ -558,6 +578,7 @@ async function main() {
   console.log(`Impostazioni libro: tipo=${bookSettings?.bookType ?? 'generico'}, titolo=${bookSettings?.title ?? '?'}`)
   console.log(`Provider AI: ${AI_PROVIDER} (modello: ${PROVIDER_MODELS[AI_PROVIDER] ?? '?'})`)
   console.log(`Modalità: ${INCLUDE_PREVIOUS ? 'con contesto analisi precedente' : 'analisi da zero'}`)
+  console.log(`Soluzioni proposte: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'}`)
 
   const toAnalyze =
     CHAPTER_ID === 'all'

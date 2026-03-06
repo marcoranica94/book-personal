@@ -311,6 +311,9 @@ export default function AnalysisPage() {
   const [authorComment, setAuthorComment] = useState<string>('')
   // Commento nel dialog di rianalisi
   const [reanalysisComment, setReanalysisComment] = useState<string>('')
+  // Opzioni soluzioni — sceglibili separatamente per debolezze e suggerimenti
+  const [withWeaknessSolutions, setWithWeaknessSolutions] = useState(true)
+  const [withSuggestionSolutions, setWithSuggestionSolutions] = useState(true)
   // Storico analisi — ID capitolo espanso nella tabella confronto
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null)
   // Cancellazione analisi — traccia quale provider è in corso di delete
@@ -515,6 +518,8 @@ export default function AnalysisPage() {
         chapter_id: chapterId,
         include_previous: includePrevious ? 'true' : 'false',
         ai_provider: provider,
+        with_weakness_solutions: withWeaknessSolutions ? 'true' : 'false',
+        with_suggestion_solutions: withSuggestionSolutions ? 'true' : 'false',
       }
       // Aggiungi il commento autore se presente (non vuoto)
       const effectiveComment = comment ?? (chapterId !== 'all' ? getAuthorComment(chapterId) : '')
@@ -2279,6 +2284,38 @@ export default function AnalysisPage() {
                 </button>
               </div>
 
+              {/* Opzioni soluzioni */}
+              <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5">
+                <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400">💡 Soluzioni proposte</p>
+                <p className="mb-3 text-xs text-slate-500">Chiedi all&apos;IA di proporre testi sostitutivi concreti. Aumenta leggermente il tempo e i token.</p>
+                <div className="space-y-2">
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={withWeaknessSolutions}
+                      onChange={(e) => setWithWeaknessSolutions(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-amber-500"
+                    />
+                    <span className="text-sm text-slate-300">
+                      Per le <span className="font-medium text-amber-400">debolezze</span>
+                      <span className="ml-1 text-xs text-slate-500">— riscrittura del passaggio problematico</span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={withSuggestionSolutions}
+                      onChange={(e) => setWithSuggestionSolutions(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-violet-500"
+                    />
+                    <span className="text-sm text-slate-300">
+                      Per i <span className="font-medium text-violet-400">suggerimenti</span>
+                      <span className="ml-1 text-xs text-slate-500">— esempio pratico di applicazione</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <div className="mt-5 flex justify-end">
                 <button
                   onClick={() => setReanalysisDialog(null)}
@@ -2346,6 +2383,38 @@ export default function AnalysisPage() {
                     ? 'Questo testo sarà salvato e riutilizzato alla prossima analisi di questo capitolo.'
                     : 'Puoi lasciare vuoto per un\'analisi standard. Il testo viene salvato per capitolo.'}
                 </p>
+              </div>
+
+              {/* Opzioni soluzioni */}
+              <div className="mb-5 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5">
+                <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400">💡 Soluzioni proposte</p>
+                <p className="mb-3 text-xs text-slate-500">Chiedi all&apos;IA di proporre testi sostitutivi concreti. Aumenta leggermente il tempo e i token.</p>
+                <div className="space-y-2">
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={withWeaknessSolutions}
+                      onChange={(e) => setWithWeaknessSolutions(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-amber-500"
+                    />
+                    <span className="text-sm text-slate-300">
+                      Per le <span className="font-medium text-amber-400">debolezze</span>
+                      <span className="ml-1 text-xs text-slate-500">— riscrittura del passaggio problematico</span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={withSuggestionSolutions}
+                      onChange={(e) => setWithSuggestionSolutions(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-violet-500"
+                    />
+                    <span className="text-sm text-slate-300">
+                      Per i <span className="font-medium text-violet-400">suggerimenti</span>
+                      <span className="ml-1 text-xs text-slate-500">— esempio pratico di applicazione</span>
+                    </span>
+                  </label>
+                </div>
               </div>
 
               <div className="flex gap-3">
