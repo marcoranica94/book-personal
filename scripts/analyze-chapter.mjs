@@ -237,12 +237,7 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
       "quotes": ["<citazione esatta dal testo (max 2)>"]
     }
   ],
-  "suggestions": [
-    {
-      "text": "<suggerimento specifico>",
-      "quotes": ["<citazione esatta dal testo a cui si applica (max 2)>"]
-    }
-  ],
+  "suggestions": ["<suggerimento specifico 1>", "<suggerimento specifico 2>", ...],
   "corrections": [
     {
       "original": "<testo originale>",

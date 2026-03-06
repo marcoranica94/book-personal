@@ -115,12 +115,6 @@ export interface WeaknessItem {
   quotes: string[]
 }
 
-/** Suggerimento strutturato con citazioni dal testo (retrocompatibile con semplice stringa) */
-export interface SuggestionItem {
-  text: string
-  quotes: string[]
-}
-
 export interface HistoricalAccuracyIssue {
   quote: string
   issue: string
@@ -153,7 +147,7 @@ export interface ChapterAnalysis {
   summary: string
   strengths: string[]
   weaknesses: (string | WeaknessItem)[]
-  suggestions: (string | SuggestionItem)[]
+  suggestions: string[]
   corrections: AnalysisCorrection[]
   // Accept/reject tracking
   acceptedCorrections?: number[]
