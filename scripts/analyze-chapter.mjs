@@ -148,8 +148,8 @@ function buildPreviousAnalysisContext(prev) {
   }
   if (prev.summary) parts.push(`\nSintesi: ${prev.summary}`)
   if (prev.strengths?.length) parts.push(`\nPunti di forza:\n${prev.strengths.map(s => `  - ${s}`).join('\n')}`)
-  if (prev.weaknesses?.length) parts.push(`\nDebolezze segnalate:\n${prev.weaknesses.map(w => `  - ${w}`).join('\n')}`)
-  if (prev.suggestions?.length) parts.push(`\nSuggerimenti dati:\n${prev.suggestions.map(s => `  - ${s}`).join('\n')}`)
+  if (prev.weaknesses?.length) parts.push(`\nDebolezze segnalate:\n${prev.weaknesses.map(w => `  - ${typeof w === 'string' ? w : w.text}`).join('\n')}`)
+  if (prev.suggestions?.length) parts.push(`\nSuggerimenti dati:\n${prev.suggestions.map(s => `  - ${typeof s === 'string' ? s : s.text}`).join('\n')}`)
 
   // Mostra le correzioni e il loro stato (accettata/rifiutata/ignorata)
   if (prev.corrections?.length) {
