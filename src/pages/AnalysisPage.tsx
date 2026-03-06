@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react'
 import {AnimatePresence, motion} from 'framer-motion'
-import {CheckCheck, CheckCircle2, FileEdit, Loader2, Play, RadarIcon, RefreshCw, Sparkles, Square, X} from 'lucide-react'
+import {CheckCheck, CheckCircle2, FileEdit, History, Loader2, Play, RadarIcon, RefreshCw, RotateCcw, Sparkles, Square, X} from 'lucide-react'
 import {PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer} from 'recharts'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
@@ -195,6 +195,8 @@ export default function AnalysisPage() {
   const [isPushingToDrive, setIsPushingToDrive] = useState(false)
   const [appliedChanges, setAppliedChanges] = useState<Array<{original: string; suggested: string}>>([])
   const [itemDetailModal, setItemDetailModal] = useState<{type: 'weaknesses' | 'suggestions'; text: string} | null>(null)
+  // Re-analysis dialog — scegli se includere contesto precedente
+  const [reanalysisDialog, setReanalysisDialog] = useState<{chapterId: string; label: string} | null>(null)
   // Pending analysis progress
   const [pendingAnalysis, setPendingAnalysis] = useState<PendingAnalysis | null>(() => loadPending())
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunInfo | null>(null)
@@ -313,19 +315,21 @@ export default function AnalysisPage() {
   const isPendingPush = isDirty || selectedChapter?.syncStatus === SyncStatus.PENDING_PUSH
   const isGoogleDoc = selectedChapter?.driveMimeType === 'application/vnd.google-apps.document'
 
-  async function triggerAnalysis(chapterId: string) {
+  async function triggerAnalysis(chapterId: string, includePrevious = false) {
     const hasExisting =
       chapterId === 'all'
         ? Object.keys(analyses).length > 0
         : !!analyses[chapterId]
-    if (hasExisting) {
+    if (hasExisting && !reanalysisDialog) {
+      // Mostra il dialog per scegliere se includere il contesto precedente
       const label =
         chapterId === 'all'
           ? 'Alcuni capitoli hanno già un\'analisi salvata'
           : `Il capitolo ha già un'analisi del ${formatRelativeDate(analyses[chapterId]!.analyzedAt)}`
-      const ok = confirm(`${label}.\n\nRieseguire l'analisi sovrascriverà i risultati esistenti e consumerà token Claude.\n\nContinuare?`)
-      if (!ok) return
+      setReanalysisDialog({chapterId, label})
+      return
     }
+    setReanalysisDialog(null)
     setTriggering(true)
     try {
       // Prima di avviare l'analisi, sincronizza il testo aggiornato da Drive
@@ -357,6 +361,7 @@ export default function AnalysisPage() {
 
       await triggerWorkflow(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'ai-analysis.yml', {
         chapter_id: chapterId,
+        include_previous: includePrevious ? 'true' : 'false',
       })
       const chapterTitle =
         chapterId === 'all'
@@ -366,7 +371,7 @@ export default function AnalysisPage() {
       savePending(pending)
       setPendingAnalysis(pending)
       setElapsedSeconds(0)
-      toast.success(`Analisi avviata per "${chapterTitle}"! Monitoraggio automatico attivato.`)
+      toast.success(`Analisi avviata per "${chapterTitle}"${includePrevious ? ' (con contesto precedente)' : ''}! Monitoraggio automatico attivato.`)
     } catch (err) {
       toast.error('Errore: ' + (err as Error).message)
     } finally {
@@ -1499,6 +1504,83 @@ export default function AnalysisPage() {
           <p className="mt-1 text-xs text-slate-600">Vai al Kanban per aggiungere capitoli</p>
         </div>
       )}
+
+      {/* Re-analysis dialog — scelta tra analisi da zero o con contesto precedente */}
+      <AnimatePresence>
+        {reanalysisDialog && (
+          <>
+            <motion.div
+              initial={{opacity: 0}}
+              animate={{opacity: 1}}
+              exit={{opacity: 0}}
+              onClick={() => setReanalysisDialog(null)}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{opacity: 0, scale: 0.92, y: 16}}
+              animate={{opacity: 1, scale: 1, y: 0}}
+              exit={{opacity: 0, scale: 0.92}}
+              transition={{duration: 0.18}}
+              className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+            >
+              <div className="mb-4 flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-900/40 text-violet-400">
+                  <Sparkles className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-semibold text-[var(--text-primary)]">Rieseguire l&apos;analisi?</h3>
+                  <p className="mt-1 text-sm text-slate-400">{reanalysisDialog.label}</p>
+                </div>
+              </div>
+
+              <p className="mb-5 text-sm text-slate-500">
+                L&apos;analisi sovrascriverà i risultati esistenti e consumerà token Claude. Scegli come procedere:
+              </p>
+
+              <div className="space-y-2.5">
+                {/* Opzione 1: Con contesto precedente */}
+                <button
+                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, true)}
+                  disabled={triggering}
+                  className="flex w-full items-start gap-3 rounded-xl border border-violet-700/40 bg-violet-900/15 p-3.5 text-left transition-colors hover:border-violet-600/60 hover:bg-violet-900/25"
+                >
+                  <History className="mt-0.5 h-5 w-5 shrink-0 text-violet-400" />
+                  <div>
+                    <p className="text-sm font-medium text-violet-300">Con contesto precedente</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Invia l&apos;analisi passata (punteggi, correzioni accettate/rifiutate) per valutare il progresso e non ripetere correzioni già applicate.
+                    </p>
+                  </div>
+                </button>
+
+                {/* Opzione 2: Da zero */}
+                <button
+                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, false)}
+                  disabled={triggering}
+                  className="flex w-full items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5 text-left transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]"
+                >
+                  <RotateCcw className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+                  <div>
+                    <p className="text-sm font-medium text-slate-300">Analisi da zero</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Analisi completamente fresca, senza contesto precedente. Utile se il capitolo è stato riscritto in modo significativo.
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <button
+                  onClick={() => setReanalysisDialog(null)}
+                  className="rounded-lg px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
+                >
+                  Annulla
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

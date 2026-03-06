@@ -8,6 +8,11 @@ on:
         required: true
         default: 'all'
         type: string
+      include_previous:
+        description: 'Include previous analysis context for progress tracking'
+        required: false
+        default: 'false'
+        type: string
 
 permissions:
   contents: read
@@ -33,5 +38,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           CHAPTER_ID: ${{ inputs.chapter_id }}
+          INCLUDE_PREVIOUS: ${{ inputs.include_previous }}
           REPO_DIR: ${{ github.workspace }}
         run: node analyze-chapter.mjs

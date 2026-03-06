@@ -20,6 +20,7 @@ import {getFirestore} from 'firebase-admin/firestore'
 const client = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY})
 const CHAPTER_ID = process.env.CHAPTER_ID ?? 'all'
 const REPO_DIR = process.env.REPO_DIR ?? '.'
+const INCLUDE_PREVIOUS = (process.env.INCLUDE_PREVIOUS ?? 'false') === 'true'
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
 initializeApp({credential: cert(serviceAccount)})
@@ -35,6 +36,11 @@ async function getChapters() {
 async function getSettings() {
   const snap = await db.collection('settings').doc('book').get()
   return snap.exists ? snap.data() : {}
+}
+
+async function getPreviousAnalysis(chapterId) {
+  const snap = await db.collection('analyses').doc(chapterId).get()
+  return snap.exists ? snap.data() : null
 }
 
 async function saveAnalysis(chapterId, analysis) {
@@ -87,16 +93,69 @@ ${personaList}
   ],`
 }
 
-function buildPrompt(bookTitle, bookType, chapterText) {
+function buildPreviousAnalysisContext(prev) {
+  if (!prev) return ''
+
+  const parts = []
+  parts.push(`--- ANALISI PRECEDENTE (${prev.analyzedAt}) ---`)
+  parts.push(`Punteggio complessivo: ${prev.scores?.overall ?? '?'}/10`)
+  if (prev.scores) {
+    const scoreEntries = Object.entries(prev.scores).filter(([k]) => k !== 'overall')
+    parts.push(`Punteggi: ${scoreEntries.map(([k, v]) => `${k}: ${v}`).join(', ')}`)
+  }
+  if (prev.summary) parts.push(`\nSintesi: ${prev.summary}`)
+  if (prev.strengths?.length) parts.push(`\nPunti di forza:\n${prev.strengths.map(s => `  - ${s}`).join('\n')}`)
+  if (prev.weaknesses?.length) parts.push(`\nDebolezze segnalate:\n${prev.weaknesses.map(w => `  - ${w}`).join('\n')}`)
+  if (prev.suggestions?.length) parts.push(`\nSuggerimenti dati:\n${prev.suggestions.map(s => `  - ${s}`).join('\n')}`)
+
+  // Mostra le correzioni e il loro stato (accettata/rifiutata/ignorata)
+  if (prev.corrections?.length) {
+    const accepted = new Set(prev.acceptedCorrections ?? [])
+    const rejected = new Set(prev.rejectedCorrections ?? [])
+    const lines = prev.corrections.map((c, i) => {
+      const status = accepted.has(i) ? '✅ ACCETTATA' : rejected.has(i) ? '❌ RIFIUTATA' : '⏳ IGNORATA'
+      return `  [${status}] "${c.original}" → "${c.suggested}" (${c.type}: ${c.note})`
+    })
+    parts.push(`\nCorrezioni proposte e loro esito:\n${lines.join('\n')}`)
+  }
+
+  if (prev.historicalAccuracy) {
+    parts.push(`\nAccuratezza storica: ${prev.historicalAccuracy.score}/10`)
+    if (prev.historicalAccuracy.anachronisms?.length) {
+      parts.push(`Anacronismi segnalati: ${prev.historicalAccuracy.anachronisms.join(', ')}`)
+    }
+  }
+
+  parts.push(`--- FINE ANALISI PRECEDENTE ---`)
+  return parts.join('\n')
+}
+
+function buildPrompt(bookTitle, bookType, chapterText, previousContext) {
   const isHistorical = bookType === 'storico'
   const personas = READER_PERSONAS[isHistorical ? 'storico' : 'default']
 
   const historicalSection = isHistorical ? buildHistoricalSection() : ''
   const reactionsSection = buildReaderReactionsSection(personas)
 
+  const previousBlock = previousContext ? `
+
+IMPORTANTE — CONTESTO ANALISI PRECEDENTE:
+L'autore ha già ricevuto un'analisi precedente per questo capitolo e ha lavorato sul testo.
+Di seguito trovi l'analisi precedente con lo stato delle correzioni (accettate/rifiutate/ignorate dall'autore).
+Usa queste informazioni per:
+1. Valutare il PROGRESSO rispetto all'analisi precedente
+2. Non ripetere correzioni già accettate e applicate (il testo dovrebbe già includerle)
+3. Tenere conto delle correzioni rifiutate (l'autore ha scelto consapevolmente di non applicarle)
+4. Segnalare se debolezze precedenti sono state risolte o persistono
+5. Nella sintesi, includi un breve paragrafo sul progresso rispetto all'analisi precedente
+
+${previousContext}
+` : ''
+
   return `
 Sei un editor letterario italiano di alto livello. Analizza il seguente capitolo del libro
 intitolato "${bookTitle}" (genere: ${bookType || 'generico'}) e fornisci un'analisi dettagliata e professionale.
+${previousBlock}
 
 Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), con questa struttura:
 {
@@ -178,11 +237,23 @@ async function analyzeChapter(chapter, bookSettings) {
 
   console.log(`  Sorgente: ${source} (${chapterText.length} chars) | bookType: ${bookType}`)
 
-  const prompt = buildPrompt(bookTitle, bookType, chapterText)
+  // Contesto analisi precedente (se richiesto)
+  let previousContext = ''
+  if (INCLUDE_PREVIOUS) {
+    const prev = await getPreviousAnalysis(chapter.id)
+    if (prev) {
+      previousContext = buildPreviousAnalysisContext(prev)
+      console.log(`  Inclusa analisi precedente del ${prev.analyzedAt} (accepted: ${prev.acceptedCorrections?.length ?? 0}, rejected: ${prev.rejectedCorrections?.length ?? 0})`)
+    } else {
+      console.log(`  Nessuna analisi precedente trovata — analisi da zero`)
+    }
+  }
+
+  const prompt = buildPrompt(bookTitle, bookType, chapterText, previousContext || null)
 
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 6000,
+    max_tokens: previousContext ? 8000 : 6000,
     messages: [{role: 'user', content: prompt}],
   })
 
@@ -210,6 +281,7 @@ async function analyzeChapter(chapter, bookSettings) {
 async function main() {
   const [chapters, bookSettings] = await Promise.all([getChapters(), getSettings()])
   console.log(`Impostazioni libro: tipo=${bookSettings?.bookType ?? 'generico'}, titolo=${bookSettings?.title ?? '?'}`)
+  console.log(`Modalità: ${INCLUDE_PREVIOUS ? 'con contesto analisi precedente' : 'analisi da zero'}`)
 
   const toAnalyze =
     CHAPTER_ID === 'all'
