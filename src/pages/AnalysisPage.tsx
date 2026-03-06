@@ -296,6 +296,8 @@ export default function AnalysisPage() {
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null)
   // Cancellazione analisi — traccia quale provider è in corso di delete
   const [deletingAnalysis, setDeletingAnalysis] = useState<{chapterId: string; provider: AIProvider} | null>(null)
+  // Editor fullscreen
+  const [editorFullscreen, setEditorFullscreen] = useState(false)
   // Pending analysis progress
   const [pendingAnalysis, setPendingAnalysis] = useState<PendingAnalysis | null>(() => loadPending())
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunInfo | null>(null)
@@ -1570,6 +1572,8 @@ export default function AnalysisPage() {
                               setAppliedChanges([])
                             }}
                             placeholder="Il testo del capitolo apparirà qui dopo la sincronizzazione Drive..."
+                            isFullscreen={editorFullscreen}
+                            onToggleFullscreen={() => setEditorFullscreen((f) => !f)}
                           />
 
                           {/* Pannello modifiche applicate */}
