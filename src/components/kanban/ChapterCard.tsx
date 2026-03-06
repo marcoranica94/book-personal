@@ -1,11 +1,11 @@
 import {useSortable} from '@dnd-kit/sortable'
 import {CSS} from '@dnd-kit/utilities'
 import {motion} from 'framer-motion'
-import {Calendar, CheckSquare, ExternalLink, FileText, Pencil, Tag, Trash2} from 'lucide-react'
+import {Calendar, CheckCircle2, CheckSquare, ExternalLink, FileText, Pencil, Tag, Trash2} from 'lucide-react'
 import SyncStatusBadge from '@/components/drive/SyncStatusBadge'
 import {Link} from 'react-router-dom'
 import type {Chapter} from '@/types'
-import {PRIORITY_CONFIG} from '@/types'
+import {ChapterStatus, PRIORITY_CONFIG} from '@/types'
 import {calcProgress, charsToPages, formatDate, isDueSoon, isOverdue} from '@/utils/formatters'
 import {cn} from '@/utils/cn'
 
@@ -35,6 +35,7 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging, ind
   const prio = PRIORITY_CONFIG[chapter.priority]
   const overdue = isOverdue(chapter.dueDate)
   const dueSoon = isDueSoon(chapter.dueDate)
+  const isDone = chapter.status === ChapterStatus.DONE
 
   return (
     <div
@@ -53,9 +54,17 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging, ind
         className={cn(
           'relative rounded-xl border bg-[var(--bg-card)] p-4 shadow-sm transition-shadow',
           'border-[var(--border)] hover:border-[var(--border-strong)] hover:shadow-lg hover:shadow-black/30',
-          isDragging && 'shadow-2xl ring-1 ring-violet-500/40'
+          isDragging && 'shadow-2xl ring-1 ring-violet-500/40',
+          isDone && 'border-emerald-700/50 ring-1 ring-emerald-500/20'
         )}
       >
+        {/* Done badge */}
+        {isDone && (
+          <div className="absolute -top-2.5 left-3 flex items-center gap-1 rounded-full border border-emerald-700/50 bg-emerald-900/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300 shadow-sm backdrop-blur-sm">
+            <CheckCircle2 className="h-3 w-3" />
+            Completato
+          </div>
+        )}
         {/* Actions — stopPropagation su pointerDown per non triggerare il drag */}
         <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <Link
@@ -106,13 +115,15 @@ export default function ChapterCard({ chapter, onEdit, onDelete, isDragging, ind
               <div
                 className={cn(
                   'h-full rounded-full transition-all',
-                  progress >= 100
+                  isDone
+                    ? 'bg-emerald-500'
+                    : progress >= 100
                     ? 'bg-emerald-500'
                     : progress >= 50
                     ? 'bg-violet-500'
                     : 'bg-slate-600'
                 )}
-                style={{ width: `${progress}%` }}
+                style={{ width: isDone ? '100%' : `${progress}%` }}
               />
             </div>
           </div>

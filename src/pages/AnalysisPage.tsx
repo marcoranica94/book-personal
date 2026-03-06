@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react'
 import {AnimatePresence, motion} from 'framer-motion'
-import {CheckCheck, FileEdit, Loader2, Play, RadarIcon, RefreshCw, Sparkles, Square, X} from 'lucide-react'
+import {CheckCheck, CheckCircle2, FileEdit, Loader2, Play, RadarIcon, RefreshCw, Sparkles, Square, X} from 'lucide-react'
 import {PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer} from 'recharts'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
@@ -662,7 +662,7 @@ export default function AnalysisPage() {
           <option value="">— Seleziona capitolo —</option>
           {[...chapters].filter((c) => c.title.toLowerCase().startsWith('capitolo')).sort((a, b) => a.title.localeCompare(b.title, 'it')).map((c) => (
             <option key={c.id} value={c.id}>
-              {String(c.number).padStart(2, '0')} — {c.title}{analyses[c.id] ? ' ✓' : ''}
+              {String(c.number).padStart(2, '0')} — {c.title}{c.status === 'DONE' ? ' ✅' : analyses[c.id] ? ' ✓' : ''}
             </option>
           ))}
         </select>
@@ -761,6 +761,21 @@ export default function AnalysisPage() {
               </div>
             ) : analysis ? (
               <>
+                {/* Done banner — chiaro segnale che il capitolo è chiuso */}
+                {selectedChapter?.status === 'DONE' && (
+                  <div className="flex items-center gap-3 rounded-xl border border-emerald-700/40 bg-emerald-900/20 px-4 py-3">
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-emerald-300">
+                        Capitolo completato
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Questo capitolo è stato segnato come &quot;Done&quot; nella Kanban board. L&apos;analisi sottostante si riferisce all&apos;ultima versione analizzata. Puoi riaprirlo dalla board se vuoi rivederlo.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Score section */}
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                   {/* Radar + overall */}
