@@ -1253,131 +1253,201 @@ export default function AnalysisPage() {
                                 </button>
                               </div>
 
-                              {/* Correction list */}
-                              {analysis.corrections.map((c, i) => {
-                                const isAccepted = acceptedCorrections.has(i)
-                                const isRejected = rejectedCorrections.has(i)
-                                const wasAccepted = analysis.acceptedCorrections?.includes(i)
-                                const wasRejected = analysis.rejectedCorrections?.includes(i)
-                                return (
-                                  <div
-                                    key={i}
-                                    onClick={() => toggleAccept(i)}
-                                    className={cn(
-                                      'cursor-pointer rounded-lg border p-4 space-y-3 transition-colors',
-                                      isAccepted
-                                        ? 'border-emerald-600/50 bg-emerald-900/15'
-                                        : isRejected
-                                          ? 'border-red-800/40 bg-red-950/10 opacity-60'
-                                          : wasAccepted
-                                            ? 'border-emerald-700/30 bg-emerald-900/10'
-                                            : wasRejected
-                                              ? 'border-slate-700/40 bg-slate-900/20 opacity-50'
-                                              : 'border-[var(--border)] hover:border-[var(--border-strong)] hover:bg-[var(--overlay)]'
-                                    )}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      {/* Accetta checkbox */}
-                                      <div
-                                        onClick={(e) => { e.stopPropagation(); toggleAccept(i) }}
-                                        className={cn(
-                                          'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-                                          isAccepted
-                                            ? 'border-emerald-500 bg-emerald-600'
-                                            : 'border-[var(--border-strong)] bg-transparent hover:border-emerald-600'
-                                        )}
-                                      >
-                                        {isAccepted && <CheckCheck className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
-                                      </div>
-                                      {/* Rifiuta button */}
-                                      <div
-                                        onClick={(e) => { e.stopPropagation(); toggleReject(i) }}
-                                        title={isRejected ? 'Annulla rifiuto' : 'Rifiuta correzione'}
-                                        className={cn(
-                                          'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-                                          isRejected
-                                            ? 'border-red-500 bg-red-600'
-                                            : 'border-[var(--border-strong)] bg-transparent hover:border-red-600'
-                                        )}
-                                      >
-                                        {isRejected && <X className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
-                                      </div>
-                                      <span
-                                        className={cn(
-                                          'inline-flex rounded-full border px-2 py-0.5 text-xs',
-                                          CORRECTION_TYPE_COLORS[c.type] ?? 'border-[var(--border)] bg-[var(--overlay)] text-slate-400'
-                                        )}
-                                      >
-                                        {CORRECTION_TYPE_LABELS[c.type] ?? c.type}
-                                      </span>
-                                      {/* Stato sessione corrente */}
-                                      {isAccepted && (
-                                        <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-900/40 border border-emerald-700/50 px-2 py-0.5 text-xs font-medium text-emerald-400">
-                                          <CheckCheck className="h-3 w-3" />
-                                          da applicare
+                              {/* Correction list — raggruppata per tipo */}
+                              {(() => {
+                                // Ordine preferito dei tipi
+                                const TYPE_ORDER = ['grammar', 'style', 'clarity', 'continuity']
+                                // Raggruppa mantenendo l'indice originale per accettazione/rifiuto
+                                const groups = TYPE_ORDER
+                                  .map((type) => ({
+                                    type,
+                                    items: analysis.corrections
+                                      .map((c, i) => ({c, i}))
+                                      .filter(({c}) => c.type === type),
+                                  }))
+                                  .filter(({items}) => items.length > 0)
+                                // Tipi non standard (altri valori non previsti)
+                                const knownTypes = new Set(TYPE_ORDER)
+                                const others = analysis.corrections
+                                  .map((c, i) => ({c, i}))
+                                  .filter(({c}) => !knownTypes.has(c.type))
+                                if (others.length > 0) groups.push({type: 'other', items: others})
+
+                                return groups.map(({type, items}) => {
+                                  const groupAccepted = items.filter(({i}) => acceptedCorrections.has(i)).length
+                                  const groupRejected = items.filter(({i}) => rejectedCorrections.has(i)).length
+                                  const groupPending = items.length - groupAccepted - groupRejected
+                                  const allGroupAccepted = items.every(({i}) => acceptedCorrections.has(i))
+
+                                  return (
+                                    <div key={type} className="rounded-xl border border-[var(--border)] overflow-hidden">
+                                      {/* Group header */}
+                                      <div className={cn(
+                                        'flex items-center gap-3 px-4 py-2.5',
+                                        type === 'grammar' ? 'bg-red-900/10 border-b border-red-800/20' :
+                                        type === 'style'   ? 'bg-violet-900/10 border-b border-violet-800/20' :
+                                        type === 'clarity' ? 'bg-blue-900/10 border-b border-blue-800/20' :
+                                        type === 'continuity' ? 'bg-amber-900/10 border-b border-amber-800/20' :
+                                        'bg-slate-900/10 border-b border-slate-700/20'
+                                      )}>
+                                        <span className={cn(
+                                          'rounded-full border px-2.5 py-0.5 text-xs font-semibold',
+                                          CORRECTION_TYPE_COLORS[type] ?? 'border-[var(--border)] bg-[var(--overlay)] text-slate-400'
+                                        )}>
+                                          {CORRECTION_TYPE_LABELS[type] ?? type}
                                         </span>
-                                      )}
-                                      {isRejected && (
-                                        <span className="ml-auto flex items-center gap-1 rounded-full bg-red-900/30 border border-red-800/40 px-2 py-0.5 text-xs text-red-400">
-                                          <X className="h-3 w-3" />
-                                          rifiutata
+                                        <span className="text-xs text-slate-500">
+                                          {items.length} {items.length === 1 ? 'correzione' : 'correzioni'}
                                         </span>
-                                      )}
-                                      {!isAccepted && !isRejected && (
-                                        <span className="ml-auto text-xs text-slate-700 italic">da rivedere</span>
-                                      )}
-                                      {/* Badge storico (dopo apply precedente) */}
-                                      {!isAccepted && !isRejected && wasAccepted && (
-                                        <span className="flex items-center gap-1 rounded-full bg-emerald-900/30 border border-emerald-800/30 px-2 py-0.5 text-xs text-emerald-600">
-                                          <CheckCheck className="h-3 w-3" />
-                                          già accettata
-                                        </span>
-                                      )}
-                                      {!isAccepted && !isRejected && wasRejected && (
-                                        <span className="flex items-center gap-1 rounded-full bg-slate-800/40 border border-slate-700/30 px-2 py-0.5 text-xs text-slate-600">
-                                          <X className="h-3 w-3" />
-                                          già rifiutata
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3 text-xs">
-                                      <div>
-                                        <p className="mb-1 text-slate-600">Originale</p>
-                                        <p className="rounded-lg bg-red-950/20 p-2.5 text-slate-400 line-through">
-                                          {c.original}
-                                        </p>
-                                      </div>
-                                      <div>
-                                        <p className="mb-1 text-slate-600">Suggerito</p>
-                                        <p className="rounded-lg bg-emerald-950/20 p-2.5 text-emerald-300">
-                                          {c.suggested}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    {/* Contesto nel testo */}
-                                    {(() => {
-                                      const ctx = selectedChapter?.driveContent
-                                        ? findContext(selectedChapter.driveContent, c.original)
-                                        : null
-                                      if (!ctx) return null
-                                      const parts = ctx.split(c.original)
-                                      return (
-                                        <div className="rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-xs text-slate-500">
-                                          <p className="mb-1 text-slate-600">Contesto nel testo</p>
-                                          <p className="leading-relaxed">
-                                            {parts[0]}
-                                            <mark className="rounded bg-amber-900/40 px-0.5 text-amber-300 not-italic">{c.original}</mark>
-                                            {parts.slice(1).join(c.original)}
-                                          </p>
+                                        {/* Mini contatori stato */}
+                                        <div className="flex items-center gap-1.5 text-xs">
+                                          {groupAccepted > 0 && <span className="text-emerald-500">✓ {groupAccepted}</span>}
+                                          {groupRejected > 0 && <span className="text-red-400">✗ {groupRejected}</span>}
+                                          {groupPending > 0 && <span className="text-slate-600">◯ {groupPending}</span>}
                                         </div>
-                                      )
-                                    })()}
-                                    {c.note && (
-                                      <p className="text-xs text-slate-600 italic">{c.note}</p>
-                                    )}
-                                  </div>
-                                )
-                              })}
+                                        <div className="flex-1" />
+                                        {/* Accetta tutte del gruppo */}
+                                        <button
+                                          onClick={() => {
+                                            if (allGroupAccepted) {
+                                              // Deseleziona tutto il gruppo
+                                              setAcceptedCorrections((prev) => {
+                                                const next = new Set(prev)
+                                                items.forEach(({i}) => next.delete(i))
+                                                return next
+                                              })
+                                            } else {
+                                              // Accetta tutto il gruppo
+                                              setAcceptedCorrections((prev) => {
+                                                const next = new Set(prev)
+                                                items.forEach(({i}) => next.add(i))
+                                                return next
+                                              })
+                                              setRejectedCorrections((prev) => {
+                                                const next = new Set(prev)
+                                                items.forEach(({i}) => next.delete(i))
+                                                return next
+                                              })
+                                            }
+                                          }}
+                                          className="flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-0.5 text-xs text-slate-500 transition-colors hover:bg-[var(--overlay)] hover:text-slate-300"
+                                        >
+                                          <CheckCheck className="h-3 w-3" />
+                                          {allGroupAccepted ? 'Deseleziona' : 'Accetta tutte'}
+                                        </button>
+                                      </div>
+
+                                      {/* Items del gruppo */}
+                                      <div className="divide-y divide-[var(--border)]">
+                                        {items.map(({c, i}) => {
+                                          const isAccepted = acceptedCorrections.has(i)
+                                          const isRejected = rejectedCorrections.has(i)
+                                          const wasAccepted = analysis.acceptedCorrections?.includes(i)
+                                          const wasRejected = analysis.rejectedCorrections?.includes(i)
+                                          return (
+                                            <div
+                                              key={i}
+                                              onClick={() => toggleAccept(i)}
+                                              className={cn(
+                                                'cursor-pointer p-4 space-y-3 transition-colors',
+                                                isAccepted
+                                                  ? 'bg-emerald-900/10'
+                                                  : isRejected
+                                                    ? 'bg-red-950/10 opacity-60'
+                                                    : wasAccepted
+                                                      ? 'bg-emerald-900/5'
+                                                      : wasRejected
+                                                        ? 'bg-slate-900/10 opacity-50'
+                                                        : 'hover:bg-[var(--overlay)]'
+                                              )}
+                                            >
+                                              <div className="flex items-center gap-2">
+                                                {/* Accetta checkbox */}
+                                                <div
+                                                  onClick={(e) => { e.stopPropagation(); toggleAccept(i) }}
+                                                  className={cn(
+                                                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
+                                                    isAccepted
+                                                      ? 'border-emerald-500 bg-emerald-600'
+                                                      : 'border-[var(--border-strong)] bg-transparent hover:border-emerald-600'
+                                                  )}
+                                                >
+                                                  {isAccepted && <CheckCheck className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                                                </div>
+                                                {/* Rifiuta button */}
+                                                <div
+                                                  onClick={(e) => { e.stopPropagation(); toggleReject(i) }}
+                                                  title={isRejected ? 'Annulla rifiuto' : 'Rifiuta correzione'}
+                                                  className={cn(
+                                                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
+                                                    isRejected
+                                                      ? 'border-red-500 bg-red-600'
+                                                      : 'border-[var(--border-strong)] bg-transparent hover:border-red-600'
+                                                  )}
+                                                >
+                                                  {isRejected && <X className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                                                </div>
+                                                {/* Stato sessione */}
+                                                {isAccepted && (
+                                                  <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-900/40 border border-emerald-700/50 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                                                    <CheckCheck className="h-3 w-3" /> da applicare
+                                                  </span>
+                                                )}
+                                                {isRejected && (
+                                                  <span className="ml-auto flex items-center gap-1 rounded-full bg-red-900/30 border border-red-800/40 px-2 py-0.5 text-xs text-red-400">
+                                                    <X className="h-3 w-3" /> rifiutata
+                                                  </span>
+                                                )}
+                                                {!isAccepted && !isRejected && (
+                                                  <span className="ml-auto text-xs text-slate-700 italic">da rivedere</span>
+                                                )}
+                                                {!isAccepted && !isRejected && wasAccepted && (
+                                                  <span className="flex items-center gap-1 rounded-full bg-emerald-900/30 border border-emerald-800/30 px-2 py-0.5 text-xs text-emerald-600">
+                                                    <CheckCheck className="h-3 w-3" /> già accettata
+                                                  </span>
+                                                )}
+                                                {!isAccepted && !isRejected && wasRejected && (
+                                                  <span className="flex items-center gap-1 rounded-full bg-slate-800/40 border border-slate-700/30 px-2 py-0.5 text-xs text-slate-600">
+                                                    <X className="h-3 w-3" /> già rifiutata
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="grid grid-cols-2 gap-3 text-xs">
+                                                <div>
+                                                  <p className="mb-1 text-slate-600">Originale</p>
+                                                  <p className="rounded-lg bg-red-950/20 p-2.5 text-slate-400 line-through">{c.original}</p>
+                                                </div>
+                                                <div>
+                                                  <p className="mb-1 text-slate-600">Suggerito</p>
+                                                  <p className="rounded-lg bg-emerald-950/20 p-2.5 text-emerald-300">{c.suggested}</p>
+                                                </div>
+                                              </div>
+                                              {(() => {
+                                                const ctx = selectedChapter?.driveContent
+                                                  ? findContext(selectedChapter.driveContent, c.original)
+                                                  : null
+                                                if (!ctx) return null
+                                                const parts = ctx.split(c.original)
+                                                return (
+                                                  <div className="rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-xs text-slate-500">
+                                                    <p className="mb-1 text-slate-600">Contesto nel testo</p>
+                                                    <p className="leading-relaxed">
+                                                      {parts[0]}
+                                                      <mark className="rounded bg-amber-900/40 px-0.5 text-amber-300 not-italic">{c.original}</mark>
+                                                      {parts.slice(1).join(c.original)}
+                                                    </p>
+                                                  </div>
+                                                )
+                                              })()}
+                                              {c.note && <p className="text-xs text-slate-600 italic">{c.note}</p>}
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )
+                                })
+                              })()}
                             </div>
                           )}
                         </motion.div>

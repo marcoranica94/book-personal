@@ -259,6 +259,11 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
   "_placeholder": null
 }
 
+IMPORTANTE sulle correzioni:
+- Sii ESAUSTIVO: elenca le correzioni che trovi (grammatica, stile, chiarezza, continuità), con limite di 20.
+- Non fermarti alle prime 5-10: analizza ogni paragrafo del capitolo e segnala ogni problema.
+- Per ogni correzione, "original" deve essere il testo ESATTO presente nel capitolo (copia-incolla) per permettere la sostituzione automatica.
+
 Criteri di valutazione:
 - stile: qualità della prosa, varietà lessicale, originalità dello stile
 - chiarezza: comprensibilità, coerenza interna, chiarezza delle scene
@@ -288,7 +293,7 @@ async function callClaude(prompt, previousContext) {
   })
   const message = await client.messages.create({
     model: PROVIDER_MODELS.claude,
-    max_tokens: previousContext ? 8000 : 6000,
+    max_tokens: previousContext ? 12000 : 8000,
     messages: [{role: 'user', content: prompt}],
   })
   const block = message.content[0]
@@ -359,7 +364,7 @@ async function callChatGPT(prompt, previousContext) {
   })
   const response = await client.chat.completions.create({
     model: PROVIDER_MODELS.chatgpt,
-    max_tokens: previousContext ? 8000 : 6000,
+    max_tokens: previousContext ? 12000 : 8000,
     temperature: 0.7,
     response_format: {type: 'json_object'},
     messages: [
