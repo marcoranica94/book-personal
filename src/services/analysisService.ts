@@ -61,8 +61,6 @@ export async function checkErrorAfter(
       return data.failedAt && new Date(data.failedAt) > new Date(since)
     })
   }
-  const errDoc = await getDoc(doc(db, 'analysisErrors', `${chapterId}_all`))
-    .catch(() => null)
   // Controlla tutti i provider per questo capitolo
   const snap = await getDocs(collection(db, 'analysisErrors'))
   return snap.docs.some((d) => {
