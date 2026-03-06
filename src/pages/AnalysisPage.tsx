@@ -1533,75 +1533,100 @@ export default function AnalysisPage() {
         )}
       </AnimatePresence>
 
-      {/* Comparison table */}
-      {analyzedChapters.length > 0 && (
-        <motion.div
-          initial={{opacity: 0, y: 8}}
-          animate={{opacity: 1, y: 0}}
-          transition={{delay: 0.1}}
-          className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)]"
-        >
-          <div className="border-b border-[var(--border)] px-5 py-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Confronto capitoli — {analyzedChapters.length} analizzati
-            </h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-xs text-slate-600">
-                  <th className="px-5 py-2.5 text-left font-medium">Capitolo</th>
-                  {Object.values(SCORE_LABELS).map((l) => (
-                    <th key={l} className="px-3 py-2.5 text-center font-medium">{l}</th>
-                  ))}
-                  <th className="px-5 py-2.5 text-center font-medium">Overall</th>
-                </tr>
-              </thead>
-              <tbody>
-                {analyzedChapters.map((c) => {
-                  const byProvider = analyses[c.id]
-                  const a = byProvider?.[activeProvider] ?? Object.values(byProvider ?? {})[0]
-                  if (!a) return null
-                  return (
-                    <tr
-                      key={c.id}
-                      onClick={() => {
-                        setSelectedId(c.id)
-                        setActiveTab('strengths')
-                        window.scrollTo({top: 0, behavior: 'smooth'})
-                      }}
-                      className={cn(
-                        'cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--overlay)]',
-                        selectedId === c.id && 'bg-violet-900/10'
-                      )}
-                    >
-                      <td className="px-5 py-3">
-                        <span className="mr-2 text-xs text-slate-600">
-                          {String(c.number).padStart(2, '0')}
+      {/* Comparison table — multi-provider */}
+      {analyzedChapters.length > 0 && (() => {
+        // Calcola quali provider hanno almeno un'analisi
+        const allProviders = Object.keys(AI_PROVIDER_CONFIG) as AIProvider[]
+        const usedProviders = allProviders.filter((p) =>
+          analyzedChapters.some((c) => !!analyses[c.id]?.[p]),
+        )
+        return (
+          <motion.div
+            initial={{opacity: 0, y: 8}}
+            animate={{opacity: 1, y: 0}}
+            transition={{delay: 0.1}}
+            className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)]"
+          >
+            <div className="border-b border-[var(--border)] px-5 py-4">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Confronto capitoli — {analyzedChapters.length} analizzati · {usedProviders.length} provider
+              </h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)] text-xs text-slate-600">
+                    <th className="px-5 py-2.5 text-left font-medium">Capitolo</th>
+                    {Object.values(SCORE_LABELS).map((l) => (
+                      <th key={l} className="px-3 py-2.5 text-center font-medium">{l}</th>
+                    ))}
+                    {/* Overall per provider */}
+                    {usedProviders.map((p) => (
+                      <th key={p} className="px-3 py-2.5 text-center font-medium">
+                        <span className={cn('inline-flex items-center gap-1', AI_PROVIDER_CONFIG[p].color)}>
+                          <span className={cn('inline-block h-1.5 w-1.5 rounded-full', AI_PROVIDER_CONFIG[p].dot)} />
+                          {AI_PROVIDER_CONFIG[p].label}
                         </span>
-                        <span className="text-slate-300">{c.title}</span>
-                      </td>
-                      {Object.keys(SCORE_LABELS).map((key) => {
-                        const val = a.scores[key as keyof typeof a.scores] as number
-                        return (
-                          <td key={key} className={cn('px-3 py-3 text-center text-xs font-medium', getScoreColor(val))}>
-                            {val.toFixed(1)}
-                          </td>
-                        )
-                      })}
-                      <td className="px-5 py-3 text-center">
-                        <span className={cn('text-sm font-bold', getScoreColor(a.scores.overall))}>
-                          {a.scores.overall.toFixed(1)}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
-      )}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {analyzedChapters.map((c) => {
+                    const byProvider = analyses[c.id]
+                    // Per i punteggi dettagliati, mostra quelli del provider attivo (o il primo disponibile)
+                    const displayAnalysis = byProvider?.[activeProvider] ?? Object.values(byProvider ?? {})[0]
+                    if (!displayAnalysis) return null
+                    return (
+                      <tr
+                        key={c.id}
+                        onClick={() => {
+                          setSelectedId(c.id)
+                          setActiveTab('strengths')
+                          window.scrollTo({top: 0, behavior: 'smooth'})
+                        }}
+                        className={cn(
+                          'cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--overlay)]',
+                          selectedId === c.id && 'bg-violet-900/10',
+                        )}
+                      >
+                        <td className="px-5 py-3">
+                          <span className="mr-2 text-xs text-slate-600">
+                            {String(c.number).padStart(2, '0')}
+                          </span>
+                          <span className="text-slate-300">{c.title}</span>
+                        </td>
+                        {Object.keys(SCORE_LABELS).map((key) => {
+                          const val = displayAnalysis.scores[key as keyof typeof displayAnalysis.scores] as number
+                          return (
+                            <td key={key} className={cn('px-3 py-3 text-center text-xs font-medium', getScoreColor(val))}>
+                              {val.toFixed(1)}
+                            </td>
+                          )
+                        })}
+                        {/* Overall per ogni provider */}
+                        {usedProviders.map((p) => {
+                          const a = byProvider?.[p]
+                          if (!a) return (
+                            <td key={p} className="px-3 py-3 text-center text-xs text-slate-700">—</td>
+                          )
+                          return (
+                            <td key={p} className="px-3 py-3 text-center">
+                              <span className={cn('text-sm font-bold', getScoreColor(a.scores.overall))}>
+                                {a.scores.overall.toFixed(1)}
+                              </span>
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        )
+      })()}
 
       {/* Empty state */}
       {chapters.length === 0 && (

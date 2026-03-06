@@ -124,3 +124,54 @@ export async function deleteAllAnalyses(): Promise<void> {
     await deleteDoc(d.ref)
   }
 }
+
+// ─── Analysis Errors ────────────────────────────────────────────────────────
+
+export interface AnalysisError {
+  chapterId: string
+  provider: string
+  error: string
+  failedAt: string
+  model: string
+}
+
+/** Legge l'ultimo errore di analisi per un capitolo/provider */
+export async function getAnalysisError(
+  chapterId: string,
+  provider: AIProvider,
+): Promise<AnalysisError | null> {
+  const snap = await getDoc(
+    doc(db, COL, chapterId, 'byProvider', provider, 'errors', 'latest'),
+  )
+  return snap.exists() ? (snap.data() as AnalysisError) : null
+}
+
+/** Legge tutti gli errori di analisi recenti per tutti i capitoli/provider */
+export async function getAllAnalysisErrors(): Promise<AnalysisError[]> {
+  const chaptersSnap = await getDocs(collection(db, COL))
+  const errors: AnalysisError[] = []
+  for (const chapterDoc of chaptersSnap.docs) {
+    const byProviderSnap = await getDocs(collection(db, COL, chapterDoc.id, 'byProvider'))
+    for (const providerDoc of byProviderSnap.docs) {
+      const errSnap = await getDoc(
+        doc(db, COL, chapterDoc.id, 'byProvider', providerDoc.id, 'errors', 'latest'),
+      )
+      if (errSnap.exists()) {
+        errors.push(errSnap.data() as AnalysisError)
+      }
+    }
+    // Anche per provider che non hanno un doc analisi ma hanno un errore
+    const allProviders: AIProvider[] = ['claude', 'gemini', 'chatgpt']
+    for (const p of allProviders) {
+      if (byProviderSnap.docs.some((d) => d.id === p)) continue
+      const errSnap = await getDoc(
+        doc(db, COL, chapterDoc.id, 'byProvider', p, 'errors', 'latest'),
+      )
+      if (errSnap.exists()) {
+        errors.push(errSnap.data() as AnalysisError)
+      }
+    }
+  }
+  return errors
+}
+

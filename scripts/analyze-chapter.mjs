@@ -71,6 +71,21 @@ async function saveAnalysis(chapterId, analysis) {
   await ref.set(analysis)
 }
 
+/** Salva un record di errore su Firestore per rendere il fallimento visibile nella UI */
+async function saveAnalysisError(chapterId, errorMessage) {
+  const ref = db.collection('analyses').doc(chapterId)
+    .collection('byProvider').doc(AI_PROVIDER)
+    .collection('errors').doc('latest')
+  await ref.set({
+    chapterId,
+    provider: AI_PROVIDER,
+    error: errorMessage,
+    failedAt: new Date().toISOString(),
+    model: PROVIDER_MODELS[AI_PROVIDER] ?? '?',
+  })
+  console.error(`  ✗ Errore salvato su Firestore per ${chapterId}/${AI_PROVIDER}: ${errorMessage}`)
+}
+
 // ─── Prompt ─────────────────────────────────────────────────────────────────
 
 const READER_PERSONAS = {
@@ -334,15 +349,27 @@ async function analyzeChapter(chapter, bookSettings) {
   const modelName = PROVIDER_MODELS[AI_PROVIDER] ?? PROVIDER_MODELS.claude
   let responseText = ''
 
-  if (AI_PROVIDER === 'gemini') {
-    responseText = await callGemini(prompt, previousContext)
-  } else if (AI_PROVIDER === 'chatgpt') {
-    responseText = await callChatGPT(prompt, previousContext)
-  } else {
-    responseText = await callClaude(prompt, previousContext)
+  try {
+    if (AI_PROVIDER === 'gemini') {
+      responseText = await callGemini(prompt, previousContext)
+    } else if (AI_PROVIDER === 'chatgpt') {
+      responseText = await callChatGPT(prompt, previousContext)
+    } else {
+      responseText = await callClaude(prompt, previousContext)
+    }
+  } catch (apiErr) {
+    const msg = `Errore chiamata ${AI_PROVIDER}: ${apiErr.message ?? apiErr}`
+    console.error(`  ${msg}`)
+    await saveAnalysisError(chapter.id, msg)
+    return null
   }
 
-  if (!responseText) return null
+  if (!responseText) {
+    const msg = `Risposta vuota da ${AI_PROVIDER} (${modelName})`
+    console.warn(`  ${msg}`)
+    await saveAnalysisError(chapter.id, msg)
+    return null
+  }
 
   try {
     const jsonMatch = responseText.match(/\{[\s\S]*\}/)
@@ -358,8 +385,9 @@ async function analyzeChapter(chapter, bookSettings) {
       ...parsed,
     }
   } catch (err) {
-    console.error(`  Errore parsing JSON per ${chapter.id}:`, err)
-    console.error(`  Response text (first 500 chars):`, responseText.substring(0, 500))
+    const msg = `Errore parsing JSON per ${chapter.id}: ${err.message}. Response (500 chars): ${responseText.substring(0, 500)}`
+    console.error(`  ${msg}`)
+    await saveAnalysisError(chapter.id, msg)
     return null
   }
 }
