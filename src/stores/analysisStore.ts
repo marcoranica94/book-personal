@@ -9,12 +9,15 @@ type AnalysesMap = Record<string, Record<AIProvider, ChapterAnalysis>>
 interface AnalysisStore {
   analyses: AnalysesMap
   analysisErrors: AnalysisError[]
+  /** Storico analisi: history[chapterId][provider] = ChapterAnalysis[] */
+  history: Record<string, Record<AIProvider, ChapterAnalysis[]>>
   isLoading: boolean
   error: string | null
 
   loadAnalysis: (chapterId: string) => Promise<void>
   loadAllAnalyses: () => Promise<void>
   loadAnalysisErrors: () => Promise<void>
+  loadChapterHistory: (chapterId: string) => Promise<void>
   getAnalysis: (chapterId: string, provider: AIProvider) => ChapterAnalysis | null
   /** Helper: restituisce la prima analisi disponibile per un capitolo (preferisce il provider passato) */
   getAnyAnalysis: (chapterId: string, preferredProvider?: AIProvider) => ChapterAnalysis | null
@@ -29,6 +32,7 @@ interface AnalysisStore {
 export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   analyses: {},
   analysisErrors: [],
+  history: {},
   isLoading: false,
   error: null,
 
@@ -63,6 +67,17 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
     try {
       const errors = await analysisService.getAllAnalysisErrors()
       set({analysisErrors: errors})
+    } catch {
+      // Non bloccante
+    }
+  },
+
+  loadChapterHistory: async (chapterId) => {
+    try {
+      const fullHistory = await analysisService.getChapterFullHistory(chapterId)
+      set((s) => ({
+        history: {...s.history, [chapterId]: fullHistory},
+      }))
     } catch {
       // Non bloccante
     }

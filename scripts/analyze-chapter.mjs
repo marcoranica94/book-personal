@@ -213,8 +213,18 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
   },
   "summary": "<sintesi dell'analisi, max 200 parole>",
   "strengths": ["<punto di forza 1>", "<punto di forza 2>", ...],
-  "weaknesses": ["<area di miglioramento 1>", ...],
-  "suggestions": ["<suggerimento specifico 1>", ...],
+  "weaknesses": [
+    {
+      "text": "<descrizione del punto debole>",
+      "quotes": ["<citazione esatta dal testo che mostra questa debolezza>", ...]
+    }
+  ],
+  "suggestions": [
+    {
+      "text": "<suggerimento specifico>",
+      "quotes": ["<citazione esatta dal testo a cui si applica il suggerimento>", ...]
+    }
+  ],
   "corrections": [
     {
       "original": "<testo originale>",

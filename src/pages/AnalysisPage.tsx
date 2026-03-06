@@ -1,6 +1,22 @@
-import {useEffect, useRef, useState} from 'react'
+import React, {useEffect, useRef, useState} from 'react'
 import {AnimatePresence, motion} from 'framer-motion'
-import {AlertTriangle, CheckCheck, CheckCircle2, FileEdit, History, Loader2, Play, RadarIcon, RefreshCw, RotateCcw, Sparkles, Square, X} from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCheck,
+  CheckCircle2,
+  ChevronDown,
+  FileEdit,
+  History,
+  Loader2,
+  Play,
+  RadarIcon,
+  RefreshCw,
+  RotateCcw,
+  Sparkles,
+  Square,
+  TrendingUp,
+  X
+} from 'lucide-react'
 import {PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer} from 'recharts'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
@@ -95,13 +111,37 @@ function findContext(text: string, phrase: string, pad = 60): string | null {
 
 function ItemModal({
   type,
-  text,
+  item,
+  chapterContent,
   onClose,
 }: {
   type: 'weaknesses' | 'suggestions'
-  text: string
+  item: string | {text: string; quotes?: string[]}
+  chapterContent: string
   onClose: () => void
 }) {
+  const text = typeof item === 'string' ? item : item.text
+  const quotes = typeof item === 'string' ? [] : (item.quotes ?? [])
+
+  // Cerca contesti aggiuntivi nel testo reale se non ci sono citazioni
+  const extraContexts: string[] = []
+  if (quotes.length === 0 && chapterContent) {
+    // Estrai parole chiave dalla debolezza e cerca nel testo
+    const keywords = text
+      .split(/[.,;:!?—–\-\s]+/)
+      .filter((w) => w.length > 5)
+      .slice(0, 4)
+    for (const kw of keywords) {
+      const ctx = findContext(chapterContent, kw, 80)
+      if (ctx && !extraContexts.some((e) => e.includes(kw))) {
+        extraContexts.push(ctx)
+        if (extraContexts.length >= 2) break
+      }
+    }
+  }
+
+  const allQuotes = quotes.length > 0 ? quotes : extraContexts
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
@@ -113,7 +153,7 @@ function ItemModal({
         exit={{opacity: 0, scale: 0.95}}
         transition={{duration: 0.15}}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+        className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
       >
         <div className="mb-4 flex items-center justify-between">
           <span className={cn(
@@ -128,7 +168,28 @@ function ItemModal({
             <X className="h-4 w-4" />
           </button>
         </div>
+
         <p className="mb-5 text-sm leading-relaxed text-[var(--text-primary)]">{text}</p>
+
+        {/* Citazioni dal testo */}
+        {allQuotes.length > 0 && (
+          <div className="mb-5 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              {quotes.length > 0 ? 'Esempi dal tuo testo' : 'Passaggi potenzialmente correlati'}
+            </p>
+            <div className="space-y-3">
+              {allQuotes.map((q, i) => (
+                <blockquote
+                  key={i}
+                  className="border-l-2 border-amber-500/40 pl-3 text-sm italic leading-relaxed text-slate-300"
+                >
+                  &ldquo;{q}&rdquo;
+                </blockquote>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Come applicarlo</p>
           <ul className="space-y-2 text-sm text-slate-300">
@@ -178,7 +239,7 @@ function ScoreBar({label, value}: {label: string; value: number}) {
 
 export default function AnalysisPage() {
   const {chapters, loadChapters} = useChaptersStore()
-  const {analyses, loadAnalysis, loadAllAnalyses, analysisErrors, loadAnalysisErrors, isLoading} = useAnalysisStore()
+  const {analyses, loadAnalysis, loadAllAnalyses, analysisErrors, loadAnalysisErrors, history: analysisHistory, loadChapterHistory, isLoading} = useAnalysisStore()
   const {config: driveConfig, patchTokens, load: loadDrive} = useDriveStore()
   const {user} = useAuthStore()
   const {settings, loadSettings} = useSettingsStore()
@@ -196,9 +257,11 @@ export default function AnalysisPage() {
   const [isForceSyncingDrive, setIsForceSyncingDrive] = useState(false)
   const [isPushingToDrive, setIsPushingToDrive] = useState(false)
   const [appliedChanges, setAppliedChanges] = useState<Array<{original: string; suggested: string}>>([])
-  const [itemDetailModal, setItemDetailModal] = useState<{type: 'weaknesses' | 'suggestions'; text: string} | null>(null)
+  const [itemDetailModal, setItemDetailModal] = useState<{type: 'weaknesses' | 'suggestions'; item: string | {text: string; quotes?: string[]}} | null>(null)
   // Re-analysis dialog — scegli se includere contesto precedente
   const [reanalysisDialog, setReanalysisDialog] = useState<{chapterId: string; label: string; provider: AIProvider} | null>(null)
+  // Storico analisi — ID capitolo espanso nella tabella confronto
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null)
   // Pending analysis progress
   const [pendingAnalysis, setPendingAnalysis] = useState<PendingAnalysis | null>(() => loadPending())
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunInfo | null>(null)
@@ -982,10 +1045,12 @@ export default function AnalysisPage() {
                               : analysis.suggestions
                           ).map((item, i) => {
                             const isClickable = activeTab === 'weaknesses' || activeTab === 'suggestions'
+                            const itemText = typeof item === 'string' ? item : item.text
+                            const itemQuotes = typeof item === 'string' ? [] : (item.quotes ?? [])
                             return (
                               <li
                                 key={i}
-                                onClick={isClickable ? () => setItemDetailModal({type: activeTab as 'weaknesses' | 'suggestions', text: item}) : undefined}
+                                onClick={isClickable ? () => setItemDetailModal({type: activeTab as 'weaknesses' | 'suggestions', item}) : undefined}
                                 className={cn(
                                   'flex items-start gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2.5 text-sm',
                                   isClickable && 'cursor-pointer transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]'
@@ -1001,7 +1066,14 @@ export default function AnalysisPage() {
                                         : 'bg-blue-500'
                                   )}
                                 />
-                                <span className="flex-1 text-[var(--text-primary)]">{item}</span>
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-[var(--text-primary)]">{itemText}</span>
+                                  {itemQuotes.length > 0 && (
+                                    <p className="mt-1.5 truncate text-xs italic text-slate-500">
+                                      &ldquo;{itemQuotes[0]}&rdquo;{itemQuotes.length > 1 && ` (+${itemQuotes.length - 1})`}
+                                    </p>
+                                  )}
+                                </div>
                                 {isClickable && (
                                   <span className="shrink-0 text-xs text-slate-500 mt-0.5">dettagli →</span>
                                 )}
@@ -1559,7 +1631,8 @@ export default function AnalysisPage() {
         {itemDetailModal && (
           <ItemModal
             type={itemDetailModal.type}
-            text={itemDetailModal.text}
+            item={itemDetailModal.item}
+            chapterContent={selectedChapter?.driveContent ?? ''}
             onClose={() => setItemDetailModal(null)}
           />
         )}
@@ -1645,51 +1718,190 @@ export default function AnalysisPage() {
                 <tbody>
                   {analyzedChapters.map((c) => {
                     const byProvider = analyses[c.id]
-                    // Per i punteggi dettagliati, mostra quelli del provider attivo (o il primo disponibile)
                     const displayAnalysis = byProvider?.[activeProvider] ?? Object.values(byProvider ?? {})[0]
                     if (!displayAnalysis) return null
+                    const isExpanded = expandedHistoryId === c.id
+                    const chapterHistory = analysisHistory[c.id]
                     return (
-                      <tr
-                        key={c.id}
-                        onClick={() => {
-                          setSelectedId(c.id)
-                          setActiveTab('strengths')
-                          window.scrollTo({top: 0, behavior: 'smooth'})
-                        }}
-                        className={cn(
-                          'cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--overlay)]',
-                          selectedId === c.id && 'bg-violet-900/10',
-                        )}
-                      >
-                        <td className="px-5 py-3">
-                          <span className="mr-2 text-xs text-slate-600">
-                            {String(c.number).padStart(2, '0')}
-                          </span>
-                          <span className="text-slate-300">{c.title}</span>
-                        </td>
-                        {Object.keys(SCORE_LABELS).map((key) => {
-                          const val = displayAnalysis.scores[key as keyof typeof displayAnalysis.scores] as number
-                          return (
-                            <td key={key} className={cn('px-3 py-3 text-center text-xs font-medium', getScoreColor(val))}>
-                              {val.toFixed(1)}
-                            </td>
-                          )
-                        })}
-                        {/* Overall per ogni provider */}
-                        {usedProviders.map((p) => {
-                          const a = byProvider?.[p]
-                          if (!a) return (
-                            <td key={p} className="px-3 py-3 text-center text-xs text-slate-700">—</td>
-                          )
-                          return (
-                            <td key={p} className="px-3 py-3 text-center">
-                              <span className={cn('text-sm font-bold', getScoreColor(a.scores.overall))}>
-                                {a.scores.overall.toFixed(1)}
+                      <React.Fragment key={c.id}>
+                        <tr
+                          onClick={() => {
+                            if (isExpanded) {
+                              setExpandedHistoryId(null)
+                            } else {
+                              setExpandedHistoryId(c.id)
+                              if (!analysisHistory[c.id]) void loadChapterHistory(c.id)
+                            }
+                          }}
+                          className={cn(
+                            'cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--overlay)]',
+                            selectedId === c.id && 'bg-violet-900/10',
+                          )}
+                        >
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-2">
+                              <ChevronDown className={cn('h-3.5 w-3.5 text-slate-600 transition-transform', isExpanded && 'rotate-180')} />
+                              <span className="mr-1 text-xs text-slate-600">
+                                {String(c.number).padStart(2, '0')}
                               </span>
+                              <span className="text-slate-300">{c.title}</span>
+                            </div>
+                          </td>
+                          {Object.keys(SCORE_LABELS).map((key) => {
+                            const val = displayAnalysis.scores[key as keyof typeof displayAnalysis.scores] as number
+                            return (
+                              <td key={key} className={cn('px-3 py-3 text-center text-xs font-medium', getScoreColor(val))}>
+                                {val.toFixed(1)}
+                              </td>
+                            )
+                          })}
+                          {usedProviders.map((p) => {
+                            const a = byProvider?.[p]
+                            if (!a) return (
+                              <td key={p} className="px-3 py-3 text-center text-xs text-slate-700">—</td>
+                            )
+                            return (
+                              <td key={p} className="px-3 py-3 text-center">
+                                <span className={cn('text-sm font-bold', getScoreColor(a.scores.overall))}>
+                                  {a.scores.overall.toFixed(1)}
+                                </span>
+                              </td>
+                            )
+                          })}
+                        </tr>
+                        {/* Expanded history panel */}
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={Object.keys(SCORE_LABELS).length + 1 + usedProviders.length} className="px-5 py-4 bg-[var(--overlay)]">
+                              {!chapterHistory ? (
+                                <div className="flex items-center gap-2 py-4 justify-center">
+                                  <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
+                                  <span className="text-xs text-slate-500">Caricamento storico…</span>
+                                </div>
+                              ) : (() => {
+                                const providerEntries = Object.entries(chapterHistory) as [AIProvider, import('@/types').ChapterAnalysis[]][]
+                                const hasHistory = providerEntries.some(([, list]) => list.length > 1)
+                                if (!hasHistory) {
+                                  return (
+                                    <div className="py-4 text-center">
+                                      <History className="mx-auto mb-2 h-6 w-6 text-slate-700" />
+                                      <p className="text-xs text-slate-500">Solo un'analisi disponibile — avvia un'altra analisi per vedere il trend.</p>
+                                    </div>
+                                  )
+                                }
+                                return (
+                                  <div className="space-y-4">
+                                    <div className="flex items-center gap-2">
+                                      <TrendingUp className="h-4 w-4 text-violet-400" />
+                                      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                                        Andamento score nel tempo
+                                      </h3>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setSelectedId(c.id)
+                                          setActiveTab('strengths')
+                                          window.scrollTo({top: 0, behavior: 'smooth'})
+                                        }}
+                                        className="ml-auto text-xs text-violet-400 hover:text-violet-300"
+                                      >
+                                        Vai all'analisi ↑
+                                      </button>
+                                    </div>
+                                    {providerEntries.map(([provider, historyList]) => {
+                                      if (historyList.length < 2) return null
+                                      const cfg = AI_PROVIDER_CONFIG[provider]
+                                      return (
+                                        <div key={provider} className="space-y-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className={cn('h-2 w-2 rounded-full', cfg.dot)} />
+                                            <span className={cn('text-xs font-medium', cfg.color)}>{cfg.label}</span>
+                                            <span className="text-xs text-slate-600">
+                                              ({historyList.length} analisi)
+                                            </span>
+                                          </div>
+                                          {/* Score trend table */}
+                                          <div className="overflow-x-auto">
+                                            <table className="w-full text-xs">
+                                              <thead>
+                                                <tr className="text-slate-600">
+                                                  <th className="px-2 py-1.5 text-left font-medium">Data</th>
+                                                  <th className="px-2 py-1.5 text-left font-medium">Modello</th>
+                                                  {Object.values(SCORE_LABELS).map((l) => (
+                                                    <th key={l} className="px-2 py-1.5 text-center font-medium">{l}</th>
+                                                  ))}
+                                                  <th className="px-2 py-1.5 text-center font-medium">Overall</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {historyList.map((entry, idx) => {
+                                                  const prevEntry = idx > 0 ? historyList[idx - 1] : null
+                                                  const overallDelta = prevEntry ? entry.scores.overall - prevEntry.scores.overall : 0
+                                                  return (
+                                                    <tr key={idx} className="border-t border-[var(--border)]">
+                                                      <td className="px-2 py-1.5 text-slate-400">
+                                                        {new Date(entry.analyzedAt).toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit', year: '2-digit'})}
+                                                      </td>
+                                                      <td className="px-2 py-1.5 text-slate-600">{entry.model}</td>
+                                                      {Object.keys(SCORE_LABELS).map((key) => {
+                                                        const val = entry.scores[key as keyof typeof entry.scores] as number
+                                                        const prevVal = prevEntry ? prevEntry.scores[key as keyof typeof prevEntry.scores] as number : null
+                                                        const delta = prevVal !== null ? val - prevVal : 0
+                                                        return (
+                                                          <td key={key} className="px-2 py-1.5 text-center">
+                                                            <span className={getScoreColor(val)}>{val.toFixed(1)}</span>
+                                                            {delta !== 0 && (
+                                                              <span className={cn('ml-1 text-[10px]', delta > 0 ? 'text-emerald-500' : 'text-red-400')}>
+                                                                {delta > 0 ? '↑' : '↓'}{Math.abs(delta).toFixed(1)}
+                                                              </span>
+                                                            )}
+                                                          </td>
+                                                        )
+                                                      })}
+                                                      <td className="px-2 py-1.5 text-center">
+                                                        <span className={cn('font-bold', getScoreColor(entry.scores.overall))}>
+                                                          {entry.scores.overall.toFixed(1)}
+                                                        </span>
+                                                        {overallDelta !== 0 && (
+                                                          <span className={cn('ml-1 text-[10px] font-medium', overallDelta > 0 ? 'text-emerald-500' : 'text-red-400')}>
+                                                            {overallDelta > 0 ? '↑' : '↓'}{Math.abs(overallDelta).toFixed(1)}
+                                                          </span>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  )
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                          {/* Visual trend bar */}
+                                          <div className="flex items-end gap-1 h-12">
+                                            {historyList.map((entry, idx) => {
+                                              const pct = (entry.scores.overall / 10) * 100
+                                              return (
+                                                <div
+                                                  key={idx}
+                                                  title={`${new Date(entry.analyzedAt).toLocaleDateString('it-IT')}: ${entry.scores.overall.toFixed(1)}/10`}
+                                                  className="flex-1 rounded-t-sm transition-all"
+                                                  style={{
+                                                    height: `${pct}%`,
+                                                    background: pct >= 80 ? '#10B981' : pct >= 60 ? '#7C3AED' : pct >= 40 ? '#F59E0B' : '#EF4444',
+                                                    opacity: 0.3 + (idx / historyList.length) * 0.7,
+                                                  }}
+                                                />
+                                              )
+                                            })}
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )
+                              })()}
                             </td>
-                          )
-                        })}
-                      </tr>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     )
                   })}
                 </tbody>

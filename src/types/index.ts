@@ -109,6 +109,18 @@ export interface AnalysisCorrection {
   note: string
 }
 
+/** Debolezza strutturata con citazioni dal testo (retrocompatibile con semplice stringa) */
+export interface WeaknessItem {
+  text: string
+  quotes: string[]
+}
+
+/** Suggerimento strutturato con citazioni dal testo (retrocompatibile con semplice stringa) */
+export interface SuggestionItem {
+  text: string
+  quotes: string[]
+}
+
 export interface HistoricalAccuracyIssue {
   quote: string
   issue: string
@@ -140,8 +152,8 @@ export interface ChapterAnalysis {
   scores: AnalysisScores
   summary: string
   strengths: string[]
-  weaknesses: string[]
-  suggestions: string[]
+  weaknesses: (string | WeaknessItem)[]
+  suggestions: (string | SuggestionItem)[]
   corrections: AnalysisCorrection[]
   // Accept/reject tracking
   acceptedCorrections?: number[]

@@ -1,4 +1,4 @@
-import {addDoc, collection, deleteDoc, doc, getDoc, getDocs, updateDoc} from 'firebase/firestore'
+import {addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, updateDoc} from 'firebase/firestore'
 import {db} from './firebase'
 import type {AIProvider, ChapterAnalysis} from '@/types'
 
@@ -123,6 +123,42 @@ export async function deleteAllAnalyses(): Promise<void> {
     await Promise.all(byProviderSnap.docs.map((pd) => deleteDoc(pd.ref)))
     await deleteDoc(d.ref)
   }
+}
+
+// ─── Analysis History ─────────────────────────────────────────────────────────
+
+/** Legge lo storico completo delle analisi per un capitolo/provider, ordinato per data */
+export async function getAnalysisHistory(
+  chapterId: string,
+  provider: AIProvider,
+): Promise<ChapterAnalysis[]> {
+  const q = query(
+    collection(db, COL, chapterId, 'byProvider', provider, 'history'),
+    orderBy('analyzedAt', 'asc'),
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => d.data() as ChapterAnalysis)
+}
+
+/** Legge lo storico di tutti i provider per un capitolo */
+export async function getChapterFullHistory(
+  chapterId: string,
+): Promise<Record<AIProvider, ChapterAnalysis[]>> {
+  const result = {} as Record<AIProvider, ChapterAnalysis[]>
+  const byProviderSnap = await getDocs(collection(db, COL, chapterId, 'byProvider'))
+  for (const providerDoc of byProviderSnap.docs) {
+    const provider = providerDoc.id as AIProvider
+    const histSnap = await getDocs(
+      query(
+        collection(db, COL, chapterId, 'byProvider', provider, 'history'),
+        orderBy('analyzedAt', 'asc'),
+      ),
+    )
+    if (!histSnap.empty) {
+      result[provider] = histSnap.docs.map((d) => d.data() as ChapterAnalysis)
+    }
+  }
+  return result
 }
 
 // ─── Analysis Errors ────────────────────────────────────────────────────────
