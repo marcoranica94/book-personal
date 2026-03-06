@@ -7,27 +7,27 @@ import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import Highlight from '@tiptap/extension-highlight'
 import {
-  AlignCenter,
-  AlignJustify,
-  AlignLeft,
-  AlignRight,
-  Bold,
-  Heading1,
-  Heading2,
-  Heading3,
-  Highlighter,
-  Italic,
-  List,
-  ListOrdered,
-  Maximize2,
-  Minimize2,
-  Minus,
-  Pilcrow,
-  Quote,
-  Redo2,
-  Strikethrough,
-  Underline as UnderlineIcon,
-  Undo2,
+    AlignCenter,
+    AlignJustify,
+    AlignLeft,
+    AlignRight,
+    Bold,
+    Heading1,
+    Heading2,
+    Heading3,
+    Highlighter,
+    Italic,
+    List,
+    ListOrdered,
+    Maximize2,
+    Minimize2,
+    Minus,
+    Pilcrow,
+    Quote,
+    Redo2,
+    Strikethrough,
+    Underline as UnderlineIcon,
+    Undo2,
 } from 'lucide-react'
 import {cn} from '@/utils/cn'
 
@@ -41,19 +41,77 @@ interface RichTextEditorProps {
   onToggleFullscreen?: () => void
 }
 
-/** Converte HTML piatto (o testo puro) in HTML con tag <p> */
+/** Converte testo puro / markdown base → HTML per Tiptap */
 function textToHtml(text: string): string {
   if (!text) return ''
-  // Se contiene già tag HTML, restituisce direttamente
-  if (/<[a-z][\s\S]*>/i.test(text)) return text
-  // Testo semplice → avvolgi paragrafi
+  // Se contiene già tag HTML block, restituisce direttamente
+  if (/<(p|h[1-6]|ul|ol|li|blockquote|div|br)\b/i.test(text)) return text
+
   return text
     .split(/\n\n+/)
     .map((para) => {
-      const lines = para.split(/\n/).join('<br/>')
+      const trimmed = para.trim()
+      if (!trimmed) return ''
+
+      // Titoli markdown: # ## ###
+      const h3 = trimmed.match(/^###\s+(.+)/)
+      if (h3) return `<h3>${inlineMarkdown(h3[1])}</h3>`
+      const h2 = trimmed.match(/^##\s+(.+)/)
+      if (h2) return `<h2>${inlineMarkdown(h2[1])}</h2>`
+      const h1 = trimmed.match(/^#\s+(.+)/)
+      if (h1) return `<h1>${inlineMarkdown(h1[1])}</h1>`
+
+      // Citazione blockquote: >
+      if (trimmed.startsWith('> ')) {
+        return `<blockquote>${inlineMarkdown(trimmed.slice(2))}</blockquote>`
+      }
+
+      // Paragrafo normale — mantieni gli a-capo singoli come <br>
+      const lines = trimmed.split(/\n/).map(inlineMarkdown).join('<br/>')
       return `<p>${lines}</p>`
     })
+    .filter(Boolean)
     .join('')
+}
+
+/** Applica formattazione inline markdown: **bold**, *italic*, ~~strike~~ */
+function inlineMarkdown(text: string): string {
+  return text
+    // **grassetto** o __grassetto__
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // *corsivo* o _corsivo_  (non dopo spazio+asterisco di bullet)
+    .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
+    .replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em>$1</em>')
+    // ~~barrato~~
+    .replace(/~~(.+?)~~/g, '<s>$1</s>')
+    // `codice`
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+}
+
+/** Estrae testo puro dall'HTML di Tiptap (per salvare su Drive/Firestore) */
+function htmlToPlainText(html: string): string {
+  if (!html) return ''
+  // Se non contiene tag HTML, è già testo puro
+  if (!/<[a-z][\s\S]*>/i.test(html)) return html
+
+  return html
+    // Blocchi che diventano paragrafi separati da doppia newline
+    .replace(/<\/(p|h[1-6]|blockquote|li)>/gi, '\n\n')
+    // <br> → a-capo singolo
+    .replace(/<br\s*\/?>/gi, '\n')
+    // Rimuovi tutti i tag rimanenti
+    .replace(/<[^>]+>/g, '')
+    // Decode entità HTML comuni
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    // Normalizza: max 2 newline consecutive, rimuovi spazi finali
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 function ToolbarButton({
@@ -127,7 +185,8 @@ export default function RichTextEditor({
     content: textToHtml(content),
     editable: !readOnly,
     onUpdate: ({editor: ed}) => {
-      onChange(ed.getHTML())
+      // Restituisce testo puro — compatibile con Drive/Firestore
+      onChange(htmlToPlainText(ed.getHTML()))
     },
     editorProps: {
       attributes: {
@@ -140,9 +199,9 @@ export default function RichTextEditor({
   const setContent = useCallback(
     (newContent: string) => {
       if (!editor) return
-      const currentHtml = editor.getHTML()
       const newHtml = textToHtml(newContent)
-      // Avoid unnecessary updates
+      const currentHtml = editor.getHTML()
+      // Confronta HTML con HTML per evitare loop infiniti
       if (currentHtml !== newHtml) {
         editor.commands.setContent(newHtml, {emitUpdate: false})
       }
