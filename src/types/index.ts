@@ -165,6 +165,10 @@ export interface BookSettings {
   genre: string
   bookType: BookType
   defaultAIProvider: AIProvider
+  /** Modello Claude selezionato dall'utente */
+  claudeModel?: string
+  /** Modello Gemini selezionato dall'utente */
+  geminiModel?: string
   targetWords: number
   targetChapters: number
   startDate: string
@@ -176,6 +180,29 @@ export interface BookSettings {
   wordsPerMinuteReading: number
   githubPat?: string
 }
+
+// ─── AI Model Catalogs ────────────────────────────────────────────────────────
+
+export interface AIModelOption {
+  id: string
+  label: string
+  description: string
+  default?: boolean
+}
+
+export const CLAUDE_MODELS: AIModelOption[] = [
+  {id: 'claude-sonnet-4-6',       label: 'Claude Sonnet 4.6',       description: 'Bilanciato — qualità e velocità', default: true},
+  {id: 'claude-opus-4-5',         label: 'Claude Opus 4.5',         description: 'Il più potente, lento e costoso'},
+  {id: 'claude-haiku-3-5',        label: 'Claude Haiku 3.5',        description: 'Veloce ed economico'},
+  {id: 'claude-sonnet-3-7',       label: 'Claude Sonnet 3.7',       description: 'Generazione precedente'},
+]
+
+export const GEMINI_MODELS: AIModelOption[] = [
+  {id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite (preview)', description: 'Veloce e gratuito', default: true},
+  {id: 'gemini-2.5-flash',              label: 'Gemini 2.5 Flash',                description: 'Bilanciato'},
+  {id: 'gemini-2.5-pro',                label: 'Gemini 2.5 Pro',                  description: 'Il più capace di Gemini'},
+  {id: 'gemini-2.0-flash',              label: 'Gemini 2.0 Flash',                description: 'Veloce, generazione precedente'},
+]
 
 export interface StatsSnapshot {
   date: string
@@ -370,6 +397,8 @@ export const DEFAULT_BOOK_SETTINGS: BookSettings = {
   genre: '',
   bookType: 'generico',
   defaultAIProvider: 'claude',
+  claudeModel: 'claude-sonnet-4-6',
+  geminiModel: 'gemini-3.1-flash-lite-preview',
   targetWords: 80000,
   targetChapters: 20,
   startDate: new Date().toISOString(),

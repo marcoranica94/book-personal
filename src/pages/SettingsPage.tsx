@@ -6,8 +6,9 @@ import {useAuthStore} from '@/stores/authStore'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useDriveStore} from '@/stores/driveStore'
 import {toast} from '@/stores/toastStore'
-import type {BookSettings, Chapter, DriveFile} from '@/types'
-import {AI_PROVIDER_CONFIG, BookType, SyncSource, SyncStatus} from '@/types'
+import type {AIModelOption, BookSettings, Chapter, DriveFile} from '@/types'
+import {AI_PROVIDER_CONFIG, BookType, CLAUDE_MODELS, GEMINI_MODELS, SyncSource, SyncStatus} from '@/types'
+import {fetchClaudeModels, fetchGeminiModels} from '@/services/aiModelsService'
 import DriveConnectButton from '@/components/drive/DriveConnectButton'
 import FolderPicker from '@/components/drive/FolderPicker'
 import ConflictResolver from '@/components/drive/ConflictResolver'
@@ -72,6 +73,35 @@ export default function SettingsPage() {
   const [isSearchingUnlinked, setIsSearchingUnlinked] = useState(false)
   const [importingFileId, setImportingFileId] = useState<string | null>(null)
   const [isResetting, setIsResetting] = useState(false)
+  const [claudeModels, setClaudeModels] = useState<AIModelOption[]>(CLAUDE_MODELS)
+  const [geminiModels, setGeminiModels] = useState<AIModelOption[]>(GEMINI_MODELS)
+  const [isFetchingModels, setIsFetchingModels] = useState(false)
+
+  // Fetch modelli disponibili all'apertura della pagina
+  useEffect(() => {
+    let cancelled = false
+    async function loadModels() {
+      setIsFetchingModels(true)
+      try {
+        const [claude, gemini] = await Promise.all([
+          fetchClaudeModels(),
+          // Passiamo la chiave Gemini se disponibile (letta da env o da localStorage non è accessibile —
+          // usiamo il catalogo statico + fetch pubblica senza chiave)
+          fetchGeminiModels(),
+        ])
+        if (!cancelled) {
+          setClaudeModels(claude)
+          setGeminiModels(gemini)
+        }
+      } catch {
+        // Non bloccante
+      } finally {
+        if (!cancelled) setIsFetchingModels(false)
+      }
+    }
+    void loadModels()
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     void loadSettings()
@@ -320,6 +350,89 @@ export default function SettingsPage() {
               <option key={val} value={val}>{cfg.icon} {cfg.label}</option>
             ))}
           </select>
+        </Field>
+
+        {/* Modello Claude */}
+        <Field
+          label="Modello Claude"
+          sub="Modello Anthropic usato per le analisi Claude. Sonnet 4.6 è il default consigliato."
+        >
+          <div className="flex gap-2">
+            <select
+              className={inputCls}
+              value={form.claudeModel ?? 'claude-sonnet-4-6'}
+              onChange={(e) => update('claudeModel', e.target.value)}
+            >
+              {claudeModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}{m.default ? ' ★' : ''} — {m.description}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              title="Aggiorna lista modelli"
+              disabled={isFetchingModels}
+              onClick={async () => {
+                setIsFetchingModels(true)
+                try {
+                  const models = await fetchClaudeModels()
+                  setClaudeModels(models)
+                  toast.success('Lista modelli Claude aggiornata')
+                } catch {
+                  toast.error('Impossibile aggiornare i modelli Claude')
+                } finally {
+                  setIsFetchingModels(false)
+                }
+              }}
+              className="shrink-0 rounded-lg border border-[var(--border)] p-2 text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200 disabled:opacity-40"
+            >
+              <RefreshCw className={cn('h-4 w-4', isFetchingModels && 'animate-spin')} />
+            </button>
+          </div>
+        </Field>
+
+        {/* Modello Gemini */}
+        <Field
+          label="Modello Gemini"
+          sub="Modello Google Gemini usato per le analisi. La lista si aggiorna automaticamente dall'API Google."
+        >
+          <div className="flex gap-2">
+            <select
+              className={inputCls}
+              value={form.geminiModel ?? 'gemini-3.1-flash-lite-preview'}
+              onChange={(e) => update('geminiModel', e.target.value)}
+            >
+              {geminiModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}{m.default ? ' ★' : ''}{m.description ? ` — ${m.description}` : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              title="Aggiorna lista modelli Gemini dall'API Google"
+              disabled={isFetchingModels}
+              onClick={async () => {
+                setIsFetchingModels(true)
+                try {
+                  const models = await fetchGeminiModels()
+                  setGeminiModels(models)
+                  toast.success(`${models.length} modelli Gemini trovati`)
+                } catch {
+                  toast.error('Impossibile aggiornare i modelli Gemini')
+                } finally {
+                  setIsFetchingModels(false)
+                }
+              }}
+              className="shrink-0 rounded-lg border border-[var(--border)] p-2 text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200 disabled:opacity-40"
+            >
+              <RefreshCw className={cn('h-4 w-4', isFetchingModels && 'animate-spin')} />
+            </button>
+          </div>
+          {isFetchingModels && (
+            <p className="mt-1 text-xs text-slate-600">Recupero modelli disponibili…</p>
+          )}
         </Field>
 
         <div className="grid grid-cols-2 gap-4">

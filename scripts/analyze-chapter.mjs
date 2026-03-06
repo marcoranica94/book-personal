@@ -34,9 +34,10 @@ const db = getFirestore()
 
 // ─── AI Provider Config ─────────────────────────────────────────────────────
 
+// Default models — sovrascritti da bookSettings.claudeModel / geminiModel
 const PROVIDER_MODELS = {
   claude: 'claude-sonnet-4-6',
-  gemini: 'gemini-2.5-flash',
+  gemini: 'gemini-3.1-flash-lite-preview',
   chatgpt: 'gpt-4o',
 }
 
@@ -309,7 +310,6 @@ async function callGemini(prompt, previousContext, retryCount = 0) {
     }, timeoutMs)
   } catch (err) {
     if (err.name === 'AbortError') {
-      // Retry una volta con modello più veloce se timeout
       if (retryCount === 0) {
         console.warn(`  Gemini timeout (${timeoutMs / 1000}s), retry con gemini-2.0-flash…`)
         const origModel = PROVIDER_MODELS.gemini
@@ -323,6 +323,14 @@ async function callGemini(prompt, previousContext, retryCount = 0) {
       throw new Error(`Gemini timeout dopo ${timeoutMs / 1000}s (anche su retry con gemini-2.0-flash)`)
     }
     throw err
+  }
+
+  // Retry automatico su 503 (server sovraccarico) e 429 (rate limit)
+  if ((res.status === 503 || res.status === 429) && retryCount < 3) {
+    const waitSec = [30, 60, 120][retryCount] // 30s → 1min → 2min
+    console.warn(`  Gemini ${res.status} (${res.status === 503 ? 'server sovraccarico' : 'rate limit'}), retry ${retryCount + 1}/3 tra ${waitSec}s…`)
+    await new Promise((r) => setTimeout(r, waitSec * 1000))
+    return callGemini(prompt, previousContext, retryCount + 1)
   }
 
   if (!res.ok) {
@@ -512,6 +520,11 @@ async function analyzeChapter(chapter, bookSettings) {
 
 async function main() {
   const [chapters, bookSettings] = await Promise.all([getChapters(), getSettings()])
+
+  // Sovrascrivi i modelli con quelli selezionati dall'utente nelle impostazioni
+  if (bookSettings?.claudeModel) PROVIDER_MODELS.claude = bookSettings.claudeModel
+  if (bookSettings?.geminiModel) PROVIDER_MODELS.gemini = bookSettings.geminiModel
+
   console.log(`Impostazioni libro: tipo=${bookSettings?.bookType ?? 'generico'}, titolo=${bookSettings?.title ?? '?'}`)
   console.log(`Provider AI: ${AI_PROVIDER} (modello: ${PROVIDER_MODELS[AI_PROVIDER] ?? '?'})`)
   console.log(`Modalità: ${INCLUDE_PREVIOUS ? 'con contesto analisi precedente' : 'analisi da zero'}`)
