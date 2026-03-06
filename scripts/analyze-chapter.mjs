@@ -3,9 +3,12 @@
  * Eseguito da GitHub Actions con: node analyze-chapter.mjs
  *
  * ENV:
- *   ANTHROPIC_API_KEY           — Chiave API Anthropic
+ *   ANTHROPIC_API_KEY           — Chiave API Anthropic (per Claude)
+ *   GEMINI_API_KEY              — Chiave API Google Gemini
  *   FIREBASE_SERVICE_ACCOUNT_JSON — Service Account JSON (stringa)
  *   CHAPTER_ID                  — ID capitolo o "all"
+ *   AI_PROVIDER                 — "claude" | "gemini" (default: "claude")
+ *   INCLUDE_PREVIOUS            — "true" per includere analisi precedente
  *   REPO_DIR                    — Path root del repo (per leggere i file .md)
  */
 
@@ -17,14 +20,21 @@ import {getFirestore} from 'firebase-admin/firestore'
 
 // ─── Init ──────────────────────────────────────────────────────────────────
 
-const client = new Anthropic({apiKey: process.env.ANTHROPIC_API_KEY})
 const CHAPTER_ID = process.env.CHAPTER_ID ?? 'all'
 const REPO_DIR = process.env.REPO_DIR ?? '.'
 const INCLUDE_PREVIOUS = (process.env.INCLUDE_PREVIOUS ?? 'false') === 'true'
+const AI_PROVIDER = process.env.AI_PROVIDER ?? 'claude'
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
 initializeApp({credential: cert(serviceAccount)})
 const db = getFirestore()
+
+// ─── AI Provider Config ─────────────────────────────────────────────────────
+
+const PROVIDER_MODELS = {
+  claude: 'claude-sonnet-4-6',
+  gemini: 'gemini-2.5-flash',
+}
 
 // ─── Firestore helpers ──────────────────────────────────────────────────────
 
@@ -39,14 +49,23 @@ async function getSettings() {
 }
 
 async function getPreviousAnalysis(chapterId) {
+  // Prima prova la subcollection byProvider
+  const providerDoc = await db.collection('analyses').doc(chapterId)
+    .collection('byProvider').doc(AI_PROVIDER).get()
+  if (providerDoc.exists) return providerDoc.data()
+  // Fallback: doc root (retrocompatibilità)
   const snap = await db.collection('analyses').doc(chapterId).get()
   return snap.exists ? snap.data() : null
 }
 
 async function saveAnalysis(chapterId, analysis) {
   const ref = db.collection('analyses').doc(chapterId)
+  // Salva nella subcollection byProvider
+  const providerRef = ref.collection('byProvider').doc(AI_PROVIDER)
+  await providerRef.set(analysis)
+  await providerRef.collection('history').add(analysis)
+  // Aggiorna anche il doc root come cache dell'ultima analisi
   await ref.set(analysis)
-  await ref.collection('history').add(analysis)
 }
 
 // ─── Prompt ─────────────────────────────────────────────────────────────────
@@ -201,10 +220,51 @@ ${chapterText}
 `.trim()
 }
 
+// ─── AI Provider Calls ───────────────────────────────────────────────────────
+
+async function callClaude(prompt, previousContext) {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY non configurata')
+  const client = new Anthropic({apiKey})
+  const message = await client.messages.create({
+    model: PROVIDER_MODELS.claude,
+    max_tokens: previousContext ? 8000 : 6000,
+    messages: [{role: 'user', content: prompt}],
+  })
+  const block = message.content[0]
+  return block?.type === 'text' ? block.text : ''
+}
+
+async function callGemini(prompt, previousContext) {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) throw new Error('GEMINI_API_KEY non configurata')
+  const model = PROVIDER_MODELS.gemini
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      contents: [{parts: [{text: prompt}]}],
+      generationConfig: {
+        maxOutputTokens: previousContext ? 8000 : 6000,
+        temperature: 0.7,
+        responseMimeType: 'application/json',
+      },
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Gemini API error ${res.status}: ${body.substring(0, 300)}`)
+  }
+  const data = await res.json()
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  return text
+}
+
 // ─── Core ────────────────────────────────────────────────────────────────────
 
 async function analyzeChapter(chapter, bookSettings) {
-  console.log(`Analizzando: ${chapter.number} - ${chapter.title}`)
+  console.log(`Analizzando [${AI_PROVIDER}]: ${chapter.number} - ${chapter.title}`)
 
   const bookTitle = bookSettings?.title || chapter.title
   const bookType = bookSettings?.bookType || 'generico'
@@ -251,29 +311,33 @@ async function analyzeChapter(chapter, bookSettings) {
 
   const prompt = buildPrompt(bookTitle, bookType, chapterText, previousContext || null)
 
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: previousContext ? 8000 : 6000,
-    messages: [{role: 'user', content: prompt}],
-  })
+  const modelName = PROVIDER_MODELS[AI_PROVIDER] ?? PROVIDER_MODELS.claude
+  let responseText = ''
 
-  const rawContent = message.content[0]
-  if (rawContent.type !== 'text') return null
+  if (AI_PROVIDER === 'gemini') {
+    responseText = await callGemini(prompt, previousContext)
+  } else {
+    responseText = await callClaude(prompt, previousContext)
+  }
+
+  if (!responseText) return null
 
   try {
-    const jsonMatch = rawContent.text.match(/\{[\s\S]*\}/)
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('Nessun JSON nella risposta')
     const parsed = JSON.parse(jsonMatch[0])
     // Rimuovi il placeholder
     delete parsed._placeholder
     return {
       chapterId: chapter.id,
+      provider: AI_PROVIDER,
       analyzedAt: new Date().toISOString(),
-      model: 'claude-sonnet-4-6',
+      model: modelName,
       ...parsed,
     }
   } catch (err) {
     console.error(`  Errore parsing JSON per ${chapter.id}:`, err)
+    console.error(`  Response text (first 500 chars):`, responseText.substring(0, 500))
     return null
   }
 }
@@ -281,6 +345,7 @@ async function analyzeChapter(chapter, bookSettings) {
 async function main() {
   const [chapters, bookSettings] = await Promise.all([getChapters(), getSettings()])
   console.log(`Impostazioni libro: tipo=${bookSettings?.bookType ?? 'generico'}, titolo=${bookSettings?.title ?? '?'}`)
+  console.log(`Provider AI: ${AI_PROVIDER} (modello: ${PROVIDER_MODELS[AI_PROVIDER] ?? '?'})`)
   console.log(`Modalità: ${INCLUDE_PREVIOUS ? 'con contesto analisi precedente' : 'analisi da zero'}`)
 
   const toAnalyze =

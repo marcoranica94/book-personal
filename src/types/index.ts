@@ -38,6 +38,17 @@ export const BookType = {
 } as const
 export type BookType = (typeof BookType)[keyof typeof BookType]
 
+export const AIProvider = {
+  CLAUDE: 'claude',
+  GEMINI: 'gemini',
+} as const
+export type AIProvider = (typeof AIProvider)[keyof typeof AIProvider]
+
+export const AI_PROVIDER_CONFIG: Record<AIProvider, { label: string; color: string; dot: string; icon: string }> = {
+  claude: { label: 'Claude', color: 'text-orange-400', dot: 'bg-orange-400', icon: '🟠' },
+  gemini: { label: 'Gemini', color: 'text-blue-400', dot: 'bg-blue-400', icon: '🔵' },
+}
+
 // ─── Core Domain Types ────────────────────────────────────────────────────────
 
 export interface ChecklistItem {
@@ -121,6 +132,7 @@ export interface ReaderReaction {
 
 export interface ChapterAnalysis {
   chapterId: string
+  provider: AIProvider
   analyzedAt: string
   model: string
   scores: AnalysisScores
@@ -144,6 +156,7 @@ export interface BookSettings {
   author: string
   genre: string
   bookType: BookType
+  defaultAIProvider: AIProvider
   targetWords: number
   targetChapters: number
   startDate: string
@@ -348,6 +361,7 @@ export const DEFAULT_BOOK_SETTINGS: BookSettings = {
   author: '',
   genre: '',
   bookType: 'generico',
+  defaultAIProvider: 'claude',
   targetWords: 80000,
   targetChapters: 20,
   startDate: new Date().toISOString(),

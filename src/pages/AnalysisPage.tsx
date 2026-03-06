@@ -8,7 +8,8 @@ import {useDriveStore} from '@/stores/driveStore'
 import {useAuthStore} from '@/stores/authStore'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {toast} from '@/stores/toastStore'
-import {getScoreColor, SyncSource, SyncStatus} from '@/types'
+import type {AIProvider} from '@/types'
+import {AI_PROVIDER_CONFIG, getScoreColor, SyncSource, SyncStatus} from '@/types'
 import type {WorkflowRunInfo} from '@/services/githubWorkflow'
 import {getLatestWorkflowRun, triggerWorkflow} from '@/services/githubWorkflow'
 import {patchAnalysis} from '@/services/analysisService'
@@ -183,6 +184,7 @@ export default function AnalysisPage() {
   const {settings, loadSettings} = useSettingsStore()
   const [selectedId, setSelectedId] = useState<string>('')
   const [activeTab, setActiveTab] = useState<Tab>('strengths')
+  const [activeProvider, setActiveProvider] = useState<AIProvider>((settings.defaultAIProvider ?? 'claude') as AIProvider)
   const [triggering, setTriggering] = useState(false)
   // Correzioni — 3 stati: accettata / rifiutata / da rivedere (default)
   const [acceptedCorrections, setAcceptedCorrections] = useState<Set<number>>(new Set())
@@ -196,7 +198,7 @@ export default function AnalysisPage() {
   const [appliedChanges, setAppliedChanges] = useState<Array<{original: string; suggested: string}>>([])
   const [itemDetailModal, setItemDetailModal] = useState<{type: 'weaknesses' | 'suggestions'; text: string} | null>(null)
   // Re-analysis dialog — scegli se includere contesto precedente
-  const [reanalysisDialog, setReanalysisDialog] = useState<{chapterId: string; label: string} | null>(null)
+  const [reanalysisDialog, setReanalysisDialog] = useState<{chapterId: string; label: string; provider: AIProvider} | null>(null)
   // Pending analysis progress
   const [pendingAnalysis, setPendingAnalysis] = useState<PendingAnalysis | null>(() => loadPending())
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunInfo | null>(null)
@@ -263,10 +265,14 @@ export default function AnalysisPage() {
         const isComplete =
           pending.chapterId === 'all'
             ? Object.values(freshAnalyses).some(
-                (a) => a && new Date(a.analyzedAt) > new Date(pending.triggeredAt),
+                (byProvider) => byProvider && Object.values(byProvider).some(
+                  (a) => a && new Date(a.analyzedAt) > new Date(pending.triggeredAt),
+                ),
               )
             : !!freshAnalyses[pending.chapterId] &&
-              new Date(freshAnalyses[pending.chapterId]!.analyzedAt) > new Date(pending.triggeredAt)
+              Object.values(freshAnalyses[pending.chapterId]).some(
+                (a) => a && new Date(a.analyzedAt) > new Date(pending.triggeredAt),
+              )
 
         if (isComplete) {
           toast.success(`Analisi completata per "${pending.chapterTitle}"!`)
@@ -310,23 +316,26 @@ export default function AnalysisPage() {
   }, [pendingAnalysis, loadAnalysis, loadAllAnalyses])
 
   const selectedChapter = chapters.find((c) => c.id === selectedId) ?? null
-  const analysis = selectedId ? (analyses[selectedId] ?? null) : null
+  const chapterAnalyses = selectedId ? (analyses[selectedId] ?? null) : null
+  const analysis = chapterAnalyses?.[activeProvider] ?? null
+  const availableProviders = chapterAnalyses ? (Object.keys(chapterAnalyses) as AIProvider[]) : []
   const isDirty = editorContent !== (selectedChapter?.driveContent ?? '')
   const isPendingPush = isDirty || selectedChapter?.syncStatus === SyncStatus.PENDING_PUSH
   const isGoogleDoc = selectedChapter?.driveMimeType === 'application/vnd.google-apps.document'
 
-  async function triggerAnalysis(chapterId: string, includePrevious = false) {
+  async function triggerAnalysis(chapterId: string, includePrevious = false, provider: AIProvider = activeProvider) {
     const hasExisting =
       chapterId === 'all'
         ? Object.keys(analyses).length > 0
-        : !!analyses[chapterId]
+        : !!analyses[chapterId]?.[provider]
     if (hasExisting && !reanalysisDialog) {
       // Mostra il dialog per scegliere se includere il contesto precedente
+      const existingAnalysis = chapterId !== 'all' ? analyses[chapterId]?.[provider] : null
       const label =
         chapterId === 'all'
           ? 'Alcuni capitoli hanno già un\'analisi salvata'
-          : `Il capitolo ha già un'analisi del ${formatRelativeDate(analyses[chapterId]!.analyzedAt)}`
-      setReanalysisDialog({chapterId, label})
+          : `Il capitolo ha già un'analisi ${AI_PROVIDER_CONFIG[provider].label} del ${formatRelativeDate(existingAnalysis!.analyzedAt)}`
+      setReanalysisDialog({chapterId, label, provider})
       return
     }
     setReanalysisDialog(null)
@@ -362,6 +371,7 @@ export default function AnalysisPage() {
       await triggerWorkflow(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'ai-analysis.yml', {
         chapter_id: chapterId,
         include_previous: includePrevious ? 'true' : 'false',
+        ai_provider: provider,
       })
       const chapterTitle =
         chapterId === 'all'
@@ -371,7 +381,7 @@ export default function AnalysisPage() {
       savePending(pending)
       setPendingAnalysis(pending)
       setElapsedSeconds(0)
-      toast.success(`Analisi avviata per "${chapterTitle}"${includePrevious ? ' (con contesto precedente)' : ''}! Monitoraggio automatico attivato.`)
+      toast.success(`Analisi ${AI_PROVIDER_CONFIG[provider].label} avviata per "${chapterTitle}"${includePrevious ? ' (con contesto precedente)' : ''}! Monitoraggio attivato.`)
     } catch (err) {
       toast.error('Errore: ' + (err as Error).message)
     } finally {
@@ -404,7 +414,7 @@ export default function AnalysisPage() {
           acceptedCorrections: accepted,
           rejectedCorrections: rejected,
           appliedAt: new Date().toISOString(),
-        }),
+        }, activeProvider),
       ])
       await Promise.all([loadChapters(), loadAnalysis(selectedId)])
 
@@ -510,7 +520,7 @@ export default function AnalysisPage() {
             syncSource: SyncSource.DASHBOARD,
             lastSyncAt: new Date().toISOString(),
           }),
-          ...(analysisUpdate ? [patchAnalysis(selectedChapter.id, analysisUpdate)] : []),
+          ...(analysisUpdate ? [patchAnalysis(selectedChapter.id, analysisUpdate, activeProvider)] : []),
         ])
         await loadChapters()
         if (applied === 0 && filtered.length === 0 && acceptedCorrections.size === 0) {
@@ -618,8 +628,12 @@ export default function AnalysisPage() {
 
   // Chapters with analysis sorted by overall score desc
   const analyzedChapters = [...chapters]
-    .filter((c) => analyses[c.id])
-    .sort((a, b) => (analyses[b.id]?.scores.overall ?? 0) - (analyses[a.id]?.scores.overall ?? 0))
+    .filter((c) => analyses[c.id] && Object.keys(analyses[c.id]).length > 0)
+    .sort((a, b) => {
+      const aScore = analyses[b.id]?.[activeProvider]?.scores.overall ?? Object.values(analyses[b.id] ?? {})[0]?.scores.overall ?? 0
+      const bScore = analyses[a.id]?.[activeProvider]?.scores.overall ?? Object.values(analyses[a.id] ?? {})[0]?.scores.overall ?? 0
+      return aScore - bScore
+    })
 
   const radarData = analysis
     ? Object.entries(SCORE_LABELS).map(([key, label]) => ({
@@ -651,7 +665,7 @@ export default function AnalysisPage() {
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Analisi AI</h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Feedback generato da Claude · {analyzedChapters.length}/{chapters.length} capitoli analizzati
+            Feedback generato da AI · {analyzedChapters.length}/{chapters.length} capitoli analizzati
           </p>
         </div>
 
@@ -667,8 +681,25 @@ export default function AnalysisPage() {
           <option value="">— Seleziona capitolo —</option>
           {[...chapters].filter((c) => c.title.toLowerCase().startsWith('capitolo')).sort((a, b) => a.title.localeCompare(b.title, 'it')).map((c) => (
             <option key={c.id} value={c.id}>
-              {String(c.number).padStart(2, '0')} — {c.title}{c.status === 'DONE' ? ' ✅' : analyses[c.id] ? ' ✓' : ''}
+              {String(c.number).padStart(2, '0')} — {c.title}{c.status === 'DONE' ? ' ✅' : analyses[c.id] && Object.keys(analyses[c.id]).length > 0 ? ' ✓' : ''}
             </option>
+          ))}
+        </select>
+
+        {/* AI Provider selector */}
+        <select
+          value={activeProvider}
+          onChange={(e) => {
+            setActiveProvider(e.target.value as AIProvider)
+            setAcceptedCorrections(new Set())
+            setRejectedCorrections(new Set())
+            setAppliedChanges([])
+          }}
+          className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-2.5 py-2 text-sm text-slate-300 outline-none focus:border-violet-500/40"
+          title="AI per analisi"
+        >
+          {Object.entries(AI_PROVIDER_CONFIG).map(([val, cfg]) => (
+            <option key={val} value={val}>{cfg.icon} {cfg.label}</option>
           ))}
         </select>
 
@@ -676,7 +707,7 @@ export default function AnalysisPage() {
         <button
           onClick={() => selectedId && void triggerAnalysis(selectedId)}
           disabled={!selectedId || triggering || pendingAnalysis?.chapterId === selectedId}
-          title={pendingAnalysis?.chapterId === selectedId ? 'Analisi già in corso per questo capitolo' : undefined}
+          title={pendingAnalysis?.chapterId === selectedId ? 'Analisi già in corso per questo capitolo' : `Analizza con ${AI_PROVIDER_CONFIG[activeProvider].label}`}
           className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
         >
           {triggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -777,6 +808,48 @@ export default function AnalysisPage() {
                       <p className="mt-0.5 text-xs text-slate-500">
                         Questo capitolo è stato segnato come &quot;Done&quot; nella Kanban board. L&apos;analisi sottostante si riferisce all&apos;ultima versione analizzata. Puoi riaprirlo dalla board se vuoi rivederlo.
                       </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Provider tabs — switch tra analisi di diverse AI */}
+                {availableProviders.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-600">Analisi di:</span>
+                    <div className="flex rounded-lg border border-[var(--border)] p-0.5">
+                      {Object.entries(AI_PROVIDER_CONFIG).map(([key, cfg]) => {
+                        const provider = key as AIProvider
+                        const hasAnalysis = availableProviders.includes(provider)
+                        const isActive = activeProvider === provider
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => {
+                              setActiveProvider(provider)
+                              setAcceptedCorrections(new Set())
+                              setRejectedCorrections(new Set())
+                              setAppliedChanges([])
+                            }}
+                            disabled={!hasAnalysis}
+                            className={cn(
+                              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                              isActive && hasAnalysis
+                                ? 'bg-[var(--overlay)] text-[var(--text-primary)]'
+                                : hasAnalysis
+                                  ? 'text-slate-500 hover:text-slate-300'
+                                  : 'text-slate-700 cursor-not-allowed'
+                            )}
+                          >
+                            <span className={cn('h-1.5 w-1.5 rounded-full', hasAnalysis ? cfg.dot : 'bg-slate-700')} />
+                            {cfg.label}
+                            {hasAnalysis && chapterAnalyses?.[provider] && (
+                              <span className="text-slate-600 ml-0.5">
+                                ({new Date(chapterAnalyses[provider].analyzedAt).toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit'})})
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -1395,13 +1468,42 @@ export default function AnalysisPage() {
                   </div>
                 </div>
               </>
-            ) : (
-              /* No analysis */
+            ) : availableProviders.length > 0 && !analysis ? (
+              /* Has analyses from other providers but not the active one */
+              <div className="space-y-4">
+                <div className="rounded-xl border border-dashed border-[var(--border)] py-12 text-center">
+                  <RadarIcon className="mx-auto mb-3 h-10 w-10 text-slate-700" />
+                  <p className="text-sm font-medium text-slate-400">
+                    Nessuna analisi {AI_PROVIDER_CONFIG[activeProvider].label} per questo capitolo
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600 mb-4">
+                    Analisi disponibili: {availableProviders.map((p) => AI_PROVIDER_CONFIG[p].label).join(', ')}
+                  </p>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => setActiveProvider(availableProviders[0])}
+                      className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-slate-300 transition-colors hover:bg-[var(--overlay)]"
+                    >
+                      Vedi analisi {AI_PROVIDER_CONFIG[availableProviders[0]].label}
+                    </button>
+                    <button
+                      onClick={() => void triggerAnalysis(selectedId)}
+                      disabled={triggering}
+                      className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                    >
+                      {triggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                      Analizza con {AI_PROVIDER_CONFIG[activeProvider].label}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : !analysis ? (
+              /* No analysis at all */
               <div className="rounded-xl border border-dashed border-[var(--border)] py-16 text-center">
                 <RadarIcon className="mx-auto mb-3 h-10 w-10 text-slate-700" />
                 <p className="text-sm font-medium text-slate-400">Nessuna analisi disponibile</p>
                 <p className="mt-1 text-xs text-slate-600 mb-5">
-                  Avvia il workflow GitHub Actions per analizzare questo capitolo
+                  Avvia l&apos;analisi {AI_PROVIDER_CONFIG[activeProvider].label} per questo capitolo
                 </p>
                 <button
                   onClick={() => void triggerAnalysis(selectedId)}
@@ -1409,7 +1511,7 @@ export default function AnalysisPage() {
                   className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
                 >
                   {triggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  Avvia analisi
+                  Avvia analisi {AI_PROVIDER_CONFIG[activeProvider].label}
                 </button>
               </div>
             )}
@@ -1454,7 +1556,9 @@ export default function AnalysisPage() {
               </thead>
               <tbody>
                 {analyzedChapters.map((c) => {
-                  const a = analyses[c.id]!
+                  const byProvider = analyses[c.id]
+                  const a = byProvider?.[activeProvider] ?? Object.values(byProvider ?? {})[0]
+                  if (!a) return null
                   return (
                     <tr
                       key={c.id}
@@ -1534,13 +1638,13 @@ export default function AnalysisPage() {
               </div>
 
               <p className="mb-5 text-sm text-slate-500">
-                L&apos;analisi sovrascriverà i risultati esistenti e consumerà token Claude. Scegli come procedere:
+                L&apos;analisi sovrascriverà i risultati {AI_PROVIDER_CONFIG[reanalysisDialog.provider].label} esistenti e consumerà token. Scegli come procedere:
               </p>
 
               <div className="space-y-2.5">
                 {/* Opzione 1: Con contesto precedente */}
                 <button
-                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, true)}
+                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, true, reanalysisDialog.provider)}
                   disabled={triggering}
                   className="flex w-full items-start gap-3 rounded-xl border border-violet-700/40 bg-violet-900/15 p-3.5 text-left transition-colors hover:border-violet-600/60 hover:bg-violet-900/25"
                 >
@@ -1555,7 +1659,7 @@ export default function AnalysisPage() {
 
                 {/* Opzione 2: Da zero */}
                 <button
-                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, false)}
+                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, false, reanalysisDialog.provider)}
                   disabled={triggering}
                   className="flex w-full items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5 text-left transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]"
                 >

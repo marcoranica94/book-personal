@@ -7,7 +7,7 @@ import {useChaptersStore} from '@/stores/chaptersStore'
 import {useDriveStore} from '@/stores/driveStore'
 import {toast} from '@/stores/toastStore'
 import type {BookSettings, Chapter, DriveFile} from '@/types'
-import {BookType, SyncSource, SyncStatus} from '@/types'
+import {AI_PROVIDER_CONFIG, BookType, SyncSource, SyncStatus} from '@/types'
 import DriveConnectButton from '@/components/drive/DriveConnectButton'
 import FolderPicker from '@/components/drive/FolderPicker'
 import ConflictResolver from '@/components/drive/ConflictResolver'
@@ -306,6 +306,18 @@ export default function SettingsPage() {
               autobiografia: 'Autobiografia',
             } satisfies Record<(typeof BookType)[keyof typeof BookType], string>).map(([val, label]) => (
               <option key={val} value={val}>{label}</option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="AI predefinita per analisi" sub="Il modello AI usato di default quando avvii un'analisi. Puoi cambiarlo anche al momento del lancio.">
+          <select
+            className={inputCls}
+            value={form.defaultAIProvider ?? 'claude'}
+            onChange={(e) => update('defaultAIProvider', e.target.value as typeof form.defaultAIProvider)}
+          >
+            {Object.entries(AI_PROVIDER_CONFIG).map(([val, cfg]) => (
+              <option key={val} value={val}>{cfg.icon} {cfg.label}</option>
             ))}
           </select>
         </Field>
