@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react'
 import {AnimatePresence, motion} from 'framer-motion'
-import {CheckCheck, CheckCircle2, FileEdit, History, Loader2, Play, RadarIcon, RefreshCw, RotateCcw, Sparkles, Square, X} from 'lucide-react'
+import {AlertTriangle, CheckCheck, CheckCircle2, FileEdit, History, Loader2, Play, RadarIcon, RefreshCw, RotateCcw, Sparkles, Square, X} from 'lucide-react'
 import {PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer} from 'recharts'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
@@ -178,7 +178,7 @@ function ScoreBar({label, value}: {label: string; value: number}) {
 
 export default function AnalysisPage() {
   const {chapters, loadChapters} = useChaptersStore()
-  const {analyses, loadAnalysis, loadAllAnalyses, isLoading} = useAnalysisStore()
+  const {analyses, loadAnalysis, loadAllAnalyses, analysisErrors, loadAnalysisErrors, isLoading} = useAnalysisStore()
   const {config: driveConfig, patchTokens, load: loadDrive} = useDriveStore()
   const {user} = useAuthStore()
   const {settings, loadSettings} = useSettingsStore()
@@ -217,8 +217,11 @@ export default function AnalysisPage() {
   }, [user, driveConfig, loadDrive])
 
   useEffect(() => {
-    if (chapters.length > 0) void loadAllAnalyses()
-  }, [chapters, loadAllAnalyses])
+    if (chapters.length > 0) {
+      void loadAllAnalyses()
+      void loadAnalysisErrors()
+    }
+  }, [chapters, loadAllAnalyses, loadAnalysisErrors])
 
   // Reset editor + corrections when switching chapter
   useEffect(() => {
@@ -854,6 +857,35 @@ export default function AnalysisPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Errori analisi per questo capitolo */}
+                {(() => {
+                  const chErrors = analysisErrors.filter((e) => e.chapterId === selectedId)
+                  if (chErrors.length === 0) return null
+                  return (
+                    <div className="space-y-2">
+                      {chErrors.map((err) => (
+                        <div
+                          key={`${err.chapterId}-${err.provider}`}
+                          className="flex items-start gap-3 rounded-xl border border-red-800/40 bg-red-900/15 px-4 py-3"
+                        >
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-red-300">
+                              Analisi {AI_PROVIDER_CONFIG[err.provider as AIProvider]?.label ?? err.provider} fallita
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              {err.error}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-700">
+                              {new Date(err.failedAt).toLocaleString('it-IT')} · modello: {err.model}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
 
                 {/* Score section */}
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -1532,6 +1564,45 @@ export default function AnalysisPage() {
           />
         )}
       </AnimatePresence>
+
+      {/* Errori analisi recenti */}
+      {analysisErrors.length > 0 && (
+        <motion.div
+          initial={{opacity: 0, y: 8}}
+          animate={{opacity: 1, y: 0}}
+          className="rounded-xl border border-red-800/30 bg-red-900/10"
+        >
+          <div className="border-b border-red-800/20 px-5 py-3 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-400" />
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-red-400">
+              Analisi fallite — {analysisErrors.length} errori recenti
+            </h2>
+          </div>
+          <div className="divide-y divide-red-800/10">
+            {analysisErrors.map((err) => {
+              const ch = chapters.find((c) => c.id === err.chapterId)
+              return (
+                <div key={`${err.chapterId}-${err.provider}`} className="flex items-start gap-3 px-5 py-3">
+                  <span className={cn('mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full', AI_PROVIDER_CONFIG[err.provider as AIProvider]?.dot ?? 'bg-slate-600')} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-slate-300">
+                      <span className="font-medium">{ch ? `${String(ch.number).padStart(2, '0')} — ${ch.title}` : err.chapterId}</span>
+                      {' · '}
+                      <span className={AI_PROVIDER_CONFIG[err.provider as AIProvider]?.color ?? 'text-slate-500'}>
+                        {AI_PROVIDER_CONFIG[err.provider as AIProvider]?.label ?? err.provider}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500 truncate">{err.error}</p>
+                    <p className="mt-0.5 text-xs text-slate-700">
+                      {new Date(err.failedAt).toLocaleString('it-IT')} · {err.model}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </motion.div>
+      )}
 
       {/* Comparison table — multi-provider */}
       {analyzedChapters.length > 0 && (() => {

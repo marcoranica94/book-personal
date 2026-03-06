@@ -1,4 +1,5 @@
 import {create} from 'zustand'
+import type {AnalysisError} from '@/services/analysisService'
 import * as analysisService from '@/services/analysisService'
 import type {AIProvider, ChapterAnalysis} from '@/types'
 
@@ -7,11 +8,13 @@ type AnalysesMap = Record<string, Record<AIProvider, ChapterAnalysis>>
 
 interface AnalysisStore {
   analyses: AnalysesMap
+  analysisErrors: AnalysisError[]
   isLoading: boolean
   error: string | null
 
   loadAnalysis: (chapterId: string) => Promise<void>
   loadAllAnalyses: () => Promise<void>
+  loadAnalysisErrors: () => Promise<void>
   getAnalysis: (chapterId: string, provider: AIProvider) => ChapterAnalysis | null
   /** Helper: restituisce la prima analisi disponibile per un capitolo (preferisce il provider passato) */
   getAnyAnalysis: (chapterId: string, preferredProvider?: AIProvider) => ChapterAnalysis | null
@@ -19,10 +22,13 @@ interface AnalysisStore {
   hasAnalysis: (chapterId: string) => boolean
   /** Lista provider disponibili per un capitolo */
   getProviders: (chapterId: string) => AIProvider[]
+  /** Errori per un capitolo specifico */
+  getChapterErrors: (chapterId: string) => AnalysisError[]
 }
 
 export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   analyses: {},
+  analysisErrors: [],
   isLoading: false,
   error: null,
 
@@ -53,6 +59,16 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
     }
   },
 
+  loadAnalysisErrors: async () => {
+    try {
+      const errors = await analysisService.getAllAnalysisErrors()
+      set({analysisErrors: errors})
+    } catch {
+      // Non bloccante
+    }
+  },
+
+  // ...existing code...
   getAnalysis: (chapterId, provider) =>
     get().analyses[chapterId]?.[provider] ?? null,
 
@@ -73,4 +89,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
     const byProvider = get().analyses[chapterId]
     return byProvider ? (Object.keys(byProvider) as AIProvider[]) : []
   },
+
+  getChapterErrors: (chapterId) =>
+    get().analysisErrors.filter((e) => e.chapterId === chapterId),
 }))

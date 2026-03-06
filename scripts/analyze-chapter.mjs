@@ -69,20 +69,26 @@ async function saveAnalysis(chapterId, analysis) {
   await providerRef.collection('history').add(analysis)
   // Aggiorna anche il doc root come cache dell'ultima analisi
   await ref.set(analysis)
+  // Pulisci eventuali errori precedenti per questo provider
+  await db.collection('analysisErrors').doc(`${chapterId}_${AI_PROVIDER}`).delete().catch(() => {})
 }
 
 /** Salva un record di errore su Firestore per rendere il fallimento visibile nella UI */
 async function saveAnalysisError(chapterId, errorMessage) {
-  const ref = db.collection('analyses').doc(chapterId)
-    .collection('byProvider').doc(AI_PROVIDER)
-    .collection('errors').doc('latest')
-  await ref.set({
+  const errorRecord = {
     chapterId,
     provider: AI_PROVIDER,
     error: errorMessage,
     failedAt: new Date().toISOString(),
     model: PROVIDER_MODELS[AI_PROVIDER] ?? '?',
-  })
+  }
+  // Salva nella subcollection per storico
+  await db.collection('analyses').doc(chapterId)
+    .collection('byProvider').doc(AI_PROVIDER)
+    .collection('errors').doc('latest')
+    .set(errorRecord)
+  // Salva anche in collection top-level per query facili dalla UI
+  await db.collection('analysisErrors').doc(`${chapterId}_${AI_PROVIDER}`).set(errorRecord)
   console.error(`  ✗ Errore salvato su Firestore per ${chapterId}/${AI_PROVIDER}: ${errorMessage}`)
 }
 
