@@ -1514,7 +1514,7 @@ export default function AnalysisPage() {
                   Avvia analisi {AI_PROVIDER_CONFIG[activeProvider].label}
                 </button>
               </div>
-            )}
+            ) : null)}
           </motion.div>
         )}
       </AnimatePresence>
