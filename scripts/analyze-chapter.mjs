@@ -43,9 +43,9 @@ const PROVIDER_MODELS = {
 
 // Timeout per ogni chiamata API (ms)
 const API_TIMEOUT_MS = {
-  claude: 15 * 60 * 1000,   // 4 minuti
-  gemini: 30 * 60 * 1000,   // 5 minuti (Gemini è più lento con output grandi)
-  chatgpt: 15 * 60 * 1000,  // 4 minuti
+  claude: 15 * 60 * 1000,   // 15 minuti
+  gemini: 30 * 60 * 1000,   // 30 minuti (Gemini è più lento con output grandi)
+  chatgpt: 15 * 60 * 1000,  // 15 minuti
 }
 
 /** Wrapper fetch con AbortController timeout */

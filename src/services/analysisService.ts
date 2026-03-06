@@ -25,7 +25,55 @@ export async function getChapterAnalysis(
   return snap.exists() ? (snap.data() as ChapterAnalysis) : null
 }
 
-/** Legge tutte le analisi per un capitolo (tutti i provider) */
+/** Controlla silenziosamente se esiste un'analisi più recente di `since` — NON aggiorna lo store.
+ *  Usato dal polling per evitare re-render durante l'attesa. */
+export async function checkAnalysisAfter(
+  chapterId: string,
+  since: string,
+): Promise<boolean> {
+  if (chapterId === 'all') {
+    const chaptersSnap = await getDocs(collection(db, COL))
+    for (const chapterDoc of chaptersSnap.docs) {
+      const byProviderSnap = await getDocs(collection(db, chapterDoc.ref.path, 'byProvider'))
+      for (const pd of byProviderSnap.docs) {
+        const data = pd.data() as {analyzedAt?: string}
+        if (data.analyzedAt && new Date(data.analyzedAt) > new Date(since)) return true
+      }
+    }
+    return false
+  }
+  const snap = await getDocs(collection(db, COL, chapterId, 'byProvider'))
+  return snap.docs.some((d) => {
+    const data = d.data() as {analyzedAt?: string}
+    return data.analyzedAt && new Date(data.analyzedAt) > new Date(since)
+  })
+}
+
+/** Controlla silenziosamente se esiste un errore più recente di `since` */
+export async function checkErrorAfter(
+  chapterId: string,
+  since: string,
+): Promise<boolean> {
+  if (chapterId === 'all') {
+    const snap = await getDocs(collection(db, 'analysisErrors'))
+    return snap.docs.some((d) => {
+      const data = d.data() as {failedAt?: string}
+      return data.failedAt && new Date(data.failedAt) > new Date(since)
+    })
+  }
+  const errDoc = await getDoc(doc(db, 'analysisErrors', `${chapterId}_all`))
+    .catch(() => null)
+  // Controlla tutti i provider per questo capitolo
+  const snap = await getDocs(collection(db, 'analysisErrors'))
+  return snap.docs.some((d) => {
+    const data = d.data() as {failedAt?: string; chapterId?: string}
+    return data.chapterId === chapterId &&
+      data.failedAt &&
+      new Date(data.failedAt) > new Date(since)
+  })
+}
+
+
 export async function getChapterAnalysesByProvider(
   chapterId: string,
 ): Promise<Record<AIProvider, ChapterAnalysis>> {

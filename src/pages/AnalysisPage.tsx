@@ -29,7 +29,7 @@ import type {AIProvider} from '@/types'
 import {AI_PROVIDER_CONFIG, getScoreColor, SyncSource, SyncStatus} from '@/types'
 import type {WorkflowRunInfo} from '@/services/githubWorkflow'
 import {getLatestWorkflowRun, triggerWorkflow} from '@/services/githubWorkflow'
-import {patchAnalysis} from '@/services/analysisService'
+import {checkAnalysisAfter, checkErrorAfter, patchAnalysis} from '@/services/analysisService'
 import * as chaptersService from '@/services/chaptersService'
 import {getValidAccessToken} from '@/services/driveAuthService'
 import {getDriveFileContent} from '@/services/driveFileService'
@@ -313,7 +313,6 @@ export default function AnalysisPage() {
       setElapsedSeconds(0)
       return
     }
-    // Capture in local const so TypeScript/closures treat it as non-null
     const pending = pendingAnalysis
     setElapsedSeconds(Math.floor((Date.now() - new Date(pending.triggeredAt).getTime()) / 1000))
     const tickId = setInterval(() => {
@@ -322,34 +321,25 @@ export default function AnalysisPage() {
 
     async function poll() {
       try {
+        // Controlla lo stato del workflow GitHub (non tocca lo store)
         const run = await getLatestWorkflowRun(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'ai-analysis.yml')
         if (run) setWorkflowRun(run)
 
-        if (pending.chapterId === 'all') {
-          await loadAllAnalyses()
-        } else {
-          await loadAnalysis(pending.chapterId)
-        }
+        // ── Check silenzioso su Firestore — NESSUN re-render ──────────────
+        // Legge direttamente il DB senza passare per lo store Zustand
+        const [isDone, hasError] = await Promise.all([
+          checkAnalysisAfter(pending.chapterId, pending.triggeredAt),
+          checkErrorAfter(pending.chapterId, pending.triggeredAt),
+        ])
 
-        // Ricarica anche gli errori — se Gemini ha fallito il parsing, salva un errore su Firestore
-        await loadAnalysisErrors()
-
-        const freshAnalyses = useAnalysisStore.getState().analyses
-        const freshErrors = useAnalysisStore.getState().analysisErrors
-
-        const isComplete =
-          pending.chapterId === 'all'
-            ? Object.values(freshAnalyses).some(
-                (byProvider) => byProvider && Object.values(byProvider).some(
-                  (a) => a && new Date(a.analyzedAt) > new Date(pending.triggeredAt),
-                ),
-              )
-            : !!freshAnalyses[pending.chapterId] &&
-              Object.values(freshAnalyses[pending.chapterId]).some(
-                (a) => a && new Date(a.analyzedAt) > new Date(pending.triggeredAt),
-              )
-
-        if (isComplete) {
+        if (isDone) {
+          // Solo qui aggiorniamo lo store → un unico re-render al completamento
+          if (pending.chapterId === 'all') {
+            await loadAllAnalyses()
+          } else {
+            await loadAnalysis(pending.chapterId)
+          }
+          await loadAnalysisErrors()
           toast.success(`Analisi completata per "${pending.chapterTitle}"!`)
           if (pending.chapterId !== 'all') {
             setSelectedId(pending.chapterId)
@@ -362,14 +352,8 @@ export default function AnalysisPage() {
           return
         }
 
-        // Controlla se è apparso un errore su Firestore dopo il trigger
-        const hasNewError = freshErrors.some(
-          (e) => {
-            const chMatch = pending.chapterId === 'all' || e.chapterId === pending.chapterId
-            return chMatch && new Date(e.failedAt) > new Date(pending.triggeredAt)
-          }
-        )
-        if (hasNewError && run?.status === 'completed') {
+        if (hasError && run?.status === 'completed') {
+          await loadAnalysisErrors()
           toast.error(`Analisi fallita per "${pending.chapterTitle}" — vedi dettagli errori`)
           savePending(null)
           setPendingAnalysis(null)
@@ -403,7 +387,7 @@ export default function AnalysisPage() {
       clearInterval(tickId)
       clearInterval(pollId)
     }
-  }, [pendingAnalysis, loadAnalysis, loadAllAnalyses])
+  }, [pendingAnalysis, loadAnalysis, loadAllAnalyses, loadAnalysisErrors])
 
   const selectedChapter = chapters.find((c) => c.id === selectedId) ?? null
   const chapterAnalyses = selectedId ? (analyses[selectedId] ?? null) : null
