@@ -309,13 +309,6 @@ async function callGemini(prompt, previousContext, retryCount = 0) {
           temperature: 0.7,
           responseMimeType: 'application/json',
         },
-        // Disabilita "thinking" esteso per risposte più veloci
-        generationConfig: {
-          maxOutputTokens: previousContext ? 8000 : 6000,
-          temperature: 0.7,
-          responseMimeType: 'application/json',
-          thinkingConfig: {thinkingBudget: 0},
-        },
       }),
     }, timeoutMs)
   } catch (err) {
