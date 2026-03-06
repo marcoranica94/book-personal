@@ -330,7 +330,13 @@ export default function AnalysisPage() {
         } else {
           await loadAnalysis(pending.chapterId)
         }
+
+        // Ricarica anche gli errori — se Gemini ha fallito il parsing, salva un errore su Firestore
+        await loadAnalysisErrors()
+
         const freshAnalyses = useAnalysisStore.getState().analyses
+        const freshErrors = useAnalysisStore.getState().analysisErrors
+
         const isComplete =
           pending.chapterId === 'all'
             ? Object.values(freshAnalyses).some(
@@ -350,6 +356,21 @@ export default function AnalysisPage() {
             setActiveTab('strengths')
             window.scrollTo({top: 0, behavior: 'smooth'})
           }
+          savePending(null)
+          setPendingAnalysis(null)
+          setWorkflowRun(null)
+          return
+        }
+
+        // Controlla se è apparso un errore su Firestore dopo il trigger
+        const hasNewError = freshErrors.some(
+          (e) => {
+            const chMatch = pending.chapterId === 'all' || e.chapterId === pending.chapterId
+            return chMatch && new Date(e.failedAt) > new Date(pending.triggeredAt)
+          }
+        )
+        if (hasNewError && run?.status === 'completed') {
+          toast.error(`Analisi fallita per "${pending.chapterTitle}" — vedi dettagli errori`)
           savePending(null)
           setPendingAnalysis(null)
           setWorkflowRun(null)

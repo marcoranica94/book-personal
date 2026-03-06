@@ -429,9 +429,48 @@ async function analyzeChapter(chapter, bookSettings) {
   }
 
   try {
+    // Estrai il blocco JSON dalla risposta
     const jsonMatch = responseText.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('Nessun JSON nella risposta')
-    const parsed = JSON.parse(jsonMatch[0])
+
+    let jsonStr = jsonMatch[0]
+
+    // ── Sanitizzazione robusta per Gemini ───────────────────────────────────
+    // 1. Sostituisci virgolette tipografiche con virgolette standard
+    jsonStr = jsonStr
+      .replace(/[\u2018\u2019]/g, "'")   // ' '  → '
+      .replace(/[\u201C\u201D]/g, '"')   // " "  → "
+      .replace(/[\u2013\u2014]/g, '-')   // – —  → -
+    // 2. Rimuovi caratteri di controllo (eccetto \n \r \t)
+    jsonStr = jsonStr.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    // 3. Rimuovi virgole finali prima di } o ] (trailing commas)
+    jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1')
+
+    let parsed
+    try {
+      parsed = JSON.parse(jsonStr)
+    } catch (firstErr) {
+      // 4. Ultimo tentativo: tronca al punto in cui il JSON è ancora valido
+      //    cercando l'ultima } a livello radice
+      console.warn(`  JSON parse fallito (${firstErr.message}), provo a trovare il blocco valido più lungo…`)
+      let validEnd = -1
+      let depth = 0
+      for (let i = 0; i < jsonStr.length; i++) {
+        if (jsonStr[i] === '{') depth++
+        else if (jsonStr[i] === '}') {
+          depth--
+          if (depth === 0) { validEnd = i; break }
+        }
+      }
+      if (validEnd > 0) {
+        const truncated = jsonStr.slice(0, validEnd + 1).replace(/,\s*([}\]])/g, '$1')
+        parsed = JSON.parse(truncated)
+        console.warn(`  JSON recuperato troncando a posizione ${validEnd}`)
+      } else {
+        throw firstErr
+      }
+    }
+
     // Rimuovi il placeholder
     delete parsed._placeholder
     return {
