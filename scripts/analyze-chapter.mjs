@@ -15,6 +15,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
+import {jsonrepair} from 'jsonrepair'
 import {readFile} from 'fs/promises'
 import {join} from 'path'
 import {cert, initializeApp} from 'firebase-admin/app'
@@ -429,45 +430,66 @@ async function analyzeChapter(chapter, bookSettings) {
   }
 
   try {
-    // Estrai il blocco JSON dalla risposta
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+    // Estrai il blocco JSON dalla risposta (prende tutto da { in poi)
+    const jsonMatch = responseText.match(/\{[\s\S]*/)
     if (!jsonMatch) throw new Error('Nessun JSON nella risposta')
 
     let jsonStr = jsonMatch[0]
 
-    // ── Sanitizzazione robusta per Gemini ───────────────────────────────────
-    // 1. Sostituisci virgolette tipografiche con virgolette standard
+    // ── Pre-sanitizzazione: caratteri Unicode problematici ──────────────────
     jsonStr = jsonStr
-      .replace(/[\u2018\u2019]/g, "'")   // ' '  → '
-      .replace(/[\u201C\u201D]/g, '"')   // " "  → "
-      .replace(/[\u2013\u2014]/g, '-')   // – —  → -
-    // 2. Rimuovi caratteri di controllo (eccetto \n \r \t)
-    jsonStr = jsonStr.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-    // 3. Rimuovi virgole finali prima di } o ] (trailing commas)
-    jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1')
+      .replace(/[\u2018\u2019]/g, "'")    // ' '  → apostrofo normale
+      .replace(/[\u201C\u201D]/g, '"')    // " "  → virgolette normali
+      .replace(/[\u2013\u2014]/g, '-')    // – —  → trattino
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // caratteri di controllo
 
     let parsed
     try {
+      // Tentativo 1: JSON.parse standard
       parsed = JSON.parse(jsonStr)
     } catch (firstErr) {
-      // 4. Ultimo tentativo: tronca al punto in cui il JSON è ancora valido
-      //    cercando l'ultima } a livello radice
-      console.warn(`  JSON parse fallito (${firstErr.message}), provo a trovare il blocco valido più lungo…`)
-      let validEnd = -1
-      let depth = 0
-      for (let i = 0; i < jsonStr.length; i++) {
-        if (jsonStr[i] === '{') depth++
-        else if (jsonStr[i] === '}') {
-          depth--
-          if (depth === 0) { validEnd = i; break }
-        }
+      // Log contesto dell'errore per debug
+      const posMatch = firstErr.message.match(/position (\d+)/)
+      if (posMatch) {
+        const pos = parseInt(posMatch[1])
+        const ctx = jsonStr.slice(Math.max(0, pos - 80), pos + 80)
+        console.warn(`  Contesto errore (pos ${pos}): …${ctx}…`)
       }
-      if (validEnd > 0) {
-        const truncated = jsonStr.slice(0, validEnd + 1).replace(/,\s*([}\]])/g, '$1')
-        parsed = JSON.parse(truncated)
-        console.warn(`  JSON recuperato troncando a posizione ${validEnd}`)
-      } else {
-        throw firstErr
+
+      try {
+        // Tentativo 2: jsonrepair — gestisce apostrofi non escapati,
+        // backslash invalidi, virgole finali, JSON troncato, ecc.
+        console.warn(`  JSON malformato (${firstErr.message}), provo jsonrepair…`)
+        const repaired = jsonrepair(jsonStr)
+        parsed = JSON.parse(repaired)
+        console.warn(`  ✓ JSON riparato con jsonrepair`)
+      } catch (repairErr) {
+        // Tentativo 3: tronca al punto valido + jsonrepair
+        console.warn(`  jsonrepair fallito (${repairErr.message}), provo troncatura…`)
+        let validEnd = -1
+        let depth = 0
+        let inString = false
+        let escape = false
+        for (let i = 0; i < jsonStr.length; i++) {
+          const ch = jsonStr[i]
+          if (escape) { escape = false; continue }
+          if (ch === '\\') { escape = true; continue }
+          if (ch === '"') { inString = !inString; continue }
+          if (inString) continue
+          if (ch === '{' || ch === '[') depth++
+          else if (ch === '}' || ch === ']') {
+            depth--
+            if (depth === 0) { validEnd = i; break }
+          }
+        }
+        if (validEnd > 0) {
+          const truncated = jsonStr.slice(0, validEnd + 1)
+          const repaired2 = jsonrepair(truncated)
+          parsed = JSON.parse(repaired2)
+          console.warn(`  ✓ JSON recuperato troncando a posizione ${validEnd}`)
+        } else {
+          throw repairErr
+        }
       }
     }
 
