@@ -808,7 +808,7 @@ export default function AnalysisPage() {
           className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm text-slate-300 outline-none focus:border-violet-500/40"
         >
           <option value="">— Seleziona capitolo —</option>
-          {[...chapters].filter((c) => c.title.toLowerCase().startsWith('capitolo')).sort((a, b) => a.title.localeCompare(b.title, 'it')).map((c) => (
+          {[...chapters].filter((c) => c.title.toLowerCase().startsWith('capitolo')).sort((a, b) => a.title.localeCompare(b.title, 'it', {numeric: true, sensitivity: 'base'})).map((c) => (
             <option key={c.id} value={c.id}>
               {String(c.number).padStart(2, '0')} — {c.title}{c.status === 'DONE' ? ' ✅' : analyses[c.id] && Object.keys(analyses[c.id]).length > 0 ? ' ✓' : ''}
             </option>
