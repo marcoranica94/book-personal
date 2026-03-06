@@ -116,6 +116,16 @@ export async function deleteChapterAnalysis(chapterId: string): Promise<void> {
   await deleteDoc(doc(db, COL, chapterId))
 }
 
+/** Elimina l'analisi di un singolo provider per un capitolo */
+export async function deleteProviderAnalysis(
+  chapterId: string,
+  provider: AIProvider,
+): Promise<void> {
+  await deleteDoc(providerDocRef(chapterId, provider))
+  // Pulisci anche l'eventuale errore salvato
+  await deleteDoc(doc(db, 'analysisErrors', `${chapterId}_${provider}`)).catch(() => {})
+}
+
 export async function deleteAllAnalyses(): Promise<void> {
   const snap = await getDocs(collection(db, COL))
   for (const d of snap.docs) {

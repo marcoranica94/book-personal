@@ -27,6 +27,8 @@ interface AnalysisStore {
   getProviders: (chapterId: string) => AIProvider[]
   /** Errori per un capitolo specifico */
   getChapterErrors: (chapterId: string) => AnalysisError[]
+  /** Elimina l'analisi di un provider per un capitolo */
+  deleteAnalysis: (chapterId: string, provider: AIProvider) => Promise<void>
 }
 
 export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
@@ -107,4 +109,19 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
 
   getChapterErrors: (chapterId) =>
     get().analysisErrors.filter((e) => e.chapterId === chapterId),
+
+  deleteAnalysis: async (chapterId, provider) => {
+    await analysisService.deleteProviderAnalysis(chapterId, provider)
+    set((s) => {
+      const byProvider = {...(s.analyses[chapterId] ?? {})}
+      delete byProvider[provider]
+      const analyses = {...s.analyses}
+      if (Object.keys(byProvider).length === 0) {
+        delete analyses[chapterId]
+      } else {
+        analyses[chapterId] = byProvider as Record<AIProvider, ChapterAnalysis>
+      }
+      return {analyses}
+    })
+  },
 }))

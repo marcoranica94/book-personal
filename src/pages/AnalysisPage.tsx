@@ -14,6 +14,7 @@ import {
   RotateCcw,
   Sparkles,
   Square,
+  Trash2,
   TrendingUp,
   X
 } from 'lucide-react'
@@ -239,7 +240,7 @@ function ScoreBar({label, value}: {label: string; value: number}) {
 
 export default function AnalysisPage() {
   const {chapters, loadChapters} = useChaptersStore()
-  const {analyses, loadAnalysis, loadAllAnalyses, analysisErrors, loadAnalysisErrors, history: analysisHistory, loadChapterHistory, isLoading} = useAnalysisStore()
+  const {analyses, loadAnalysis, loadAllAnalyses, analysisErrors, loadAnalysisErrors, history: analysisHistory, loadChapterHistory, deleteAnalysis, isLoading} = useAnalysisStore()
   const {config: driveConfig, patchTokens, load: loadDrive} = useDriveStore()
   const {user} = useAuthStore()
   const {settings, loadSettings} = useSettingsStore()
@@ -262,6 +263,8 @@ export default function AnalysisPage() {
   const [reanalysisDialog, setReanalysisDialog] = useState<{chapterId: string; label: string; provider: AIProvider} | null>(null)
   // Storico analisi — ID capitolo espanso nella tabella confronto
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null)
+  // Cancellazione analisi — traccia quale provider è in corso di delete
+  const [deletingAnalysis, setDeletingAnalysis] = useState<{chapterId: string; provider: AIProvider} | null>(null)
   // Pending analysis progress
   const [pendingAnalysis, setPendingAnalysis] = useState<PendingAnalysis | null>(() => loadPending())
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunInfo | null>(null)
@@ -911,7 +914,8 @@ export default function AnalysisPage() {
                             {cfg.label}
                             {hasAnalysis && chapterAnalyses?.[provider] && (
                               <span className="text-slate-600 ml-0.5">
-                                ({new Date(chapterAnalyses[provider].analyzedAt).toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit'})})
+                                ({new Date(chapterAnalyses[provider].analyzedAt).toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit'})}
+                                {' '}{new Date(chapterAnalyses[provider].analyzedAt).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})})
                               </span>
                             )}
                           </button>
@@ -1760,11 +1764,29 @@ export default function AnalysisPage() {
                             if (!a) return (
                               <td key={p} className="px-3 py-3 text-center text-xs text-slate-700">—</td>
                             )
+                            const isDeleting = deletingAnalysis?.chapterId === c.id && deletingAnalysis?.provider === p
                             return (
                               <td key={p} className="px-3 py-3 text-center">
-                                <span className={cn('text-sm font-bold', getScoreColor(a.scores.overall))}>
-                                  {a.scores.overall.toFixed(1)}
-                                </span>
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <span className={cn('text-sm font-bold', getScoreColor(a.scores.overall))}>
+                                    {a.scores.overall.toFixed(1)}
+                                  </span>
+                                  <span className="text-[10px] text-slate-600">
+                                    {new Date(a.analyzedAt).toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit', year: '2-digit'})}
+                                    {' '}
+                                    {new Date(a.analyzedAt).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}
+                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setDeletingAnalysis({chapterId: c.id, provider: p})
+                                    }}
+                                    title={`Elimina analisi ${AI_PROVIDER_CONFIG[p].label}`}
+                                    className="mt-0.5 rounded p-0.5 text-slate-700 transition-colors hover:text-red-400"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
                               </td>
                             )
                           })}
@@ -1921,6 +1943,70 @@ export default function AnalysisPage() {
       )}
 
       {/* Re-analysis dialog — scelta tra analisi da zero o con contesto precedente */}
+      <AnimatePresence>
+        {deletingAnalysis && (() => {
+          const ch = chapters.find((c) => c.id === deletingAnalysis.chapterId)
+          const providerCfg = AI_PROVIDER_CONFIG[deletingAnalysis.provider]
+          return (
+            <>
+              <motion.div
+                initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}}
+                onClick={() => setDeletingAnalysis(null)}
+                className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{opacity: 0, scale: 0.92, y: 16}}
+                animate={{opacity: 1, scale: 1, y: 0}}
+                exit={{opacity: 0, scale: 0.92}}
+                transition={{duration: 0.15}}
+                className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+              >
+                <div className="mb-4 flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-900/30 text-red-400">
+                    <Trash2 className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-semibold text-[var(--text-primary)]">Elimina analisi</h3>
+                    <p className="mt-1 text-sm text-slate-400">
+                      <span className={providerCfg.color}>{providerCfg.label}</span>
+                      {' · '}{ch?.title ?? deletingAnalysis.chapterId}
+                    </p>
+                  </div>
+                </div>
+                <p className="mb-5 text-sm text-slate-500">
+                  Questa analisi verrà eliminata definitivamente. L'operazione non è reversibile.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDeletingAnalysis(null)}
+                    className="flex-1 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)]"
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const {chapterId, provider} = deletingAnalysis
+                      setDeletingAnalysis(null)
+                      await deleteAnalysis(chapterId, provider)
+                      // Se era il capitolo selezionato e il provider attivo, deseleziona
+                      if (selectedId === chapterId && activeProvider === provider) {
+                        setActiveProvider(
+                          (Object.keys(analyses[chapterId] ?? {}).find((p) => p !== provider) as AIProvider | undefined)
+                          ?? (Object.keys(AI_PROVIDER_CONFIG)[0] as AIProvider)
+                        )
+                      }
+                      toast.success('Analisi eliminata')
+                    }}
+                    className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-500"
+                  >
+                    Elimina
+                  </button>
+                </div>
+              </motion.div>
+            </>
+          )
+        })()}
+      </AnimatePresence>
       <AnimatePresence>
         {reanalysisDialog && (
           <>
