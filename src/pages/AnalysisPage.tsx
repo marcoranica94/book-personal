@@ -41,6 +41,7 @@ import {formatRelativeDate} from '@/utils/formatters'
 import {cn} from '@/utils/cn'
 import {applyCorrectionsToContent} from '@/utils/corrections'
 import ProgressRing from '@/components/dashboard/ProgressRing'
+import RichTextEditor from '@/components/editor/RichTextEditor'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -299,7 +300,6 @@ export default function AnalysisPage() {
   const [pendingAnalysis, setPendingAnalysis] = useState<PendingAnalysis | null>(() => loadPending())
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunInfo | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const editorRef = useRef<HTMLTextAreaElement>(null)
   const isApplyingRef = useRef(false)
 
   useEffect(() => {
@@ -1562,13 +1562,14 @@ export default function AnalysisPage() {
                             )}
                           </div>
 
-                          <textarea
-                            ref={editorRef}
-                            value={editorContent}
-                            onChange={(e) => { setEditorContent(e.target.value); setAppliedChanges([]) }}
+                          {/* Rich Text Editor */}
+                          <RichTextEditor
+                            content={editorContent}
+                            onChange={(html) => {
+                              setEditorContent(html)
+                              setAppliedChanges([])
+                            }}
                             placeholder="Il testo del capitolo apparirà qui dopo la sincronizzazione Drive..."
-                            className="w-full min-h-[400px] resize-y rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-4 py-3 font-mono text-sm text-slate-300 placeholder-slate-700 focus:border-violet-500/40 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
-                            spellCheck={false}
                           />
 
                           {/* Pannello modifiche applicate */}
@@ -1587,10 +1588,7 @@ export default function AnalysisPage() {
                           )}
 
                           <div className="flex items-center justify-between">
-                            <div className="flex gap-4 text-xs text-slate-600">
-                              <span>{editorContent.length.toLocaleString('it-IT')} caratteri</span>
-                              <span>{editorContent.split(/\s+/).filter(Boolean).length.toLocaleString('it-IT')} parole</span>
-                            </div>
+                            <div />
                             <div className="flex items-center gap-2">
                               {/* Stato sync */}
                               {!isDirty && (
