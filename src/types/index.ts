@@ -41,12 +41,14 @@ export type BookType = (typeof BookType)[keyof typeof BookType]
 export const AIProvider = {
   CLAUDE: 'claude',
   GEMINI: 'gemini',
+  CHATGPT: 'chatgpt',
 } as const
 export type AIProvider = (typeof AIProvider)[keyof typeof AIProvider]
 
 export const AI_PROVIDER_CONFIG: Record<AIProvider, { label: string; color: string; dot: string; icon: string }> = {
   claude: { label: 'Claude', color: 'text-orange-400', dot: 'bg-orange-400', icon: '🟠' },
   gemini: { label: 'Gemini', color: 'text-blue-400', dot: 'bg-blue-400', icon: '🔵' },
+  chatgpt: { label: 'ChatGPT', color: 'text-green-400', dot: 'bg-green-400', icon: '🟢' },
 }
 
 // ─── Core Domain Types ────────────────────────────────────────────────────────

@@ -5,14 +5,16 @@
  * ENV:
  *   ANTHROPIC_API_KEY           — Chiave API Anthropic (per Claude)
  *   GEMINI_API_KEY              — Chiave API Google Gemini
+ *   OPENAI_API_KEY              — Chiave API OpenAI (per ChatGPT)
  *   FIREBASE_SERVICE_ACCOUNT_JSON — Service Account JSON (stringa)
  *   CHAPTER_ID                  — ID capitolo o "all"
- *   AI_PROVIDER                 — "claude" | "gemini" (default: "claude")
+ *   AI_PROVIDER                 — "claude" | "gemini" | "chatgpt" (default: "claude")
  *   INCLUDE_PREVIOUS            — "true" per includere analisi precedente
  *   REPO_DIR                    — Path root del repo (per leggere i file .md)
  */
 
 import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import {readFile} from 'fs/promises'
 import {join} from 'path'
 import {cert, initializeApp} from 'firebase-admin/app'
@@ -34,6 +36,7 @@ const db = getFirestore()
 const PROVIDER_MODELS = {
   claude: 'claude-sonnet-4-6',
   gemini: 'gemini-2.5-flash',
+  chatgpt: 'gpt-4o',
 }
 
 // ─── Firestore helpers ──────────────────────────────────────────────────────
@@ -261,6 +264,23 @@ async function callGemini(prompt, previousContext) {
   return text
 }
 
+async function callChatGPT(prompt, previousContext) {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('OPENAI_API_KEY non configurata')
+  const client = new OpenAI({apiKey})
+  const response = await client.chat.completions.create({
+    model: PROVIDER_MODELS.chatgpt,
+    max_tokens: previousContext ? 8000 : 6000,
+    temperature: 0.7,
+    response_format: {type: 'json_object'},
+    messages: [
+      {role: 'system', content: 'Rispondi esclusivamente con JSON valido.'},
+      {role: 'user', content: prompt},
+    ],
+  })
+  return response.choices?.[0]?.message?.content ?? ''
+}
+
 // ─── Core ────────────────────────────────────────────────────────────────────
 
 async function analyzeChapter(chapter, bookSettings) {
@@ -316,6 +336,8 @@ async function analyzeChapter(chapter, bookSettings) {
 
   if (AI_PROVIDER === 'gemini') {
     responseText = await callGemini(prompt, previousContext)
+  } else if (AI_PROVIDER === 'chatgpt') {
+    responseText = await callChatGPT(prompt, previousContext)
   } else {
     responseText = await callClaude(prompt, previousContext)
   }
