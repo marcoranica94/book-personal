@@ -153,6 +153,8 @@ export interface ChapterAnalysis {
   acceptedCorrections?: number[]
   rejectedCorrections?: number[]
   appliedAt?: string | null
+  // Nota dell'autore inviata prima dell'analisi
+  authorComment?: string
   // Genere-specific sections
   historicalAccuracy?: HistoricalAccuracyAnalysis
   readerReactions?: ReaderReaction[]

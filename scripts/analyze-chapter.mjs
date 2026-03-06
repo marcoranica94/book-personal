@@ -27,6 +27,7 @@ const CHAPTER_ID = process.env.CHAPTER_ID ?? 'all'
 const REPO_DIR = process.env.REPO_DIR ?? '.'
 const INCLUDE_PREVIOUS = (process.env.INCLUDE_PREVIOUS ?? 'false') === 'true'
 const AI_PROVIDER = process.env.AI_PROVIDER ?? 'claude'
+const AUTHOR_COMMENT = (process.env.AUTHOR_COMMENT ?? '').trim()
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
 initializeApp({credential: cert(serviceAccount)})
@@ -193,7 +194,7 @@ function buildPreviousAnalysisContext(prev) {
   return parts.join('\n')
 }
 
-function buildPrompt(bookTitle, bookType, chapterText, previousContext) {
+function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorComment) {
   const isHistorical = bookType === 'storico'
   const personas = READER_PERSONAS[isHistorical ? 'storico' : 'default']
 
@@ -215,10 +216,17 @@ Usa queste informazioni per:
 ${previousContext}
 ` : ''
 
+  const authorBlock = authorComment ? `
+
+NOTA DELL'AUTORE (considera questo come contesto prioritario per l'analisi):
+"${authorComment}"
+
+` : ''
+
   return `
 Sei un editor letterario italiano di alto livello. Analizza il seguente capitolo del libro
 intitolato "${bookTitle}" (genere: ${bookType || 'generico'}) e fornisci un'analisi dettagliata e professionale.
-${previousBlock}
+${previousBlock}${authorBlock}
 
 Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), con questa struttura:
 {
@@ -410,7 +418,10 @@ async function analyzeChapter(chapter, bookSettings) {
     }
   }
 
-  const prompt = buildPrompt(bookTitle, bookType, chapterText, previousContext || null)
+  const prompt = buildPrompt(bookTitle, bookType, chapterText, previousContext || null, AUTHOR_COMMENT)
+  if (AUTHOR_COMMENT) {
+    console.log(`  Nota autore inclusa nel prompt (${AUTHOR_COMMENT.length} chars)`)
+  }
 
   const modelName = PROVIDER_MODELS[AI_PROVIDER] ?? PROVIDER_MODELS.claude
   let responseText = ''
@@ -503,13 +514,16 @@ async function analyzeChapter(chapter, bookSettings) {
 
     // Rimuovi il placeholder
     delete parsed._placeholder
-    return {
+    const result = {
       chapterId: chapter.id,
       provider: AI_PROVIDER,
       analyzedAt: new Date().toISOString(),
       model: modelName,
       ...parsed,
     }
+    // Salva il commento autore se presente
+    if (AUTHOR_COMMENT) result.authorComment = AUTHOR_COMMENT
+    return result
   } catch (err) {
     const msg = `Errore parsing JSON per ${chapter.id}: ${err.message}. Response (500 chars): ${responseText.substring(0, 500)}`
     console.error(`  ${msg}`)

@@ -18,6 +18,11 @@ on:
         required: false
         default: 'claude'
         type: string
+      author_comment:
+        description: 'Optional author note to guide the AI analysis'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -46,5 +51,6 @@ jobs:
           CHAPTER_ID: ${{ inputs.chapter_id }}
           INCLUDE_PREVIOUS: ${{ inputs.include_previous }}
           AI_PROVIDER: ${{ inputs.ai_provider }}
+          AUTHOR_COMMENT: ${{ inputs.author_comment }}
           REPO_DIR: ${{ github.workspace }}
         run: node analyze-chapter.mjs

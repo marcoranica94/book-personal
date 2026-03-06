@@ -69,6 +69,31 @@ const CORRECTION_TYPE_COLORS: Record<string, string> = {
 
 type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor' | 'storico' | 'reazioni'
 
+// ─── Author comment (localStorage persistence per capitolo) ──────────────────
+
+const LS_AUTHOR_COMMENT_KEY = 'book_author_comments'
+
+function loadAuthorComments(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(LS_AUTHOR_COMMENT_KEY)
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {}
+  } catch { return {} }
+}
+
+function saveAuthorComment(chapterId: string, comment: string) {
+  const all = loadAuthorComments()
+  if (comment.trim()) {
+    all[chapterId] = comment
+  } else {
+    delete all[chapterId]
+  }
+  localStorage.setItem(LS_AUTHOR_COMMENT_KEY, JSON.stringify(all))
+}
+
+function getAuthorComment(chapterId: string): string {
+  return loadAuthorComments()[chapterId] ?? ''
+}
+
 // ─── Pending analysis (localStorage persistence) ──────────────────────────────
 
 const LS_PENDING_KEY = 'book_pending_analysis'
@@ -261,6 +286,11 @@ export default function AnalysisPage() {
   const [itemDetailModal, setItemDetailModal] = useState<{type: 'weaknesses' | 'suggestions'; item: string | {text: string; quotes?: string[]}} | null>(null)
   // Re-analysis dialog — scegli se includere contesto precedente
   const [reanalysisDialog, setReanalysisDialog] = useState<{chapterId: string; label: string; provider: AIProvider} | null>(null)
+  // Commento autore — dialog pre-analisi
+  const [analyzeDialog, setAnalyzeDialog] = useState<{chapterId: string; provider: AIProvider} | null>(null)
+  const [authorComment, setAuthorComment] = useState<string>('')
+  // Commento nel dialog di rianalisi
+  const [reanalysisComment, setReanalysisComment] = useState<string>('')
   // Storico analisi — ID capitolo espanso nella tabella confronto
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null)
   // Cancellazione analisi — traccia quale provider è in corso di delete
@@ -397,21 +427,39 @@ export default function AnalysisPage() {
   const isPendingPush = isDirty || selectedChapter?.syncStatus === SyncStatus.PENDING_PUSH
   const isGoogleDoc = selectedChapter?.driveMimeType === 'application/vnd.google-apps.document'
 
-  async function triggerAnalysis(chapterId: string, includePrevious = false, provider: AIProvider = activeProvider) {
+  async function triggerAnalysis(chapterId: string, includePrevious = false, provider: AIProvider = activeProvider, comment?: string) {
     const hasExisting =
       chapterId === 'all'
         ? Object.keys(analyses).length > 0
         : !!analyses[chapterId]?.[provider]
-    if (hasExisting && !reanalysisDialog) {
+
+    // Se non è ancora passato dal dialog di primo avvio, mostralo
+    if (!hasExisting && !analyzeDialog && comment === undefined) {
+      const saved = chapterId !== 'all' ? getAuthorComment(chapterId) : ''
+      setAuthorComment(saved)
+      setAnalyzeDialog({chapterId, provider})
+      return
+    }
+
+    if (hasExisting && !reanalysisDialog && comment === undefined) {
       // Mostra il dialog per scegliere se includere il contesto precedente
       const existingAnalysis = chapterId !== 'all' ? analyses[chapterId]?.[provider] : null
       const label =
         chapterId === 'all'
           ? 'Alcuni capitoli hanno già un\'analisi salvata'
           : `Il capitolo ha già un'analisi ${AI_PROVIDER_CONFIG[provider].label} del ${formatRelativeDate(existingAnalysis!.analyzedAt)}`
+      const saved = chapterId !== 'all' ? getAuthorComment(chapterId) : ''
+      setReanalysisComment(saved)
       setReanalysisDialog({chapterId, label, provider})
       return
     }
+
+    // Salva il commento per questo capitolo (se fornito e non "all")
+    if (comment !== undefined && chapterId !== 'all') {
+      saveAuthorComment(chapterId, comment)
+    }
+
+    setAnalyzeDialog(null)
     setReanalysisDialog(null)
     setTriggering(true)
     try {
@@ -442,11 +490,18 @@ export default function AnalysisPage() {
         }
       }
 
-      await triggerWorkflow(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'ai-analysis.yml', {
+      const workflowInputs: Record<string, string> = {
         chapter_id: chapterId,
         include_previous: includePrevious ? 'true' : 'false',
         ai_provider: provider,
-      })
+      }
+      // Aggiungi il commento autore se presente (non vuoto)
+      const effectiveComment = comment ?? (chapterId !== 'all' ? getAuthorComment(chapterId) : '')
+      if (effectiveComment.trim()) {
+        workflowInputs.author_comment = effectiveComment.trim()
+      }
+
+      await triggerWorkflow(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'ai-analysis.yml', workflowInputs)
       const chapterTitle =
         chapterId === 'all'
           ? 'tutti i capitoli'
@@ -1012,6 +1067,16 @@ export default function AnalysisPage() {
                     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
                       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Sintesi</h3>
                       <p className="text-sm leading-relaxed text-slate-300">{analysis.summary}</p>
+                      {/* Commento autore inviato prima dell'analisi */}
+                      {analysis.authorComment && (
+                        <div className="mt-4 rounded-lg border border-violet-800/30 bg-violet-900/10 px-3 py-2.5">
+                          <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-violet-400">
+                            <FileEdit className="h-3 w-3" />
+                            Nota autore
+                          </p>
+                          <p className="text-xs italic leading-relaxed text-slate-400">&ldquo;{analysis.authorComment}&rdquo;</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2057,14 +2122,33 @@ export default function AnalysisPage() {
                 </div>
               </div>
 
-              <p className="mb-5 text-sm text-slate-500">
+              <p className="mb-4 text-sm text-slate-500">
                 L&apos;analisi sovrascriverà i risultati {AI_PROVIDER_CONFIG[reanalysisDialog.provider].label} esistenti e consumerà token. Scegli come procedere:
               </p>
+
+              {/* Commento autore */}
+              <div className="mb-4">
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-400">
+                  <FileEdit className="h-3.5 w-3.5" />
+                  Nota per l&apos;IA
+                  <span className="text-slate-600">(opzionale)</span>
+                </label>
+                <textarea
+                  value={reanalysisComment}
+                  onChange={(e) => setReanalysisComment(e.target.value)}
+                  placeholder="Es: ho riscritto il dialogo del terzo atto, concentrati sulla coerenza dei personaggi…"
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm text-slate-300 placeholder:text-slate-600 outline-none focus:border-violet-500/40"
+                />
+                {reanalysisComment.trim() && (
+                  <p className="mt-1 text-xs text-slate-600">Questo testo sarà salvato e riutilizzato alla prossima analisi.</p>
+                )}
+              </div>
 
               <div className="space-y-2.5">
                 {/* Opzione 1: Con contesto precedente */}
                 <button
-                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, true, reanalysisDialog.provider)}
+                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, true, reanalysisDialog.provider, reanalysisComment)}
                   disabled={triggering}
                   className="flex w-full items-start gap-3 rounded-xl border border-violet-700/40 bg-violet-900/15 p-3.5 text-left transition-colors hover:border-violet-600/60 hover:bg-violet-900/25"
                 >
@@ -2079,7 +2163,7 @@ export default function AnalysisPage() {
 
                 {/* Opzione 2: Da zero */}
                 <button
-                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, false, reanalysisDialog.provider)}
+                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, false, reanalysisDialog.provider, reanalysisComment)}
                   disabled={triggering}
                   className="flex w-full items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5 text-left transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]"
                 >
@@ -2099,6 +2183,83 @@ export default function AnalysisPage() {
                   className="rounded-lg px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
                 >
                   Annulla
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Dialog prima analisi — con campo commento autore */}
+      <AnimatePresence>
+        {analyzeDialog && (
+          <>
+            <motion.div
+              initial={{opacity: 0}}
+              animate={{opacity: 1}}
+              exit={{opacity: 0}}
+              onClick={() => setAnalyzeDialog(null)}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{opacity: 0, scale: 0.92, y: 16}}
+              animate={{opacity: 1, scale: 1, y: 0}}
+              exit={{opacity: 0, scale: 0.92}}
+              transition={{duration: 0.18}}
+              className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+            >
+              <div className="mb-4 flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-900/40 text-violet-400">
+                  <Play className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-semibold text-[var(--text-primary)]">Avvia analisi</h3>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {AI_PROVIDER_CONFIG[analyzeDialog.provider].icon}{' '}
+                    {AI_PROVIDER_CONFIG[analyzeDialog.provider].label}
+                    {analyzeDialog.chapterId !== 'all' && (
+                      <> · {chapters.find((c) => c.id === analyzeDialog.chapterId)?.title ?? analyzeDialog.chapterId}</>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* Commento autore */}
+              <div className="mb-5">
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-400">
+                  <FileEdit className="h-3.5 w-3.5" />
+                  Nota per l&apos;IA
+                  <span className="text-slate-600">(opzionale)</span>
+                </label>
+                <textarea
+                  value={authorComment}
+                  onChange={(e) => setAuthorComment(e.target.value)}
+                  placeholder="Es: ho cambiato il finale, controlla la coerenza con il personaggio di Marco…"
+                  rows={4}
+                  autoFocus
+                  className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2.5 text-sm text-slate-300 placeholder:text-slate-600 outline-none focus:border-violet-500/40"
+                />
+                <p className="mt-1.5 text-xs text-slate-600">
+                  {authorComment.trim()
+                    ? 'Questo testo sarà salvato e riutilizzato alla prossima analisi di questo capitolo.'
+                    : 'Puoi lasciare vuoto per un\'analisi standard. Il testo viene salvato per capitolo.'}
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setAnalyzeDialog(null)}
+                  className="flex-1 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)]"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={() => void triggerAnalysis(analyzeDialog.chapterId, false, analyzeDialog.provider, authorComment)}
+                  disabled={triggering}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                >
+                  {triggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  Avvia analisi
                 </button>
               </div>
             </motion.div>
