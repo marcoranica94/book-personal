@@ -2,22 +2,22 @@ import {useEffect, useRef, useState} from 'react'
 import {Link, useParams} from 'react-router-dom'
 import {motion} from 'framer-motion'
 import {
-    ArrowLeft,
-    ArrowRight,
-    BookOpen,
-    Calendar,
-    CheckSquare,
-    ChevronLeft,
-    Clock,
-    ExternalLink,
-    FileText,
-    Loader2,
-    Pencil,
-    PenLine,
-    RefreshCw,
-    Sparkles,
-    Tag,
-    Target,
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Calendar,
+  CheckSquare,
+  ChevronLeft,
+  Clock,
+  ExternalLink,
+  FileText,
+  Loader2,
+  Pencil,
+  PenLine,
+  RefreshCw,
+  Sparkles,
+  Tag,
+  Target,
 } from 'lucide-react'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useSettingsStore} from '@/stores/settingsStore'
@@ -42,7 +42,7 @@ export default function ChapterPage() {
   const { id } = useParams<{ id: string }>()
   const { chapters, updateChapter, isSaving } = useChaptersStore()
   const { settings } = useSettingsStore()
-  const { getAnalysis, loadAnalysis } = useAnalysisStore()
+  const { getAnyAnalysis, loadAnalysis } = useAnalysisStore()
   const { setLastSaved } = useUIStore()
   const { config: driveConfig, patchTokens } = useDriveStore()
   const { user } = useAuthStore()
@@ -82,7 +82,7 @@ export default function ChapterPage() {
     if (id) void loadAnalysis(id)
   }, [id, loadAnalysis])
 
-  const analysis = id ? getAnalysis(id) : null
+  const analysis = id ? getAnyAnalysis(id) : null
 
   // ── Debounced saves ───────────────────────────────────────────────────────
 

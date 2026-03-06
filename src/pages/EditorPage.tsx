@@ -43,12 +43,12 @@ const CORRECTION_LABEL: Record<string, string> = {
 export default function EditorPage() {
   const {id} = useParams<{id: string}>()
   const {chapters, loadChapters} = useChaptersStore()
-  const {analyses, loadAnalysis} = useAnalysisStore()
+  const {getAnyAnalysis, loadAnalysis} = useAnalysisStore()
   const {config: driveConfig, patchTokens, load: loadDrive} = useDriveStore()
   const {user} = useAuthStore()
 
   const chapter = chapters.find((c) => c.id === id) ?? null
-  const analysis = id ? (analyses[id] ?? null) : null
+  const analysis = id ? getAnyAnalysis(id) : null
 
   const [content, setContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -76,7 +76,7 @@ export default function EditorPage() {
 
   const isDirty = content !== (chapter?.driveContent ?? '')
   const corrections = analysis?.corrections ?? []
-  const visibleCorrections = corrections.filter((_, i) => !dismissedSet.has(i))
+  const visibleCorrections = corrections.filter((_: unknown, i: number) => !dismissedSet.has(i))
 
   function toggleSidebar() {
     setShowSidebar((prev) => {

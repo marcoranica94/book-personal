@@ -6,7 +6,7 @@ import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
 import {useChartColors} from '@/hooks/useChartColors'
 import {getStatsHistory} from '@/services/statsService'
-import type {StatsSnapshot} from '@/types'
+import type {ChapterAnalysis, StatsSnapshot} from '@/types'
 import {ChapterStatus} from '@/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -248,9 +248,10 @@ export default function ReportsPage() {
       }
     }
 
-    for (const [chId, analysis] of Object.entries(analyses)) {
+    for (const [chId, byProvider] of Object.entries(analyses)) {
       const ch = chapters.find((c) => c.id === chId)
-      if (!ch) continue
+      const analysis = Object.values(byProvider)[0] as ChapterAnalysis | undefined
+      if (!ch || !analysis) continue
       events.push({
         id: `analysis-${chId}`,
         date: analysis.analyzedAt,
@@ -292,9 +293,10 @@ export default function ReportsPage() {
     const keys = Object.keys(SCORE_LABELS)
     return keys.map((key) => {
       const row: Record<string, string | number> = {subject: SCORE_LABELS[key]}
-      for (const [chId, analysis] of Object.entries(analyses)) {
+      for (const [chId, byProvider] of Object.entries(analyses)) {
         const ch = chapters.find((c) => c.id === chId)
-        if (!ch) continue
+        const analysis = Object.values(byProvider)[0] as ChapterAnalysis | undefined
+        if (!ch || !analysis) continue
         row[ch.title.slice(0, 12)] = (analysis.scores as unknown as Record<string, number>)[key] ?? 0
       }
       return row
@@ -307,7 +309,10 @@ export default function ReportsPage() {
     const done = chapters.filter((c) => c.status === ChapterStatus.DONE).length
     const totalWords = chapters.reduce((s, c) => s + c.wordCount, 0)
     const avgScore = analysisChapters.length > 0
-      ? Object.values(analyses).reduce((s, a) => s + a.scores.overall, 0) / analysisChapters.length
+      ? Object.values(analyses).reduce((s, byProvider) => {
+          const a = Object.values(byProvider)[0] as ChapterAnalysis | undefined
+          return s + (a?.scores.overall ?? 0)
+        }, 0) / analysisChapters.length
       : 0
     const writingDays = history.filter((_, i) => i > 0 && history[i].totalWords > history[i - 1].totalWords).length
     return {done, totalWords, avgScore, writingDays}
