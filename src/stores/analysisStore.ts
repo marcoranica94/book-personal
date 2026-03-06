@@ -5,12 +5,13 @@ import type {AIProvider, ChapterAnalysis} from '@/types'
 
 // analyses[chapterId][provider] = ChapterAnalysis
 type AnalysesMap = Record<string, Record<AIProvider, ChapterAnalysis>>
+type HistoryEntry = ChapterAnalysis & {_docId: string}
 
 interface AnalysisStore {
   analyses: AnalysesMap
   analysisErrors: AnalysisError[]
-  /** Storico analisi: history[chapterId][provider] = ChapterAnalysis[] */
-  history: Record<string, Record<AIProvider, ChapterAnalysis[]>>
+  /** Storico analisi: history[chapterId][provider] = HistoryEntry[] */
+  history: Record<string, Record<AIProvider, HistoryEntry[]>>
   isLoading: boolean
   error: string | null
 
@@ -29,6 +30,8 @@ interface AnalysisStore {
   getChapterErrors: (chapterId: string) => AnalysisError[]
   /** Elimina l'analisi di un provider per un capitolo */
   deleteAnalysis: (chapterId: string, provider: AIProvider) => Promise<void>
+  /** Elimina una singola entry dello storico */
+  deleteHistoryEntry: (chapterId: string, provider: AIProvider, docId: string) => Promise<void>
 }
 
 export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
@@ -78,14 +81,13 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
     try {
       const fullHistory = await analysisService.getChapterFullHistory(chapterId)
       set((s) => ({
-        history: {...s.history, [chapterId]: fullHistory},
+        history: {...s.history, [chapterId]: fullHistory as Record<AIProvider, HistoryEntry[]>},
       }))
     } catch {
       // Non bloccante
     }
   },
 
-  // ...existing code...
   getAnalysis: (chapterId, provider) =>
     get().analyses[chapterId]?.[provider] ?? null,
 
@@ -122,6 +124,23 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
         analyses[chapterId] = byProvider as Record<AIProvider, ChapterAnalysis>
       }
       return {analyses}
+    })
+  },
+
+  deleteHistoryEntry: async (chapterId, provider, docId) => {
+    await analysisService.deleteHistoryEntry(chapterId, provider, docId)
+    set((s) => {
+      const chHistory = s.history[chapterId]
+      if (!chHistory?.[provider]) return s
+      return {
+        history: {
+          ...s.history,
+          [chapterId]: {
+            ...chHistory,
+            [provider]: chHistory[provider].filter((e) => e._docId !== docId),
+          },
+        },
+      }
     })
   },
 }))

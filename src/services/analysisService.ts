@@ -141,20 +141,20 @@ export async function deleteAllAnalyses(): Promise<void> {
 export async function getAnalysisHistory(
   chapterId: string,
   provider: AIProvider,
-): Promise<ChapterAnalysis[]> {
+): Promise<(ChapterAnalysis & {_docId: string})[]> {
   const q = query(
     collection(db, COL, chapterId, 'byProvider', provider, 'history'),
     orderBy('analyzedAt', 'asc'),
   )
   const snap = await getDocs(q)
-  return snap.docs.map((d) => d.data() as ChapterAnalysis)
+  return snap.docs.map((d) => ({...(d.data() as ChapterAnalysis), _docId: d.id}))
 }
 
 /** Legge lo storico di tutti i provider per un capitolo */
 export async function getChapterFullHistory(
   chapterId: string,
-): Promise<Record<AIProvider, ChapterAnalysis[]>> {
-  const result = {} as Record<AIProvider, ChapterAnalysis[]>
+): Promise<Record<AIProvider, (ChapterAnalysis & {_docId: string})[]>> {
+  const result = {} as Record<AIProvider, (ChapterAnalysis & {_docId: string})[]>
   const byProviderSnap = await getDocs(collection(db, COL, chapterId, 'byProvider'))
   for (const providerDoc of byProviderSnap.docs) {
     const provider = providerDoc.id as AIProvider
@@ -165,10 +165,19 @@ export async function getChapterFullHistory(
       ),
     )
     if (!histSnap.empty) {
-      result[provider] = histSnap.docs.map((d) => d.data() as ChapterAnalysis)
+      result[provider] = histSnap.docs.map((d) => ({...(d.data() as ChapterAnalysis), _docId: d.id}))
     }
   }
   return result
+}
+
+/** Elimina una singola entry dello storico */
+export async function deleteHistoryEntry(
+  chapterId: string,
+  provider: AIProvider,
+  docId: string,
+): Promise<void> {
+  await deleteDoc(doc(db, COL, chapterId, 'byProvider', provider, 'history', docId))
 }
 
 // ─── Analysis Errors ────────────────────────────────────────────────────────

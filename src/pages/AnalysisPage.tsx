@@ -240,7 +240,7 @@ function ScoreBar({label, value}: {label: string; value: number}) {
 
 export default function AnalysisPage() {
   const {chapters, loadChapters} = useChaptersStore()
-  const {analyses, loadAnalysis, loadAllAnalyses, analysisErrors, loadAnalysisErrors, history: analysisHistory, loadChapterHistory, deleteAnalysis, isLoading} = useAnalysisStore()
+  const {analyses, loadAnalysis, loadAllAnalyses, analysisErrors, loadAnalysisErrors, history: analysisHistory, loadChapterHistory, deleteAnalysis, deleteHistoryEntry, isLoading} = useAnalysisStore()
   const {config: driveConfig, patchTokens, load: loadDrive} = useDriveStore()
   const {user} = useAuthStore()
   const {settings, loadSettings} = useSettingsStore()
@@ -982,7 +982,8 @@ export default function AnalysisPage() {
                     </div>
                     <p className="text-center text-xs text-slate-600">
                       {selectedChapter?.title} ·{' '}
-                      {formatRelativeDate(analysis.analyzedAt)}
+                      {formatRelativeDate(analysis.analyzedAt)}{' '}
+                      ({new Date(analysis.analyzedAt).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})})
                     </p>
                     <p className="text-xs text-slate-700">{analysis.model}</p>
                   </div>
@@ -1852,16 +1853,20 @@ export default function AnalysisPage() {
                                                     <th key={l} className="px-2 py-1.5 text-center font-medium">{l}</th>
                                                   ))}
                                                   <th className="px-2 py-1.5 text-center font-medium">Overall</th>
+                                                  <th className="px-2 py-1.5 text-center font-medium"></th>
                                                 </tr>
                                               </thead>
                                               <tbody>
                                                 {historyList.map((entry, idx) => {
                                                   const prevEntry = idx > 0 ? historyList[idx - 1] : null
                                                   const overallDelta = prevEntry ? entry.scores.overall - prevEntry.scores.overall : 0
+                                                  const entryWithId = entry as typeof entry & {_docId?: string}
                                                   return (
                                                     <tr key={idx} className="border-t border-[var(--border)]">
-                                                      <td className="px-2 py-1.5 text-slate-400">
+                                                      <td className="px-2 py-1.5 text-slate-400 whitespace-nowrap">
                                                         {new Date(entry.analyzedAt).toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit', year: '2-digit'})}
+                                                        {' '}
+                                                        <span className="text-slate-600">{new Date(entry.analyzedAt).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}</span>
                                                       </td>
                                                       <td className="px-2 py-1.5 text-slate-600">{entry.model}</td>
                                                       {Object.keys(SCORE_LABELS).map((key) => {
@@ -1889,6 +1894,20 @@ export default function AnalysisPage() {
                                                           </span>
                                                         )}
                                                       </td>
+                                                      <td className="px-2 py-1.5 text-center">
+                                                        {entryWithId._docId && (
+                                                          <button
+                                                            onClick={(e) => {
+                                                              e.stopPropagation()
+                                                              void deleteHistoryEntry(c.id, provider, entryWithId._docId!)
+                                                            }}
+                                                            title="Elimina questa analisi"
+                                                            className="rounded p-0.5 text-slate-700 transition-colors hover:text-red-400"
+                                                          >
+                                                            <Trash2 className="h-3 w-3" />
+                                                          </button>
+                                                        )}
+                                                      </td>
                                                     </tr>
                                                   )
                                                 })}
@@ -1902,7 +1921,7 @@ export default function AnalysisPage() {
                                               return (
                                                 <div
                                                   key={idx}
-                                                  title={`${new Date(entry.analyzedAt).toLocaleDateString('it-IT')}: ${entry.scores.overall.toFixed(1)}/10`}
+                                                  title={`${new Date(entry.analyzedAt).toLocaleDateString('it-IT')} ${new Date(entry.analyzedAt).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}: ${entry.scores.overall.toFixed(1)}/10`}
                                                   className="flex-1 rounded-t-sm transition-all"
                                                   style={{
                                                     height: `${pct}%`,
