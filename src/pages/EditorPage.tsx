@@ -1,7 +1,9 @@
 import {useEffect, useRef, useState} from 'react'
 import {AnimatePresence, motion} from 'framer-motion'
-import {ArrowLeft, CheckCheck, ChevronRight, CloudUpload, Loader2, RefreshCw, Save, Sparkles, X} from 'lucide-react'
+import {ArrowLeft, CheckCheck, ChevronRight, CloudUpload, Eye, EyeOff, Loader2, RefreshCw, Save, Sparkles, X} from 'lucide-react'
 import {Link, useParams} from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
 import {useDriveStore} from '@/stores/driveStore'
@@ -55,6 +57,7 @@ export default function EditorPage() {
   const [showSidebar, setShowSidebar] = useState(() => {
     try { return localStorage.getItem(LS_SIDEBAR_KEY + id) !== 'false' } catch { return true }
   })
+  const [previewMode, setPreviewMode] = useState(false)
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
   const [acceptedSet, setAcceptedSet] = useState<Set<number>>(new Set())
   const [dismissedSet, setDismissedSet] = useState<Set<number>>(new Set())
@@ -287,6 +290,20 @@ export default function EditorPage() {
             </button>
           )}
 
+          <button
+            onClick={() => setPreviewMode((p) => !p)}
+            title={previewMode ? 'Torna in modalità modifica' : 'Anteprima documento'}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors',
+              previewMode
+                ? 'border-cyan-500/40 bg-cyan-900/20 text-cyan-300'
+                : 'border-[var(--border)] text-slate-400 hover:bg-[var(--overlay)] hover:text-slate-200',
+            )}
+          >
+            {previewMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            {previewMode ? 'Modifica' : 'Anteprima'}
+          </button>
+
           <div className="h-4 w-px bg-[var(--border)]" />
 
           <button
@@ -308,29 +325,109 @@ export default function EditorPage() {
       {/* ── Body ── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Document editor */}
+        {/* Document editor / preview */}
         <div className="flex-1 overflow-y-auto px-6 py-10">
           <motion.div
-            initial={{opacity: 0, y: 12}}
+            key={previewMode ? 'preview' : 'edit'}
+            initial={{opacity: 0, y: 8}}
             animate={{opacity: 1, y: 0}}
-            transition={{duration: 0.2}}
+            transition={{duration: 0.18}}
             className="mx-auto max-w-3xl"
           >
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Inizia a scrivere il tuo capitolo…"
-              spellCheck={false}
-              className={cn(
-                'w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]',
-                'px-10 py-10 text-[17px] leading-[1.85] text-[var(--text-primary)]',
-                'font-serif shadow-2xl outline-none transition-colors',
-                'placeholder-slate-700 focus:border-violet-500/25',
-                'resize-none',
-              )}
-              style={{minHeight: 'calc(100vh - 180px)'}}
-            />
+            {previewMode ? (
+              /* ── Rendered document view ── */
+              <div
+                className={cn(
+                  'w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]',
+                  'px-10 py-10 shadow-2xl',
+                  'prose-doc',
+                )}
+                style={{minHeight: 'calc(100vh - 180px)'}}
+              >
+                {content.trim() ? (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({children}) => (
+                        <p className="mb-5 text-[17px] leading-[1.9] text-[var(--text-primary)] font-serif">
+                          {children}
+                        </p>
+                      ),
+                      h1: ({children}) => (
+                        <h1 className="mb-6 mt-8 text-3xl font-bold text-[var(--text-primary)] font-serif first:mt-0">
+                          {children}
+                        </h1>
+                      ),
+                      h2: ({children}) => (
+                        <h2 className="mb-4 mt-7 text-2xl font-semibold text-[var(--text-primary)] font-serif">
+                          {children}
+                        </h2>
+                      ),
+                      h3: ({children}) => (
+                        <h3 className="mb-3 mt-6 text-xl font-semibold text-slate-200 font-serif">
+                          {children}
+                        </h3>
+                      ),
+                      strong: ({children}) => (
+                        <strong className="font-bold text-[var(--text-primary)]">{children}</strong>
+                      ),
+                      em: ({children}) => (
+                        <em className="italic text-slate-200">{children}</em>
+                      ),
+                      blockquote: ({children}) => (
+                        <blockquote className="my-5 border-l-4 border-violet-500/40 pl-5 italic text-slate-400 font-serif">
+                          {children}
+                        </blockquote>
+                      ),
+                      hr: () => (
+                        <hr className="my-8 border-[var(--border)]" />
+                      ),
+                      ul: ({children}) => (
+                        <ul className="mb-4 list-disc pl-6 space-y-1.5 text-[17px] text-[var(--text-primary)] font-serif">
+                          {children}
+                        </ul>
+                      ),
+                      ol: ({children}) => (
+                        <ol className="mb-4 list-decimal pl-6 space-y-1.5 text-[17px] text-[var(--text-primary)] font-serif">
+                          {children}
+                        </ol>
+                      ),
+                      li: ({children}) => (
+                        <li className="leading-[1.8]">{children}</li>
+                      ),
+                      code: ({children}) => (
+                        <code className="rounded bg-[var(--overlay)] px-1.5 py-0.5 text-sm text-violet-300">
+                          {children}
+                        </code>
+                      ),
+                    }}
+                  >
+                    {content}
+                  </ReactMarkdown>
+                ) : (
+                  <p className="text-slate-700 font-serif text-[17px] italic">
+                    Nessun contenuto da mostrare.
+                  </p>
+                )}
+              </div>
+            ) : (
+              /* ── Raw textarea editor ── */
+              <textarea
+                ref={textareaRef}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Inizia a scrivere il tuo capitolo…"
+                spellCheck={false}
+                className={cn(
+                  'w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]',
+                  'px-10 py-10 text-[17px] leading-[1.85] text-[var(--text-primary)]',
+                  'font-serif shadow-2xl outline-none transition-colors',
+                  'placeholder-slate-700 focus:border-violet-500/25',
+                  'resize-none',
+                )}
+                style={{minHeight: 'calc(100vh - 180px)'}}
+              />
+            )}
           </motion.div>
         </div>
 
