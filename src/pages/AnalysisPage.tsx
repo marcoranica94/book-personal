@@ -143,12 +143,13 @@ function ItemModal({
   onClose,
 }: {
   type: 'weaknesses' | 'suggestions'
-  item: string | {text: string; quotes?: string[]}
+  item: string | {text: string; quotes?: string[]; solution?: string}
   chapterContent: string
   onClose: () => void
 }) {
   const text = typeof item === 'string' ? item : item.text
   const quotes = typeof item === 'string' ? [] : (item.quotes ?? [])
+  const solution = typeof item === 'string' ? undefined : item.solution
 
   // Cerca contesti aggiuntivi nel testo reale se non ci sono citazioni
   const extraContexts: string[] = []
@@ -198,9 +199,9 @@ function ItemModal({
 
         <p className="mb-5 text-sm leading-relaxed text-[var(--text-primary)]">{text}</p>
 
-        {/* Citazioni dal testo */}
-        {allQuotes.length > 0 && (
-          <div className="mb-5 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
+        {/* Citazioni dal testo (solo per debolezze) */}
+        {type === 'weaknesses' && allQuotes.length > 0 && (
+          <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
               {quotes.length > 0 ? 'Esempi dal tuo testo' : 'Passaggi potenzialmente correlati'}
             </p>
@@ -214,6 +215,24 @@ function ItemModal({
                 </blockquote>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Soluzione proposta dall'IA */}
+        {solution && (
+          <div className={cn(
+            'mb-4 rounded-xl border p-4',
+            type === 'weaknesses'
+              ? 'border-emerald-800/40 bg-emerald-900/10'
+              : 'border-violet-800/40 bg-violet-900/10'
+          )}>
+            <p className={cn(
+              'mb-2 text-xs font-semibold uppercase tracking-wider',
+              type === 'weaknesses' ? 'text-emerald-400' : 'text-violet-400'
+            )}>
+              💡 Soluzione proposta
+            </p>
+            <p className="text-sm leading-relaxed text-slate-200">{solution}</p>
           </div>
         )}
 
@@ -284,7 +303,7 @@ export default function AnalysisPage() {
   const [isForceSyncingDrive, setIsForceSyncingDrive] = useState(false)
   const [isPushingToDrive, setIsPushingToDrive] = useState(false)
   const [appliedChanges, setAppliedChanges] = useState<Array<{original: string; suggested: string}>>([])
-  const [itemDetailModal, setItemDetailModal] = useState<{type: 'weaknesses' | 'suggestions'; item: string | {text: string; quotes?: string[]}} | null>(null)
+  const [itemDetailModal, setItemDetailModal] = useState<{type: 'weaknesses' | 'suggestions'; item: string | {text: string; quotes?: string[]; solution?: string}} | null>(null)
   // Re-analysis dialog — scegli se includere contesto precedente
   const [reanalysisDialog, setReanalysisDialog] = useState<{chapterId: string; label: string; provider: AIProvider} | null>(null)
   // Commento autore — dialog pre-analisi
@@ -1123,7 +1142,8 @@ export default function AnalysisPage() {
                           ).map((item, i) => {
                             const isClickable = activeTab === 'weaknesses' || activeTab === 'suggestions'
                             const itemText = typeof item === 'string' ? item : item.text
-                            const itemQuotes = typeof item === 'string' ? [] : (item.quotes ?? [])
+                            const itemQuotes = typeof item === 'string' ? [] : ((item as {quotes?: string[]}).quotes ?? [])
+                            const itemSolution = typeof item === 'string' ? undefined : (item as {solution?: string}).solution
                             return (
                               <li
                                 key={i}
@@ -1145,9 +1165,19 @@ export default function AnalysisPage() {
                                 />
                                 <div className="flex-1 min-w-0">
                                   <span className="text-[var(--text-primary)]">{itemText}</span>
-                                  {itemQuotes.length > 0 && (
+                                  {/* Per debolezze: mostra citazione */}
+                                  {activeTab === 'weaknesses' && itemQuotes.length > 0 && (
                                     <p className="mt-1.5 truncate text-xs italic text-slate-500">
                                       &ldquo;{itemQuotes[0]}&rdquo;{itemQuotes.length > 1 && ` (+${itemQuotes.length - 1})`}
+                                    </p>
+                                  )}
+                                  {/* Indicatore soluzione disponibile */}
+                                  {itemSolution && (
+                                    <p className={cn(
+                                      'mt-1 text-xs font-medium',
+                                      activeTab === 'weaknesses' ? 'text-emerald-500' : 'text-violet-400'
+                                    )}>
+                                      💡 soluzione disponibile
                                     </p>
                                   )}
                                 </div>

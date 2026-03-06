@@ -244,10 +244,16 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
   "weaknesses": [
     {
       "text": "<descrizione del punto debole>",
-      "quotes": ["<citazione esatta dal testo (max 2)>"]
+      "quotes": ["<citazione esatta dal testo (max 2)>"],
+      "solution": "<testo sostitutivo concreto o indicazione su come correggere il passaggio citato — max 60 parole>"
     }
   ],
-  "suggestions": ["<suggerimento specifico 1>", "<suggerimento specifico 2>", ...],
+  "suggestions": [
+    {
+      "text": "<suggerimento specifico>",
+      "solution": "<esempio concreto di come applicarlo al testo (riscrittura parziale o indicazione precisa) — max 60 parole>"
+    }
+  ],
   "corrections": [
     {
       "original": "<testo originale>",
@@ -263,6 +269,11 @@ IMPORTANTE sulle correzioni:
 - Sii ESAUSTIVO: elenca le correzioni che trovi (grammatica, stile, chiarezza, continuità), con limite di 20.
 - Non fermarti alle prime 5-10: analizza ogni paragrafo del capitolo e segnala ogni problema.
 - Per ogni correzione, "original" deve essere il testo ESATTO presente nel capitolo (copia-incolla) per permettere la sostituzione automatica.
+
+IMPORTANTE su weaknesses e suggestions:
+- Per ogni debolezza, il campo "solution" deve contenere un testo sostitutivo concreto o una riscrittura del passaggio citato (max 60 parole). Se non è possibile proporre una riscrittura, scrivi almeno un'indicazione operativa precisa.
+- Per ogni suggerimento, il campo "solution" deve contenere un esempio pratico su come applicarlo: una riscrittura di una frase/paragrafo del capitolo oppure un'indicazione concreta (max 60 parole).
+- Il campo "solution" NON deve essere una ripetizione del testo del punto debole/suggerimento, ma una proposta operativa.
 
 Criteri di valutazione:
 - stile: qualità della prosa, varietà lessicale, originalità dello stile

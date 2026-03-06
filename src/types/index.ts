@@ -113,6 +113,15 @@ export interface AnalysisCorrection {
 export interface WeaknessItem {
   text: string
   quotes: string[]
+  /** Possibile soluzione proposta dall'IA (testo sostitutivo o indicazione concreta) */
+  solution?: string
+}
+
+/** Suggerimento strutturato con possibile soluzione proposta dall'IA */
+export interface SuggestionItem {
+  text: string
+  /** Esempio di testo sostitutivo o indicazione concreta su come applicarlo */
+  solution?: string
 }
 
 export interface HistoricalAccuracyIssue {
@@ -147,7 +156,7 @@ export interface ChapterAnalysis {
   summary: string
   strengths: string[]
   weaknesses: (string | WeaknessItem)[]
-  suggestions: string[]
+  suggestions: (string | SuggestionItem)[]
   corrections: AnalysisCorrection[]
   // Accept/reject tracking
   acceptedCorrections?: number[]
