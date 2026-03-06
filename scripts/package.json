@@ -4,6 +4,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.54.0",
     "firebase-admin": "^13.0.0",
+    "jsonrepair": "^3.13.2",
     "openai": "^4.78.0",
     "uuid": "^11.0.0"
   }
