@@ -791,11 +791,12 @@ export default function AnalysisPage() {
             exit={{opacity: 0}}
             className="space-y-4"
           >
-            {isLoading && !analysis ? (
+            {isLoading && !analysis && (
               <div className="flex h-40 items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
               </div>
-            ) : analysis ? (
+            )}
+            {!isLoading && analysis && (
               <>
                 {/* Done banner — chiaro segnale che il capitolo è chiuso */}
                 {selectedChapter?.status === 'DONE' && (
@@ -1468,7 +1469,8 @@ export default function AnalysisPage() {
                   </div>
                 </div>
               </>
-            ) : availableProviders.length > 0 && !analysis ? (
+            )}
+            {!isLoading && !analysis && availableProviders.length > 0 && (
               /* Has analyses from other providers but not the active one */
               <div className="space-y-4">
                 <div className="rounded-xl border border-dashed border-[var(--border)] py-12 text-center">
@@ -1477,14 +1479,14 @@ export default function AnalysisPage() {
                     Nessuna analisi {AI_PROVIDER_CONFIG[activeProvider].label} per questo capitolo
                   </p>
                   <p className="mt-1 text-xs text-slate-600 mb-4">
-                    Analisi disponibili: {availableProviders.map((p) => AI_PROVIDER_CONFIG[p].label).join(', ')}
+                    {'Analisi disponibili: '}{availableProviders.map((p) => AI_PROVIDER_CONFIG[p].label).join(', ')}
                   </p>
                   <div className="flex items-center justify-center gap-3">
                     <button
                       onClick={() => setActiveProvider(availableProviders[0])}
                       className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-slate-300 transition-colors hover:bg-[var(--overlay)]"
                     >
-                      Vedi analisi {AI_PROVIDER_CONFIG[availableProviders[0]].label}
+                      {'Vedi analisi '}{AI_PROVIDER_CONFIG[availableProviders[0]].label}
                     </button>
                     <button
                       onClick={() => void triggerAnalysis(selectedId)}
@@ -1492,18 +1494,19 @@ export default function AnalysisPage() {
                       className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
                     >
                       {triggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                      Analizza con {AI_PROVIDER_CONFIG[activeProvider].label}
+                      {'Analizza con '}{AI_PROVIDER_CONFIG[activeProvider].label}
                     </button>
                   </div>
                 </div>
               </div>
-            ) : !analysis ? (
+            )}
+            {!isLoading && !analysis && availableProviders.length === 0 && (
               /* No analysis at all */
               <div className="rounded-xl border border-dashed border-[var(--border)] py-16 text-center">
                 <RadarIcon className="mx-auto mb-3 h-10 w-10 text-slate-700" />
                 <p className="text-sm font-medium text-slate-400">Nessuna analisi disponibile</p>
                 <p className="mt-1 text-xs text-slate-600 mb-5">
-                  Avvia l&apos;analisi {AI_PROVIDER_CONFIG[activeProvider].label} per questo capitolo
+                  {'Avvia l\'analisi '}{AI_PROVIDER_CONFIG[activeProvider].label}{' per questo capitolo'}
                 </p>
                 <button
                   onClick={() => void triggerAnalysis(selectedId)}
@@ -1511,10 +1514,10 @@ export default function AnalysisPage() {
                   className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
                 >
                   {triggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  Avvia analisi {AI_PROVIDER_CONFIG[activeProvider].label}
+                  {'Avvia analisi '}{AI_PROVIDER_CONFIG[activeProvider].label}
                 </button>
               </div>
-            ) : null)}
+            )}
           </motion.div>
         )}
       </AnimatePresence>
