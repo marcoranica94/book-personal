@@ -1,6 +1,7 @@
 import {create} from 'zustand'
 import {v4 as uuidv4} from 'uuid'
 import * as chaptersService from '@/services/chaptersService'
+import {deleteChapterAnalysis} from '@/services/analysisService'
 import type {Chapter, ChecklistItem} from '@/types'
 import {ChapterStatus, DEFAULT_CHECKLIST, Priority} from '@/types'
 import {toast} from '@/stores/toastStore'
@@ -111,7 +112,10 @@ export const useChaptersStore = create<ChaptersStore>((set, get) => ({
   deleteChapter: async (id) => {
     set({isSaving: true})
     try {
-      await chaptersService.deleteChapter(id)
+      await Promise.all([
+        chaptersService.deleteChapter(id),
+        deleteChapterAnalysis(id).catch(() => {}), // ignora se non esiste analisi
+      ])
       set((s) => ({
         chapters: s.chapters.filter((c) => c.id !== id),
         isSaving: false,

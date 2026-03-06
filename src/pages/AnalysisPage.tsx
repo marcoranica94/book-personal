@@ -129,8 +129,8 @@ function ItemModal({
         </div>
         <p className="mb-5 text-sm leading-relaxed text-[var(--text-primary)]">{text}</p>
         <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Come applicarlo</p>
-          <ul className="space-y-2 text-sm text-slate-400">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Come applicarlo</p>
+          <ul className="space-y-2 text-sm text-slate-300">
             {type === 'suggestions' ? (
               <>
                 <li className="flex items-start gap-2"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />Vai nella tab <strong className="text-slate-300">Editor</strong> e individua la parte interessata</li>
@@ -328,6 +328,33 @@ export default function AnalysisPage() {
     }
     setTriggering(true)
     try {
+      // Prima di avviare l'analisi, sincronizza il testo aggiornato da Drive
+      if (chapterId !== 'all' && driveConfig && user) {
+        const chapter = chapters.find((c) => c.id === chapterId)
+        if (chapter?.driveFileId) {
+          try {
+            const {accessToken, updatedTokens} = await getValidAccessToken(driveConfig, user.uid)
+            if (updatedTokens) await patchTokens(user.uid, updatedTokens)
+            const rawContent = await getDriveFileContent(accessToken, chapter.driveFileId, chapter.driveMimeType ?? 'text/plain')
+            const {body: bodyContent} = parseYamlFrontmatter(rawContent)
+            await chaptersService.updateChapter(chapter.id, {
+              driveContent: bodyContent,
+              currentChars: bodyContent.length,
+              wordCount: bodyContent.split(/\s+/).filter(Boolean).length,
+              syncStatus: SyncStatus.SYNCED,
+              syncSource: SyncSource.DRIVE,
+              lastSyncAt: new Date().toISOString(),
+            })
+            await loadChapters()
+            setEditorContent(bodyContent)
+            toast.info('Testo aggiornato da Drive prima dell\'analisi')
+          } catch {
+            // Non bloccante: si procede con la versione in Firestore
+            toast.warning('Impossibile sincronizzare da Drive — verrà usata la versione locale')
+          }
+        }
+      }
+
       await triggerWorkflow(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'ai-analysis.yml', {
         chapter_id: chapterId,
       })
@@ -834,8 +861,8 @@ export default function AnalysisPage() {
                                 key={i}
                                 onClick={isClickable ? () => setItemDetailModal({type: activeTab as 'weaknesses' | 'suggestions', text: item}) : undefined}
                                 className={cn(
-                                  'flex items-start gap-2.5 rounded-lg px-2 py-1.5 text-sm',
-                                  isClickable && 'cursor-pointer transition-colors hover:bg-[var(--overlay)]'
+                                  'flex items-start gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2.5 text-sm',
+                                  isClickable && 'cursor-pointer transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]'
                                 )}
                               >
                                 <span
@@ -848,9 +875,9 @@ export default function AnalysisPage() {
                                         : 'bg-blue-500'
                                   )}
                                 />
-                                <span className="flex-1 text-slate-300">{item}</span>
+                                <span className="flex-1 text-[var(--text-primary)]">{item}</span>
                                 {isClickable && (
-                                  <span className="shrink-0 text-xs text-slate-600 mt-0.5">dettagli →</span>
+                                  <span className="shrink-0 text-xs text-slate-500 mt-0.5">dettagli →</span>
                                 )}
                               </li>
                             )

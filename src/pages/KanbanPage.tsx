@@ -367,7 +367,7 @@ export default function KanbanPage() {
       <ConfirmDialog
         open={!!deleteTarget}
         title="Elimina capitolo"
-        description={`Sei sicuro di voler eliminare "${deleteTarget?.title}"? L'azione non può essere annullata.`}
+        description={`Sei sicuro di voler eliminare "${deleteTarget?.title}"? Verrà eliminato anche da Firebase insieme all'analisi AI. Drive non viene toccato. L'azione non può essere annullata.`}
         confirmLabel="Elimina"
         isLoading={isDeleting}
         onConfirm={handleDelete}

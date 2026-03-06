@@ -31,6 +31,10 @@ export async function patchAnalysis(
   await updateDoc(doc(db, COL, chapterId), patch as Record<string, unknown>)
 }
 
+export async function deleteChapterAnalysis(chapterId: string): Promise<void> {
+  await deleteDoc(doc(db, COL, chapterId))
+}
+
 export async function deleteAllAnalyses(): Promise<void> {
   const snap = await getDocs(collection(db, COL))
   await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)))

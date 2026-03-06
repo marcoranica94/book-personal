@@ -1,7 +1,24 @@
 import {useEffect, useRef, useState} from 'react'
 import {Link, useParams} from 'react-router-dom'
 import {motion} from 'framer-motion'
-import {ArrowLeft, ArrowRight, BookOpen, Calendar, CheckSquare, ChevronLeft, Clock, ExternalLink, FileText, Loader2, Pencil, RefreshCw, Sparkles, Tag, Target,} from 'lucide-react'
+import {
+    ArrowLeft,
+    ArrowRight,
+    BookOpen,
+    Calendar,
+    CheckSquare,
+    ChevronLeft,
+    Clock,
+    ExternalLink,
+    FileText,
+    Loader2,
+    Pencil,
+    PenLine,
+    RefreshCw,
+    Sparkles,
+    Tag,
+    Target,
+} from 'lucide-react'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
@@ -260,6 +277,16 @@ export default function ChapterPage() {
                 : 'Forza sync'}
             </button>
           )}
+
+          {/* Open full editor */}
+          <Link
+            to={`/editor/${chapter.id}`}
+            className="flex items-center gap-1 rounded-full bg-violet-600/20 border border-violet-500/30 px-2.5 py-1 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-600/30"
+            title="Apri editor completo con suggerimenti AI"
+          >
+            <PenLine className="h-3 w-3" />
+            Apri Editor
+          </Link>
 
           <span className="ml-auto text-xs text-slate-600">
             Aggiornato {formatRelativeDate(chapter.updatedAt)}

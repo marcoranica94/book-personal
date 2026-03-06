@@ -16,6 +16,7 @@ import ChapterPage from '@/pages/ChapterPage'
 import AnalysisPage from '@/pages/AnalysisPage'
 import SettingsPage from '@/pages/SettingsPage'
 import ReportsPage from '@/pages/ReportsPage'
+import EditorPage from '@/pages/EditorPage'
 
 export default function App() {
   const {initialize, user, isLoading} = useAuthStore()
@@ -82,6 +83,7 @@ export default function App() {
           <Route path="analysis" element={<AnalysisPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="editor/:id" element={<EditorPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
