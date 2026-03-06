@@ -39,6 +39,24 @@ const PROVIDER_MODELS = {
   chatgpt: 'gpt-4o',
 }
 
+// Timeout per ogni chiamata API (ms)
+const API_TIMEOUT_MS = {
+  claude: 15 * 60 * 1000,   // 4 minuti
+  gemini: 30 * 60 * 1000,   // 5 minuti (Gemini è più lento con output grandi)
+  chatgpt: 15 * 60 * 1000,  // 4 minuti
+}
+
+/** Wrapper fetch con AbortController timeout */
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, {...options, signal: controller.signal})
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // ─── Firestore helpers ──────────────────────────────────────────────────────
 
 async function getChapters() {
@@ -216,13 +234,13 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
   "weaknesses": [
     {
       "text": "<descrizione del punto debole>",
-      "quotes": ["<citazione esatta dal testo che mostra questa debolezza>", ...]
+      "quotes": ["<citazione esatta dal testo (max 2)>"]
     }
   ],
   "suggestions": [
     {
       "text": "<suggerimento specifico>",
-      "quotes": ["<citazione esatta dal testo a cui si applica il suggerimento>", ...]
+      "quotes": ["<citazione esatta dal testo a cui si applica (max 2)>"]
     }
   ],
   "corrections": [
@@ -259,7 +277,10 @@ ${chapterText}
 async function callClaude(prompt, previousContext) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY non configurata')
-  const client = new Anthropic({apiKey})
+  const client = new Anthropic({
+    apiKey,
+    timeout: API_TIMEOUT_MS.claude,
+  })
   const message = await client.messages.create({
     model: PROVIDER_MODELS.claude,
     max_tokens: previousContext ? 8000 : 6000,
@@ -269,23 +290,52 @@ async function callClaude(prompt, previousContext) {
   return block?.type === 'text' ? block.text : ''
 }
 
-async function callGemini(prompt, previousContext) {
+async function callGemini(prompt, previousContext, retryCount = 0) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY non configurata')
   const model = PROVIDER_MODELS.gemini
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      contents: [{parts: [{text: prompt}]}],
-      generationConfig: {
-        maxOutputTokens: previousContext ? 8000 : 6000,
-        temperature: 0.7,
-        responseMimeType: 'application/json',
-      },
-    }),
-  })
+  const timeoutMs = API_TIMEOUT_MS.gemini
+
+  let res
+  try {
+    res = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        contents: [{parts: [{text: prompt}]}],
+        generationConfig: {
+          maxOutputTokens: previousContext ? 8000 : 6000,
+          temperature: 0.7,
+          responseMimeType: 'application/json',
+        },
+        // Disabilita "thinking" esteso per risposte più veloci
+        generationConfig: {
+          maxOutputTokens: previousContext ? 8000 : 6000,
+          temperature: 0.7,
+          responseMimeType: 'application/json',
+          thinkingConfig: {thinkingBudget: 0},
+        },
+      }),
+    }, timeoutMs)
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      // Retry una volta con modello più veloce se timeout
+      if (retryCount === 0) {
+        console.warn(`  Gemini timeout (${timeoutMs / 1000}s), retry con gemini-2.0-flash…`)
+        const origModel = PROVIDER_MODELS.gemini
+        PROVIDER_MODELS.gemini = 'gemini-2.0-flash'
+        try {
+          return await callGemini(prompt, previousContext, 1)
+        } finally {
+          PROVIDER_MODELS.gemini = origModel
+        }
+      }
+      throw new Error(`Gemini timeout dopo ${timeoutMs / 1000}s (anche su retry con gemini-2.0-flash)`)
+    }
+    throw err
+  }
+
   if (!res.ok) {
     const body = await res.text()
     throw new Error(`Gemini API error ${res.status}: ${body.substring(0, 300)}`)
@@ -298,7 +348,10 @@ async function callGemini(prompt, previousContext) {
 async function callChatGPT(prompt, previousContext) {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) throw new Error('OPENAI_API_KEY non configurata')
-  const client = new OpenAI({apiKey})
+  const client = new OpenAI({
+    apiKey,
+    timeout: API_TIMEOUT_MS.chatgpt,
+  })
   const response = await client.chat.completions.create({
     model: PROVIDER_MODELS.chatgpt,
     max_tokens: previousContext ? 8000 : 6000,
