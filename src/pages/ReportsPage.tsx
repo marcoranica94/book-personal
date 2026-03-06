@@ -455,9 +455,10 @@ export default function ReportsPage() {
           <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
             <SectionHeader icon={Sparkles} title="Score complessivo" subtitle="Overall score per capitolo analizzato" />
             <div className="space-y-3 mt-2">
-              {Object.entries(analyses).map(([chId, analysis]) => {
+              {Object.entries(analyses).map(([chId, byProvider]) => {
                 const ch = chapters.find((c) => c.id === chId)
-                if (!ch) return null
+                const analysis = Object.values(byProvider)[0] as ChapterAnalysis | undefined
+                if (!ch || !analysis) return null
                 const pct = (analysis.scores.overall / 10) * 100
                 const color = pct >= 80 ? '#10B981' : pct >= 60 ? '#7C3AED' : '#F59E0B'
                 return (
