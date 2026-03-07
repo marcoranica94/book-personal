@@ -32,6 +32,8 @@ const AUTHOR_COMMENT = (process.env.AUTHOR_COMMENT ?? '').trim()
 const WITH_WEAKNESS_SOLUTIONS = (process.env.WITH_WEAKNESS_SOLUTIONS ?? 'true') === 'true'
 /** Se true, l'IA includerà la soluzione proposta per ogni suggerimento */
 const WITH_SUGGESTION_SOLUTIONS = (process.env.WITH_SUGGESTION_SOLUTIONS ?? 'true') === 'true'
+/** Se true, l'IA analizzerà anche l'uso dei paragrafi (a capo) */
+const WITH_PARAGRAPH_ANALYSIS = (process.env.WITH_PARAGRAPH_ANALYSIS ?? 'false') === 'true'
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
 initializeApp({credential: cert(serviceAccount)})
@@ -153,6 +155,21 @@ function buildHistoricalSection() {
   },`
 }
 
+function buildParagraphSection() {
+  return `
+  "paragraphBreaks": {
+    "score": <1-10, efficacia dell'uso dei paragrafi>,
+    "summary": "<sintesi max 100 parole sull'uso dei paragrafi>",
+    "issues": [
+      {
+        "quote": "<citazione esatta dal testo (max 60 parole) che mostra il problema>",
+        "type": "blocco_troppo_lungo|assenza_pausa|pausa_prematura|flusso_coscienza|altro",
+        "suggestion": "<dove/come andare a capo o unire i paragrafi, max 50 parole>"
+      }
+    ]
+  },`
+}
+
 function buildReaderReactionsSection(personas) {
   const personaList = personas.map(p => `    {"persona": "${p}", "emoji": "<emoji appropriata>", "rating": <1-5>, "reaction": "<frase breve in prima persona>", "questions": ["<domanda 1>", "<domanda 2>"], "comment": "<commento esteso max 80 parole>"}`).join(',\n')
   return `
@@ -198,12 +215,13 @@ function buildPreviousAnalysisContext(prev) {
   return parts.join('\n')
 }
 
-function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorComment, withWeaknessSolutions = true, withSuggestionSolutions = true) {
+function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorComment, withWeaknessSolutions = true, withSuggestionSolutions = true, withParagraphAnalysis = false) {
   const isHistorical = bookType === 'storico'
   const personas = READER_PERSONAS[isHistorical ? 'storico' : 'default']
 
   const historicalSection = isHistorical ? buildHistoricalSection() : ''
   const reactionsSection = buildReaderReactionsSection(personas)
+  const paragraphSection = withParagraphAnalysis ? buildParagraphSection() : ''
 
   const previousBlock = previousContext ? `
 
@@ -284,7 +302,7 @@ ${suggestionSchema}
       "type": "grammar|style|clarity|continuity",
       "note": "<spiegazione breve>"
     }
-  ],${historicalSection}
+  ],${historicalSection}${paragraphSection}
   "_placeholder": null
 }
 
@@ -306,6 +324,14 @@ Criteri accuratezza storica (historicalAccuracy):
 - Verifica parole, oggetti, tecnologie, usi e costumi coerenti con il periodo
 - Segnala anacronismi anche sottili (espressioni moderne, concetti non ancora esistenti)
 - Valuta la plausibilità delle situazioni descritte nel contesto storico
+` : ''}
+${withParagraphAnalysis ? `
+Criteri analisi paragrafi (paragraphBreaks) — leggi ATTENTAMENTE ogni blocco di testo:
+- Segnala blocchi eccessivamente lunghi che andrebbero divisi (oltre 5-7 frasi dense senza pausa visiva)
+- Segnala pause a capo in punti inappropriati (spezza il ritmo, separa causa ed effetto strettamente legati)
+- Valuta se l'alternanza tra blocchi brevi e lunghi supporta il ritmo narrativo
+- Segnala sezioni di flusso di coscienza/stream non marcate che disorientano il lettore
+- Non segnalare come problema stili intenzionali coerenti (es. paragrafi brevissimi per tensione)
 ` : ''}
 --- CAPITOLO ---
 ${chapterText}
@@ -453,11 +479,11 @@ async function analyzeChapter(chapter, bookSettings) {
     }
   }
 
-  const prompt = buildPrompt(bookTitle, bookType, chapterText, previousContext || null, AUTHOR_COMMENT, WITH_WEAKNESS_SOLUTIONS, WITH_SUGGESTION_SOLUTIONS)
+  const prompt = buildPrompt(bookTitle, bookType, chapterText, previousContext || null, AUTHOR_COMMENT, WITH_WEAKNESS_SOLUTIONS, WITH_SUGGESTION_SOLUTIONS, WITH_PARAGRAPH_ANALYSIS)
   if (AUTHOR_COMMENT) {
     console.log(`  Nota autore inclusa nel prompt (${AUTHOR_COMMENT.length} chars)`)
   }
-  console.log(`  Opzioni soluzioni: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'}`)
+  console.log(`  Opzioni soluzioni: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'} | paragrafi=${WITH_PARAGRAPH_ANALYSIS ? '✓' : '✗'}`)
 
   const modelName = PROVIDER_MODELS[AI_PROVIDER] ?? PROVIDER_MODELS.claude
   let responseText = ''
@@ -579,6 +605,7 @@ async function main() {
   console.log(`Provider AI: ${AI_PROVIDER} (modello: ${PROVIDER_MODELS[AI_PROVIDER] ?? '?'})`)
   console.log(`Modalità: ${INCLUDE_PREVIOUS ? 'con contesto analisi precedente' : 'analisi da zero'}`)
   console.log(`Soluzioni proposte: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'}`)
+  console.log(`Analisi paragrafi: ${WITH_PARAGRAPH_ANALYSIS ? '✓ attiva' : '✗ disabilitata'}`)
 
   const toAnalyze =
     CHAPTER_ID === 'all'

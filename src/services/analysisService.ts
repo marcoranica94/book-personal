@@ -1,6 +1,6 @@
 import {addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, updateDoc} from 'firebase/firestore'
 import {db} from './firebase'
-import type {AIProvider, ChapterAnalysis} from '@/types'
+import type {AIProvider, ChapterAnalysis, ParagraphReformat} from '@/types'
 
 const COL = 'analyses'
 
@@ -253,3 +253,40 @@ export async function getAllAnalysisErrors(): Promise<AnalysisError[]> {
   return snap.docs.map((d) => d.data() as AnalysisError)
 }
 
+// ─── Paragraph Reformat ───────────────────────────────────────────────────────
+
+/** Legge l'ultima riformattazione paragrafi per un capitolo */
+export async function getParagraphReformat(
+  chapterId: string,
+): Promise<ParagraphReformat | null> {
+  const snap = await getDoc(doc(db, 'paragraphReformats', chapterId))
+  return snap.exists() ? (snap.data() as ParagraphReformat) : null
+}
+
+/** Controlla silenziosamente se esiste una riformattazione più recente di `since` */
+export async function checkParagraphReformatAfter(
+  chapterId: string,
+  since: string,
+): Promise<boolean> {
+  const snap = await getDoc(doc(db, 'paragraphReformats', chapterId))
+  if (!snap.exists()) return false
+  const data = snap.data() as {reformattedAt?: string}
+  return !!(data.reformattedAt && new Date(data.reformattedAt) > new Date(since))
+}
+
+/** Controlla se esiste un errore di riformattazione più recente di `since` */
+export async function checkParagraphReformatErrorAfter(
+  chapterId: string,
+  since: string,
+): Promise<boolean> {
+  const snap = await getDoc(doc(db, 'paragraphReformatErrors', chapterId))
+  if (!snap.exists()) return false
+  const data = snap.data() as {failedAt?: string}
+  return !!(data.failedAt && new Date(data.failedAt) > new Date(since))
+}
+
+/** Elimina la riformattazione paragrafi per un capitolo */
+export async function deleteParagraphReformat(chapterId: string): Promise<void> {
+  await deleteDoc(doc(db, 'paragraphReformats', chapterId)).catch(() => {})
+  await deleteDoc(doc(db, 'paragraphReformatErrors', chapterId)).catch(() => {})
+}

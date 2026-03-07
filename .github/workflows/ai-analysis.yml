@@ -26,6 +26,10 @@ on:
         description: 'Includi soluzioni proposte per i suggerimenti (true/false)'
         required: false
         default: 'true'
+      with_paragraph_analysis:
+        description: 'Analizza uso dei paragrafi / a capo (true/false)'
+        required: false
+        default: 'false'
 jobs:
   analyze:
     runs-on: ubuntu-latest
@@ -49,6 +53,7 @@ jobs:
           AUTHOR_COMMENT: ${{ inputs.author_comment }}
           WITH_WEAKNESS_SOLUTIONS: ${{ inputs.with_weakness_solutions }}
           WITH_SUGGESTION_SOLUTIONS: ${{ inputs.with_suggestion_solutions }}
+          WITH_PARAGRAPH_ANALYSIS: ${{ inputs.with_paragraph_analysis }}
           REPO_DIR: ${{ github.workspace }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

@@ -147,6 +147,37 @@ export interface ReaderReaction {
   comment: string
 }
 
+export interface ParagraphBreakIssue {
+  /** Citazione dal testo che mostra il problema */
+  quote: string
+  /** Tipo di problema: blocco_troppo_lungo | assenza_pausa | pausa_prematura | flusso_coscienza */
+  type: 'blocco_troppo_lungo' | 'assenza_pausa' | 'pausa_prematura' | 'flusso_coscienza' | 'altro'
+  /** Suggerimento su dove/come andare a capo */
+  suggestion: string
+}
+
+export interface ParagraphBreaksAnalysis {
+  /** Voto 1-10 sull'uso dei paragrafi */
+  score: number
+  /** Sintesi breve (max 100 parole) */
+  summary: string
+  /** Problemi specifici trovati */
+  issues: ParagraphBreakIssue[]
+}
+
+/** Risultato della riformattazione paragrafi (Firestore: /paragraphReformats/{chapterId}) */
+export interface ParagraphReformat {
+  chapterId: string
+  provider: AIProvider
+  model: string
+  reformattedAt: string
+  reformattedText: string
+  /** Breve descrizione dei cambiamenti effettuati */
+  changesSummary: string
+  /** Numero di paragrafi aggiunti/modificati */
+  paragraphsChanged: number
+}
+
 export interface ChapterAnalysis {
   chapterId: string
   provider: AIProvider
@@ -167,6 +198,7 @@ export interface ChapterAnalysis {
   // Genere-specific sections
   historicalAccuracy?: HistoricalAccuracyAnalysis
   readerReactions?: ReaderReaction[]
+  paragraphBreaks?: ParagraphBreaksAnalysis
 }
 
 export interface BookSettings {

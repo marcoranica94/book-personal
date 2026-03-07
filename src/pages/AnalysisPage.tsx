@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from 'react'
 import {AnimatePresence, motion} from 'framer-motion'
 import {
   AlertTriangle,
+  AlignLeft,
   CheckCheck,
   CheckCircle2,
   ChevronDown,
@@ -16,6 +17,7 @@ import {
   Square,
   Trash2,
   TrendingUp,
+  Upload,
   X
 } from 'lucide-react'
 import {PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer} from 'recharts'
@@ -25,11 +27,19 @@ import {useDriveStore} from '@/stores/driveStore'
 import {useAuthStore} from '@/stores/authStore'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {toast} from '@/stores/toastStore'
-import type {AIProvider} from '@/types'
+import type {AIProvider, ParagraphReformat} from '@/types'
 import {AI_PROVIDER_CONFIG, getScoreColor, SyncSource, SyncStatus} from '@/types'
 import type {WorkflowRunInfo} from '@/services/githubWorkflow'
 import {getLatestWorkflowRun, triggerWorkflow} from '@/services/githubWorkflow'
-import {checkAnalysisAfter, checkErrorAfter, patchAnalysis} from '@/services/analysisService'
+import {
+  checkAnalysisAfter,
+  checkErrorAfter,
+  checkParagraphReformatAfter,
+  checkParagraphReformatErrorAfter,
+  deleteParagraphReformat,
+  getParagraphReformat,
+  patchAnalysis,
+} from '@/services/analysisService'
 import * as chaptersService from '@/services/chaptersService'
 import {getValidAccessToken} from '@/services/driveAuthService'
 import {getDriveFileContent} from '@/services/driveFileService'
@@ -68,7 +78,7 @@ const CORRECTION_TYPE_COLORS: Record<string, string> = {
   continuity: 'border-amber-800/30 bg-amber-900/30 text-amber-400',
 }
 
-type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor' | 'storico' | 'reazioni'
+type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor' | 'storico' | 'reazioni' | 'acapo'
 
 // ─── Author comment (localStorage persistence per capitolo) ──────────────────
 
@@ -115,6 +125,28 @@ function loadPending(): PendingAnalysis | null {
 function savePending(p: PendingAnalysis | null) {
   if (p) localStorage.setItem(LS_PENDING_KEY, JSON.stringify(p))
   else localStorage.removeItem(LS_PENDING_KEY)
+}
+
+// ─── Pending paragraph reformat (localStorage persistence) ───────────────────
+
+const LS_PENDING_REFORMAT_KEY = 'book_pending_reformat'
+
+interface PendingReformat {
+  chapterId: string
+  chapterTitle: string
+  triggeredAt: string
+}
+
+function loadPendingReformat(): PendingReformat | null {
+  try {
+    const raw = localStorage.getItem(LS_PENDING_REFORMAT_KEY)
+    return raw ? (JSON.parse(raw) as PendingReformat) : null
+  } catch { return null }
+}
+
+function savePendingReformat(p: PendingReformat | null) {
+  if (p) localStorage.setItem(LS_PENDING_REFORMAT_KEY, JSON.stringify(p))
+  else localStorage.removeItem(LS_PENDING_REFORMAT_KEY)
 }
 
 function formatElapsed(secs: number): string {
@@ -314,6 +346,15 @@ export default function AnalysisPage() {
   // Opzioni soluzioni — sceglibili separatamente per debolezze e suggerimenti
   const [withWeaknessSolutions, setWithWeaknessSolutions] = useState(true)
   const [withSuggestionSolutions, setWithSuggestionSolutions] = useState(true)
+  // Analisi paragrafi — opzionale
+  const [withParagraphAnalysis, setWithParagraphAnalysis] = useState(false)
+  // Riformattazione paragrafi
+  const [pendingReformat, setPendingReformat] = useState<PendingReformat | null>(() => loadPendingReformat())
+  const [reformatResult, setReformatResult] = useState<ParagraphReformat | null>(null)
+  const [reformatElapsed, setReformatElapsed] = useState(0)
+  const [reformatWorkflowRun, setReformatWorkflowRun] = useState<WorkflowRunInfo | null>(null)
+  const [isApplyingReformat, setIsApplyingReformat] = useState(false)
+  const [triggeringReformat, setTriggeringReformat] = useState(false)
   // Storico analisi — ID capitolo espanso nella tabella confronto
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null)
   // Cancellazione analisi — traccia quale provider è in corso di delete
@@ -443,6 +484,83 @@ export default function AnalysisPage() {
     }
   }, [pendingAnalysis, loadAnalysis, loadAllAnalyses, loadAnalysisErrors])
 
+  // ─── Reformat progress polling ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!pendingReformat) {
+      setReformatElapsed(0)
+      return
+    }
+    const pending = pendingReformat
+    setReformatElapsed(Math.floor((Date.now() - new Date(pending.triggeredAt).getTime()) / 1000))
+    const tickId = setInterval(() => {
+      setReformatElapsed(Math.floor((Date.now() - new Date(pending.triggeredAt).getTime()) / 1000))
+    }, 1000)
+
+    async function poll() {
+      try {
+        const run = await getLatestWorkflowRun(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'format-paragraphs.yml')
+        if (run) setReformatWorkflowRun(run)
+
+        const [isDone, hasError] = await Promise.all([
+          checkParagraphReformatAfter(pending.chapterId, pending.triggeredAt),
+          checkParagraphReformatErrorAfter(pending.chapterId, pending.triggeredAt),
+        ])
+
+        if (isDone) {
+          const result = await getParagraphReformat(pending.chapterId)
+          setReformatResult(result)
+          toast.success(`Riformattazione completata per "${pending.chapterTitle}"!`)
+          if (pending.chapterId === selectedId) {
+            setActiveTab('acapo')
+            window.scrollTo({top: 0, behavior: 'smooth'})
+          }
+          savePendingReformat(null)
+          setPendingReformat(null)
+          setReformatWorkflowRun(null)
+          return
+        }
+
+        if (hasError && run?.status === 'completed') {
+          toast.error(`Riformattazione fallita per "${pending.chapterTitle}"`)
+          savePendingReformat(null)
+          setPendingReformat(null)
+          setReformatWorkflowRun(null)
+          return
+        }
+
+        if (run?.conclusion === 'failure') {
+          toast.error(`Riformattazione fallita per "${pending.chapterTitle}"`)
+          savePendingReformat(null)
+          setPendingReformat(null)
+          setReformatWorkflowRun(null)
+          return
+        }
+
+        if (Date.now() - new Date(pending.triggeredAt).getTime() > 10 * 60 * 1000) {
+          toast.warning(`Timeout riformattazione "${pending.chapterTitle}" — controlla GitHub Actions`)
+          savePendingReformat(null)
+          setPendingReformat(null)
+          setReformatWorkflowRun(null)
+        }
+      } catch {
+        // Ignore transient poll errors
+      }
+    }
+
+    void poll()
+    const pollId = setInterval(() => void poll(), 15_000)
+    return () => {
+      clearInterval(tickId)
+      clearInterval(pollId)
+    }
+  }, [pendingReformat, selectedId])
+
+  // ─── Load reformat result when switching chapter ───────────────────────────
+  useEffect(() => {
+    if (!selectedId) { setReformatResult(null); return }
+    void getParagraphReformat(selectedId).then(setReformatResult)
+  }, [selectedId])
+
   const selectedChapter = chapters.find((c) => c.id === selectedId) ?? null
   const chapterAnalyses = selectedId ? (analyses[selectedId] ?? null) : null
   const analysis = chapterAnalyses?.[activeProvider] ?? null
@@ -520,6 +638,7 @@ export default function AnalysisPage() {
         ai_provider: provider,
         with_weakness_solutions: withWeaknessSolutions ? 'true' : 'false',
         with_suggestion_solutions: withSuggestionSolutions ? 'true' : 'false',
+        with_paragraph_analysis: withParagraphAnalysis ? 'true' : 'false',
       }
       // Aggiungi il commento autore se presente (non vuoto)
       const effectiveComment = comment ?? (chapterId !== 'all' ? getAuthorComment(chapterId) : '')
@@ -740,6 +859,55 @@ export default function AnalysisPage() {
     }
   }
 
+  async function triggerReformat() {
+    if (!selectedChapter) return
+    setTriggeringReformat(true)
+    try {
+      await triggerWorkflow(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'format-paragraphs.yml', {
+        chapter_id: selectedChapter.id,
+        ai_provider: activeProvider,
+      })
+      const pending: PendingReformat = {
+        chapterId: selectedChapter.id,
+        chapterTitle: selectedChapter.title,
+        triggeredAt: new Date().toISOString(),
+      }
+      savePendingReformat(pending)
+      setPendingReformat(pending)
+      setReformatElapsed(0)
+      toast.success(`Riformattazione paragrafi avviata per "${selectedChapter.title}"! Monitoraggio attivato.`)
+    } catch (err) {
+      toast.error('Errore: ' + (err as Error).message)
+    } finally {
+      setTriggeringReformat(false)
+    }
+  }
+
+  async function handleApplyReformat() {
+    if (!selectedChapter || !reformatResult) return
+    setIsApplyingReformat(true)
+    try {
+      const newContent = reformatResult.reformattedText
+      await chaptersService.updateChapter(selectedChapter.id, {
+        driveContent: newContent,
+        currentChars: newContent.length,
+        wordCount: newContent.split(/\s+/).filter(Boolean).length,
+        syncStatus: SyncStatus.PENDING_PUSH,
+        syncSource: SyncSource.AI,
+      })
+      await loadChapters()
+      setEditorContent(newContent)
+      // Pulisci la riformattazione dopo che è stata applicata
+      await deleteParagraphReformat(selectedChapter.id)
+      setReformatResult(null)
+      toast.success('Testo riformattato applicato — usa "Sincronizza ora" per inviarlo su Drive')
+    } catch (err) {
+      toast.error('Errore applicazione: ' + (err as Error).message)
+    } finally {
+      setIsApplyingReformat(false)
+    }
+  }
+
   function toggleAccept(idx: number) {
     setAcceptedCorrections((prev) => {
       const next = new Set(prev)
@@ -808,6 +976,9 @@ export default function AnalysisPage() {
       : []),
     ...(analysis?.readerReactions?.length
       ? [{id: 'reazioni' as Tab, label: 'Reazioni Lettori', count: analysis.readerReactions.length}]
+      : []),
+    ...(analysis?.paragraphBreaks || reformatResult
+      ? [{id: 'acapo' as Tab, label: '¶ A Capo', count: analysis?.paragraphBreaks?.issues?.length}]
       : []),
     {id: 'editor', label: 'Editor'},
   ]
@@ -927,6 +1098,50 @@ export default function AnalysisPage() {
             </div>
             <button
               onClick={() => {savePending(null); setPendingAnalysis(null); setWorkflowRun(null)}}
+              title="Chiudi monitoraggio"
+              className="rounded p-1 text-slate-600 transition-colors hover:text-slate-300"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Pending reformat banner */}
+      <AnimatePresence>
+        {pendingReformat && (
+          <motion.div
+            key="pending-reformat-banner"
+            initial={{opacity: 0, y: -8}}
+            animate={{opacity: 1, y: 0}}
+            exit={{opacity: 0, y: -8}}
+            className="flex items-center gap-3 rounded-xl border border-teal-800/40 bg-teal-900/20 px-4 py-3"
+          >
+            <AlignLeft className="h-4 w-4 shrink-0 animate-pulse text-teal-400" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-teal-300">
+                Riformattazione paragrafi in corso — {pendingReformat.chapterTitle}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {reformatWorkflowRun ? (
+                  <>
+                    GitHub Actions:{' '}
+                    <span className={
+                      reformatWorkflowRun.status === 'in_progress' ? 'text-amber-400' :
+                      reformatWorkflowRun.status === 'queued' ? 'text-blue-400' : 'text-slate-400'
+                    }>
+                      {reformatWorkflowRun.status === 'queued' ? 'In coda' :
+                       reformatWorkflowRun.status === 'in_progress' ? 'In esecuzione' :
+                       reformatWorkflowRun.status}
+                    </span>
+                    {' · '}
+                  </>
+                ) : null}
+                Avviata {formatElapsed(reformatElapsed)} fa · aggiornamento ogni 15s
+              </p>
+            </div>
+            <button
+              onClick={() => {savePendingReformat(null); setPendingReformat(null); setReformatWorkflowRun(null)}}
               title="Chiudi monitoraggio"
               className="rounded p-1 text-slate-600 transition-colors hover:text-slate-300"
             >
@@ -1634,6 +1849,175 @@ export default function AnalysisPage() {
                             </div>
                           )}
                         </motion.div>
+                      ) : activeTab === 'acapo' ? (
+                        /* A Capo tab */
+                        <motion.div
+                          key="acapo"
+                          initial={{opacity: 0, x: -4}}
+                          animate={{opacity: 1, x: 0}}
+                          exit={{opacity: 0}}
+                          transition={{duration: 0.15}}
+                          className="space-y-5"
+                        >
+                          {/* Sezione analisi a capo (dall'analisi AI) */}
+                          {analysis?.paragraphBreaks ? (
+                            <div className="space-y-4">
+                              <div className="flex items-center gap-3">
+                                <span className={cn(
+                                  'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold',
+                                  analysis.paragraphBreaks.score >= 8 ? 'bg-emerald-900/30 text-emerald-400' :
+                                  analysis.paragraphBreaks.score >= 6 ? 'bg-blue-900/30 text-blue-400' :
+                                  analysis.paragraphBreaks.score >= 4 ? 'bg-amber-900/30 text-amber-400' :
+                                  'bg-red-900/30 text-red-400'
+                                )}>
+                                  {analysis.paragraphBreaks.score.toFixed(1)}
+                                </span>
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Voto uso paragrafi</p>
+                                  <p className="mt-0.5 text-sm text-slate-300">{analysis.paragraphBreaks.summary}</p>
+                                </div>
+                              </div>
+
+                              {analysis.paragraphBreaks.issues.length > 0 && (
+                                <div className="space-y-3">
+                                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                    {analysis.paragraphBreaks.issues.length} problema{analysis.paragraphBreaks.issues.length !== 1 ? 'i' : ''} trovato{analysis.paragraphBreaks.issues.length !== 1 ? 'i' : ''}
+                                  </p>
+                                  {analysis.paragraphBreaks.issues.map((issue, i) => {
+                                    const typeColors: Record<string, string> = {
+                                      blocco_troppo_lungo: 'border-orange-800/40 bg-orange-900/10 text-orange-400',
+                                      assenza_pausa: 'border-red-800/40 bg-red-900/10 text-red-400',
+                                      pausa_prematura: 'border-blue-800/40 bg-blue-900/10 text-blue-400',
+                                      flusso_coscienza: 'border-violet-800/40 bg-violet-900/10 text-violet-400',
+                                      altro: 'border-slate-700/40 bg-slate-800/20 text-slate-400',
+                                    }
+                                    const typeLabels: Record<string, string> = {
+                                      blocco_troppo_lungo: 'Blocco troppo lungo',
+                                      assenza_pausa: 'Manca una pausa',
+                                      pausa_prematura: 'Pausa prematura',
+                                      flusso_coscienza: 'Flusso di coscienza',
+                                      altro: 'Altro',
+                                    }
+                                    return (
+                                      <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-2">
+                                        <div className="flex items-center gap-2">
+                                          <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold border', typeColors[issue.type] ?? typeColors.altro)}>
+                                            {typeLabels[issue.type] ?? issue.type}
+                                          </span>
+                                        </div>
+                                        {issue.quote && (
+                                          <blockquote className="border-l-2 border-slate-600/50 pl-3 text-xs italic leading-relaxed text-slate-400">
+                                            &ldquo;{issue.quote}&rdquo;
+                                          </blockquote>
+                                        )}
+                                        <p className="text-sm text-slate-300">{issue.suggestion}</p>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )}
+
+                              {analysis.paragraphBreaks.issues.length === 0 && (
+                                <div className="flex items-center gap-3 rounded-xl border border-emerald-700/30 bg-emerald-900/10 px-4 py-3">
+                                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+                                  <p className="text-sm text-emerald-300">Uso dei paragrafi ottimale — nessun problema rilevato.</p>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center">
+                              <AlignLeft className="mx-auto mb-2 h-8 w-8 text-slate-700" />
+                              <p className="text-sm text-slate-500">Analisi dei paragrafi non disponibile</p>
+                              <p className="mt-1 text-xs text-slate-600">
+                                Rianalizza il capitolo attivando l&apos;opzione <span className="text-teal-400">¶ Analizza a capo</span> nel dialog di avvio.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Separatore */}
+                          <div className="border-t border-[var(--border)]" />
+
+                          {/* Sezione riformattazione automatica */}
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-300">Riformatta automaticamente</p>
+                                <p className="mt-0.5 text-xs text-slate-500">
+                                  L&apos;IA rilegge il capitolo e aggiusta i paragrafi senza modificare le parole.
+                                  Il testo riformattato viene proposto per la revisione — sei tu a decidere se applicarlo.
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => void triggerReformat()}
+                                disabled={triggeringReformat || !!pendingReformat}
+                                className="flex shrink-0 items-center gap-2 rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-600 disabled:opacity-40"
+                              >
+                                {triggeringReformat || pendingReformat
+                                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                                  : <AlignLeft className="h-4 w-4" />}
+                                {pendingReformat ? 'In corso…' : 'Riformatta a capo'}
+                              </button>
+                            </div>
+
+                            {/* Risultato riformattazione */}
+                            {reformatResult && reformatResult.chapterId === selectedId && (
+                              <motion.div
+                                initial={{opacity: 0, y: 4}}
+                                animate={{opacity: 1, y: 0}}
+                                className="rounded-xl border border-teal-700/40 bg-teal-900/10 p-4 space-y-3"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="text-sm font-semibold text-teal-300">
+                                      Riformattazione pronta
+                                      {reformatResult.paragraphsChanged > 0 && (
+                                        <span className="ml-2 text-xs font-normal text-slate-400">
+                                          · {reformatResult.paragraphsChanged} paragrafo{reformatResult.paragraphsChanged !== 1 ? 'i' : ''} modificato{reformatResult.paragraphsChanged !== 1 ? 'i' : ''}
+                                        </span>
+                                      )}
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-slate-400">{reformatResult.changesSummary}</p>
+                                    <p className="mt-1 text-xs text-slate-600">
+                                      {AI_PROVIDER_CONFIG[reformatResult.provider]?.label} · {reformatResult.model} · {formatRelativeDate(reformatResult.reformattedAt)}
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={async () => { await deleteParagraphReformat(selectedId); setReformatResult(null) }}
+                                    title="Scarta riformattazione"
+                                    className="rounded p-1 text-slate-600 hover:text-slate-300 transition-colors"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+
+                                {/* Preview testo riformattato (prime 600 chars) */}
+                                <div className="max-h-40 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--overlay)] p-3 text-xs leading-relaxed text-slate-400 whitespace-pre-wrap">
+                                  {reformatResult.reformattedText.slice(0, 600)}
+                                  {reformatResult.reformattedText.length > 600 && '…'}
+                                </div>
+
+                                <div className="flex gap-3">
+                                  <button
+                                    onClick={() => void handleApplyReformat()}
+                                    disabled={isApplyingReformat}
+                                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-500 disabled:opacity-40"
+                                  >
+                                    {isApplyingReformat
+                                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                                      : <Upload className="h-4 w-4" />}
+                                    Applica e salva
+                                  </button>
+                                  <button
+                                    onClick={() => { setActiveTab('editor'); }}
+                                    className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)]"
+                                  >
+                                    Vedi in Editor
+                                  </button>
+                                </div>
+                              </motion.div>
+                            )}
+                          </div>
+                        </motion.div>
                       ) : (
                         /* Editor tab */
                         <motion.div
@@ -2313,6 +2697,18 @@ export default function AnalysisPage() {
                       <span className="ml-1 text-xs text-slate-500">— esempio pratico di applicazione</span>
                     </span>
                   </label>
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={withParagraphAnalysis}
+                      onChange={(e) => setWithParagraphAnalysis(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
+                    />
+                    <span className="text-sm text-slate-300">
+                      <span className="font-medium text-teal-400">¶ Analizza a capo</span>
+                      <span className="ml-1 text-xs text-slate-500">— valuta uso dei paragrafi (aggiunge tab)</span>
+                    </span>
+                  </label>
                 </div>
               </div>
 
@@ -2412,6 +2808,18 @@ export default function AnalysisPage() {
                     <span className="text-sm text-slate-300">
                       Per i <span className="font-medium text-violet-400">suggerimenti</span>
                       <span className="ml-1 text-xs text-slate-500">— esempio pratico di applicazione</span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={withParagraphAnalysis}
+                      onChange={(e) => setWithParagraphAnalysis(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
+                    />
+                    <span className="text-sm text-slate-300">
+                      <span className="font-medium text-teal-400">¶ Analizza a capo</span>
+                      <span className="ml-1 text-xs text-slate-500">— valuta uso dei paragrafi (aggiunge tab)</span>
                     </span>
                   </label>
                 </div>
