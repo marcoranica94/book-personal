@@ -40,6 +40,8 @@ const WITH_WEAKNESSES = (process.env.WITH_WEAKNESSES ?? 'true') === 'true'
 const WITH_SUGGESTIONS = (process.env.WITH_SUGGESTIONS ?? 'true') === 'true'
 const WITH_CORRECTIONS = (process.env.WITH_CORRECTIONS ?? 'true') === 'true'
 const WITH_READER_REACTIONS = (process.env.WITH_READER_REACTIONS ?? 'true') === 'true'
+/** Se true, calcola la frequenza delle parole del capitolo (no AI, puro JS) */
+const WITH_WORD_FREQUENCY = (process.env.WITH_WORD_FREQUENCY ?? 'false') === 'true'
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
 initializeApp({credential: cert(serviceAccount)})
@@ -124,7 +126,90 @@ async function saveAnalysisError(chapterId, errorMessage) {
   await db.collection('analysisErrors').doc(`${chapterId}_${AI_PROVIDER}`).set(errorRecord)
   console.error(`  ✗ Errore salvato su Firestore per ${chapterId}/${AI_PROVIDER}: ${errorMessage}`)
 }
+// ─── Word Frequency (no AI) ─────────────────────────────────────────────────
 
+const ITALIAN_STOPWORDS = new Set([
+  // Articoli
+  'il','lo','la','i','gli','le','un','uno','una',
+  // Preposizioni semplici
+  'di','a','da','in','con','su','per','tra','fra',
+  // Preposizioni articolate
+  'del','dello','della','dei','degli','delle',
+  'al','allo','alla','ai','agli','alle',
+  'dal','dallo','dalla','dai','dagli','dalle',
+  'nel','nello','nella','nei','negli','nelle',
+  'col','coi','sul','sullo','sulla','sui','sugli','sulle',
+  // Congiunzioni
+  'e','ed','o','od','ma','però','eppure','quindi','dunque',
+  'perché','perche','poiché','poiche','che','se','quando',
+  'mentre','come','anche','allora','oppure','né','ne','anzi',
+  'sebbene','benché','affinché','sicché','giacché',
+  // Pronomi personali e riflessivi
+  'io','tu','lui','lei','noi','voi','loro',
+  'mi','ti','ci','vi','si','me','te',
+  // Pronomi/avverbi relativi e dimostrativi
+  'chi','cui','dove','quando','quanto','quale','quali',
+  'questo','questa','questi','queste',
+  'quello','quella','quelli','quelle','quel','quei','quegli',
+  // Avverbi comuni
+  'non','più','meno','molto','poco','troppo','già',
+  'ancora','sempre','mai','solo','solamente','proprio',
+  'così','cosi','bene','male','tanto','quanto',
+  'quasi','subito','prima','dopo','ora','adesso','poi',
+  'forse','circa','abbastanza','appena',
+  // Quantificatori / indefiniti
+  'ogni','tutto','tutta','tutti','tutte',
+  'qualche','alcuni','alcune','nessuno','nessuna',
+  'altro','altra','altri','altre',
+  // Verbi ausiliari e copula
+  'è','sono','sei','siamo','siete','era','erano','ero',
+  'ha','hai','ho','hanno','abbiamo','avete','aveva','avevano',
+  'sarà','sarai','sarò','saranno','sarebbe','siano','sia',
+  'essere','avere','fare','dire',
+  'fu','fui','fosse','fossero',
+  // Particelle e varie
+  'ecco','sì','si','no','eh','ah','oh',
+])
+
+/** Calcola frequenza delle parole significative nel testo del capitolo */
+function computeWordFrequency(text) {
+  const cleaned = text
+    .replace(/^---[\s\S]*?---/m, '')          // YAML frontmatter
+    .replace(/[#*_~`|>\[\]()]/g, ' ')        // simboli markdown
+    .replace(/https?:\/\/\S+/g, ' ')         // URL
+    .toLowerCase()
+
+  const words = cleaned.split(/[\s\n\r,.;:!?"'«»()\-\u2013\u2014\d\u2018\u2019\u201C\u201D]+/).filter(Boolean)
+
+  const freq = new Map()
+
+  for (const word of words) {
+    if (word.length < 3) continue
+    if (ITALIAN_STOPWORDS.has(word)) continue
+    if (/^\d+$/.test(word)) continue
+    freq.set(word, (freq.get(word) ?? 0) + 1)
+  }
+
+  const totalWords = [...freq.values()].reduce((a, b) => a + b, 0)
+  const uniqueWords = freq.size
+
+  const topWords = [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 80)
+    .map(([word, count]) => ({ word, count }))
+
+  // Repetition score: percentuale di parole uniche che compaiono >= 3 volte
+  const repetitiveWords = [...freq.values()].filter(c => c >= 3).length
+  const repetitionScore = Math.min(100, Math.round((repetitiveWords / Math.max(1, uniqueWords)) * 200))
+
+  return {
+    topWords,
+    totalWords,
+    uniqueWords,
+    repetitionScore,
+    analyzedAt: new Date().toISOString(),
+  }
+}
 // ─── Prompt ─────────────────────────────────────────────────────────────────
 
 const READER_PERSONAS = {
@@ -621,6 +706,11 @@ async function analyzeChapter(chapter, bookSettings) {
     }
     // Salva il commento autore se presente
     if (AUTHOR_COMMENT) result.authorComment = AUTHOR_COMMENT
+    // Calcola frequenza parole (senza AI) se richiesto
+    if (WITH_WORD_FREQUENCY) {
+      result.wordFrequency = computeWordFrequency(chapterText)
+      console.log(`  Frequenza parole: ${result.wordFrequency.totalWords} parole, ${result.wordFrequency.uniqueWords} uniche, score ripetitività=${result.wordFrequency.repetitionScore}`)
+    }
     return result
   } catch (err) {
     const msg = `Errore parsing JSON per ${chapter.id}: ${err.message}. Response (500 chars): ${responseText.substring(0, 500)}`
@@ -642,7 +732,8 @@ async function main() {
   console.log(`Modalità: ${INCLUDE_PREVIOUS ? 'con contesto analisi precedente' : 'analisi da zero'}`)
   console.log(`Soluzioni proposte: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'}`)
   console.log(`Analisi paragrafi: ${WITH_PARAGRAPH_ANALYSIS ? '✓ attiva' : '✗ disabilitata'}`)
-  console.log(`Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'}`)
+  console.log(`Frequenza parole: ${WITH_WORD_FREQUENCY ? '✓ attiva' : '✗ disabilitata'}`)
+  console.log(`Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'}`)  
 
   const toAnalyze =
     CHAPTER_ID === 'all'

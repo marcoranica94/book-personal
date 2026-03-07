@@ -50,6 +50,10 @@ on:
         description: 'Includi sezione Reazioni Lettori (true/false)'
         required: false
         default: 'true'
+      with_word_frequency:
+        description: 'Calcola frequenza parole (ripetizioni) del capitolo (true/false)'
+        required: false
+        default: 'false'
 jobs:
   analyze:
     runs-on: ubuntu-latest
@@ -79,6 +83,7 @@ jobs:
           WITH_SUGGESTIONS: ${{ inputs.with_suggestions }}
           WITH_CORRECTIONS: ${{ inputs.with_corrections }}
           WITH_READER_REACTIONS: ${{ inputs.with_reader_reactions }}
+          WITH_WORD_FREQUENCY: ${{ inputs.with_word_frequency }}
           REPO_DIR: ${{ github.workspace }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

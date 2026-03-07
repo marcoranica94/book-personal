@@ -165,6 +165,25 @@ export interface ParagraphBreaksAnalysis {
   issues: ParagraphBreakIssue[]
 }
 
+// ─── Word Frequency Analysis ─────────────────────────────────────────────────
+
+export interface WordFrequencyEntry {
+  word: string
+  count: number
+}
+
+export interface WordFrequencyAnalysis {
+  /** Top N parole più usate (filtrate stopwords) */
+  topWords: WordFrequencyEntry[]
+  /** Totale parole significative nel capitolo */
+  totalWords: number
+  /** Parole uniche significative */
+  uniqueWords: number
+  /** Punteggio ripetitività 0-100 (più alto = più ripetitivo) */
+  repetitionScore: number
+  analyzedAt: string
+}
+
 /** Risultato della riformattazione paragrafi (Firestore: /paragraphReformats/{chapterId}) */
 export interface ParagraphReformat {
   chapterId: string
@@ -199,6 +218,7 @@ export interface ChapterAnalysis {
   historicalAccuracy?: HistoricalAccuracyAnalysis
   readerReactions?: ReaderReaction[]
   paragraphBreaks?: ParagraphBreaksAnalysis
+  wordFrequency?: WordFrequencyAnalysis
 }
 
 export interface BookSettings {

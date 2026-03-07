@@ -20,7 +20,7 @@ import {
   Upload,
   X
 } from 'lucide-react'
-import {PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer} from 'recharts'
+import {Bar, BarChart, Cell, PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
 import {useDriveStore} from '@/stores/driveStore'
@@ -78,7 +78,7 @@ const CORRECTION_TYPE_COLORS: Record<string, string> = {
   continuity: 'border-amber-800/30 bg-amber-900/30 text-amber-400',
 }
 
-type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor' | 'storico' | 'reazioni' | 'acapo'
+type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor' | 'storico' | 'reazioni' | 'acapo' | 'parole'
 
 // ─── Author comment (localStorage persistence per capitolo) ──────────────────
 
@@ -354,7 +354,8 @@ export default function AnalysisPage() {
   const [withSuggestions, setWithSuggestions] = useState(true)
   const [withCorrections, setWithCorrections] = useState(true)
   const [withReaderReactions, setWithReaderReactions] = useState(true)
-  // Riformattazione paragrafi
+  // Analisi frequenza parole
+  const [withWordFrequency, setWithWordFrequency] = useState(false)
   const [pendingReformat, setPendingReformat] = useState<PendingReformat | null>(() => loadPendingReformat())
   const [reformatResult, setReformatResult] = useState<ParagraphReformat | null>(null)
   const [reformatElapsed, setReformatElapsed] = useState(0)
@@ -650,6 +651,7 @@ export default function AnalysisPage() {
         with_suggestions: withSuggestions ? 'true' : 'false',
         with_corrections: withCorrections ? 'true' : 'false',
         with_reader_reactions: withReaderReactions ? 'true' : 'false',
+        with_word_frequency: withWordFrequency ? 'true' : 'false',
       }
       // Aggiungi il commento autore se presente (non vuoto)
       const effectiveComment = comment ?? (chapterId !== 'all' ? getAuthorComment(chapterId) : '')
@@ -990,6 +992,9 @@ export default function AnalysisPage() {
       : []),
     ...(analysis?.paragraphBreaks || reformatResult
       ? [{id: 'acapo' as Tab, label: '¶ A Capo', count: analysis?.paragraphBreaks?.issues?.length}]
+      : []),
+    ...(analysis?.wordFrequency
+      ? [{id: 'parole' as Tab, label: '📊 Parole', count: analysis.wordFrequency.topWords.length}]
       : []),
     {id: 'editor', label: 'Editor'},
   ]
@@ -2029,6 +2034,126 @@ export default function AnalysisPage() {
                             )}
                           </div>
                         </motion.div>
+                      ) : activeTab === 'parole' ? (
+                        /* Parole tab */
+                        <motion.div
+                          key="parole"
+                          initial={{opacity: 0, x: -4}}
+                          animate={{opacity: 1, x: 0}}
+                          exit={{opacity: 0}}
+                          transition={{duration: 0.15}}
+                          className="space-y-5"
+                        >
+                          {analysis?.wordFrequency ? (() => {
+                            const wf = analysis.wordFrequency
+                            const total = wf.totalWords || 1
+                            const chartWords = wf.topWords.slice(0, 20)
+                            const repScore = wf.repetitionScore
+                            const repColor = repScore >= 60 ? 'text-red-400 bg-red-900/20 border-red-700/30'
+                              : repScore >= 35 ? 'text-amber-400 bg-amber-900/20 border-amber-700/30'
+                              : 'text-emerald-400 bg-emerald-900/20 border-emerald-700/30'
+                            const repLabel = repScore >= 60 ? 'Alta ripetitività' : repScore >= 35 ? 'Ripetitività media' : 'Bassa ripetitività'
+                            return (
+                              <>
+                                {/* Summary stats */}
+                                <div className="grid grid-cols-3 gap-3">
+                                  <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3 text-center">
+                                    <p className="text-xl font-bold text-slate-200">{wf.totalWords.toLocaleString('it-IT')}</p>
+                                    <p className="mt-0.5 text-xs text-slate-500">Parole significative</p>
+                                  </div>
+                                  <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3 text-center">
+                                    <p className="text-xl font-bold text-slate-200">{wf.uniqueWords.toLocaleString('it-IT')}</p>
+                                    <p className="mt-0.5 text-xs text-slate-500">Parole uniche</p>
+                                  </div>
+                                  <div className={`rounded-xl border p-3 text-center ${repColor}`}>
+                                    <p className="text-xl font-bold">{repScore}</p>
+                                    <p className="mt-0.5 text-xs opacity-80">{repLabel}</p>
+                                  </div>
+                                </div>
+
+                                {/* Bar chart — top 20 */}
+                                <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
+                                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Top 20 parole più usate</p>
+                                  <ResponsiveContainer width="100%" height={220}>
+                                    <BarChart data={chartWords} margin={{top: 0, right: 0, left: -20, bottom: 60}}>
+                                      <XAxis
+                                        dataKey="word"
+                                        tick={{fill: '#94a3b8', fontSize: 11}}
+                                        angle={-45}
+                                        textAnchor="end"
+                                        interval={0}
+                                      />
+                                      <YAxis tick={{fill: '#64748b', fontSize: 11}} />
+                                      <Tooltip
+                                        contentStyle={{background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12}}
+                                        labelStyle={{color: '#e2e8f0'}}
+                                        formatter={(value: number | undefined) => [value ?? 0, 'occorrenze']}
+                                      />
+                                      <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                                        {chartWords.map((entry, i) => {
+                                          const pct = (entry.count / total) * 100
+                                          const color = pct >= 2 ? '#f87171' : pct >= 1 ? '#fb923c' : '#818cf8'
+                                          return <Cell key={i} fill={color} />
+                                        })}
+                                      </Bar>
+                                    </BarChart>
+                                  </ResponsiveContainer>
+                                  <div className="mt-3 flex items-center gap-4 text-xs text-slate-500">
+                                    <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-red-400" />&ge;2% del totale</span>
+                                    <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-orange-400" />&ge;1%</span>
+                                    <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-indigo-400" />normale</span>
+                                  </div>
+                                </div>
+
+                                {/* Full table */}
+                                <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] overflow-hidden">
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="border-b border-[var(--border)]">
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">#</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Parola</th>
+                                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">N</th>
+                                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">%</th>
+                                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"></th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {wf.topWords.map((entry, i) => {
+                                        const pct = (entry.count / total) * 100
+                                        const barColor = pct >= 2 ? 'bg-red-500' : pct >= 1 ? 'bg-amber-500' : 'bg-indigo-500'
+                                        const textColor = pct >= 2 ? 'text-red-300' : pct >= 1 ? 'text-amber-300' : 'text-slate-300'
+                                        return (
+                                          <tr key={entry.word} className="border-b border-[var(--border)]/50 hover:bg-white/[0.02]">
+                                            <td className="px-4 py-2 text-xs text-slate-600 tabular-nums">{i + 1}</td>
+                                            <td className={`px-4 py-2 font-medium ${textColor}`}>{entry.word}</td>
+                                            <td className="px-4 py-2 text-right tabular-nums text-slate-400">{entry.count}</td>
+                                            <td className="px-4 py-2 text-right tabular-nums text-slate-500 text-xs">{pct.toFixed(1)}%</td>
+                                            <td className="px-3 py-2 w-28">
+                                              <div className="h-1.5 rounded-full bg-slate-800">
+                                                <div
+                                                  className={`h-1.5 rounded-full ${barColor}`}
+                                                  style={{width: `${Math.min(100, (entry.count / (wf.topWords[0]?.count || 1)) * 100)}%`}}
+                                                />
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        )
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </>
+                            )
+                          })() : (
+                            <div className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center">
+                              <span className="mb-2 block text-3xl">📊</span>
+                              <p className="text-sm text-slate-500">Analisi ripetizioni non disponibile</p>
+                              <p className="mt-1 text-xs text-slate-600">
+                                Rianalizza il capitolo attivando l&apos;opzione <span className="text-indigo-400">📊 Analisi ripetizioni</span> nel dialog di avvio.
+                              </p>
+                            </div>
+                          )}
+                        </motion.div>
                       ) : (
                         /* Editor tab */
                         <motion.div
@@ -2763,6 +2888,18 @@ export default function AnalysisPage() {
                         <span className="ml-1 text-xs text-slate-500">— valuta uso dei paragrafi (aggiunge tab)</span>
                       </span>
                     </label>
+                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
+                      <input
+                        type="checkbox"
+                        checked={withWordFrequency}
+                        onChange={(e) => setWithWordFrequency(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-indigo-500"
+                      />
+                      <span className="text-sm text-slate-300">
+                        <span className="font-medium text-indigo-400">📊 Analisi ripetizioni</span>
+                        <span className="ml-1 text-xs text-slate-500">— conta parole più usate (aggiunge tab)</span>
+                      </span>
+                    </label>
                   </div>
                 </div>
               </div>
@@ -2918,6 +3055,18 @@ export default function AnalysisPage() {
                       <span className="text-sm text-slate-300">
                         <span className="font-medium text-teal-400">¶ Analizza a capo</span>
                         <span className="ml-1 text-xs text-slate-500">— valuta uso dei paragrafi (aggiunge tab)</span>
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
+                      <input
+                        type="checkbox"
+                        checked={withWordFrequency}
+                        onChange={(e) => setWithWordFrequency(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-indigo-500"
+                      />
+                      <span className="text-sm text-slate-300">
+                        <span className="font-medium text-indigo-400">📊 Analisi ripetizioni</span>
+                        <span className="ml-1 text-xs text-slate-500">— conta parole più usate (aggiunge tab)</span>
                       </span>
                     </label>
                   </div>
