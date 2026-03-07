@@ -348,6 +348,12 @@ export default function AnalysisPage() {
   const [withSuggestionSolutions, setWithSuggestionSolutions] = useState(true)
   // Analisi paragrafi — opzionale
   const [withParagraphAnalysis, setWithParagraphAnalysis] = useState(false)
+  // Sezioni da includere nell'analisi
+  const [withStrengths, setWithStrengths] = useState(true)
+  const [withWeaknesses, setWithWeaknesses] = useState(true)
+  const [withSuggestions, setWithSuggestions] = useState(true)
+  const [withCorrections, setWithCorrections] = useState(true)
+  const [withReaderReactions, setWithReaderReactions] = useState(true)
   // Riformattazione paragrafi
   const [pendingReformat, setPendingReformat] = useState<PendingReformat | null>(() => loadPendingReformat())
   const [reformatResult, setReformatResult] = useState<ParagraphReformat | null>(null)
@@ -639,6 +645,11 @@ export default function AnalysisPage() {
         with_weakness_solutions: withWeaknessSolutions ? 'true' : 'false',
         with_suggestion_solutions: withSuggestionSolutions ? 'true' : 'false',
         with_paragraph_analysis: withParagraphAnalysis ? 'true' : 'false',
+        with_strengths: withStrengths ? 'true' : 'false',
+        with_weaknesses: withWeaknesses ? 'true' : 'false',
+        with_suggestions: withSuggestions ? 'true' : 'false',
+        with_corrections: withCorrections ? 'true' : 'false',
+        with_reader_reactions: withReaderReactions ? 'true' : 'false',
       }
       // Aggiungi il commento autore se presente (non vuoto)
       const effectiveComment = comment ?? (chapterId !== 'all' ? getAuthorComment(chapterId) : '')
@@ -2668,47 +2679,91 @@ export default function AnalysisPage() {
                 </button>
               </div>
 
-              {/* Opzioni soluzioni */}
+              {/* Sezioni da analizzare */}
               <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5">
-                <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400">💡 Soluzioni proposte</p>
-                <p className="mb-3 text-xs text-slate-500">Chiedi all&apos;IA di proporre testi sostitutivi concreti. Aumenta leggermente il tempo e i token.</p>
-                <div className="space-y-2">
+                <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400">📋 Sezioni da analizzare</p>
+                <div className="space-y-1.5">
                   <label className="flex cursor-pointer items-center gap-2.5">
                     <input
                       type="checkbox"
-                      checked={withWeaknessSolutions}
-                      onChange={(e) => setWithWeaknessSolutions(e.target.checked)}
+                      checked={withStrengths}
+                      onChange={(e) => setWithStrengths(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-emerald-500"
+                    />
+                    <span className="text-sm font-medium text-emerald-400">Punti di forza</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={withWeaknesses}
+                      onChange={(e) => setWithWeaknesses(e.target.checked)}
                       className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-amber-500"
                     />
-                    <span className="text-sm text-slate-300">
-                      Per le <span className="font-medium text-amber-400">debolezze</span>
-                      <span className="ml-1 text-xs text-slate-500">— riscrittura del passaggio problematico</span>
-                    </span>
+                    <span className="text-sm font-medium text-amber-400">Debolezze</span>
                   </label>
+                  {withWeaknesses && (
+                    <label className="ml-6 flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={withWeaknessSolutions}
+                        onChange={(e) => setWithWeaknessSolutions(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-slate-600 bg-[var(--bg-card)] accent-amber-400"
+                      />
+                      <span className="text-xs text-slate-500">Con soluzioni proposte <span className="text-slate-600">— riscrittura del passaggio</span></span>
+                    </label>
+                  )}
                   <label className="flex cursor-pointer items-center gap-2.5">
                     <input
                       type="checkbox"
-                      checked={withSuggestionSolutions}
-                      onChange={(e) => setWithSuggestionSolutions(e.target.checked)}
+                      checked={withSuggestions}
+                      onChange={(e) => setWithSuggestions(e.target.checked)}
                       className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-violet-500"
                     />
-                    <span className="text-sm text-slate-300">
-                      Per i <span className="font-medium text-violet-400">suggerimenti</span>
-                      <span className="ml-1 text-xs text-slate-500">— esempio pratico di applicazione</span>
-                    </span>
+                    <span className="text-sm font-medium text-violet-400">Suggerimenti</span>
+                  </label>
+                  {withSuggestions && (
+                    <label className="ml-6 flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={withSuggestionSolutions}
+                        onChange={(e) => setWithSuggestionSolutions(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-slate-600 bg-[var(--bg-card)] accent-violet-400"
+                      />
+                      <span className="text-xs text-slate-500">Con soluzioni proposte <span className="text-slate-600">— esempio pratico di applicazione</span></span>
+                    </label>
+                  )}
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={withCorrections}
+                      onChange={(e) => setWithCorrections(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-rose-500"
+                    />
+                    <span className="text-sm font-medium text-rose-400">Correzioni</span>
                   </label>
                   <label className="flex cursor-pointer items-center gap-2.5">
                     <input
                       type="checkbox"
-                      checked={withParagraphAnalysis}
-                      onChange={(e) => setWithParagraphAnalysis(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
+                      checked={withReaderReactions}
+                      onChange={(e) => setWithReaderReactions(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-sky-500"
                     />
-                    <span className="text-sm text-slate-300">
-                      <span className="font-medium text-teal-400">¶ Analizza a capo</span>
-                      <span className="ml-1 text-xs text-slate-500">— valuta uso dei paragrafi (aggiunge tab)</span>
-                    </span>
+                    <span className="text-sm font-medium text-sky-400">Reazioni Lettori</span>
                   </label>
+                  <div className="mt-1 border-t border-[var(--border)] pt-1.5">
+                    <label className="flex cursor-pointer items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={withParagraphAnalysis}
+                        onChange={(e) => setWithParagraphAnalysis(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
+                      />
+                      <span className="text-sm text-slate-300">
+                        <span className="font-medium text-teal-400">¶ Analizza a capo</span>
+                        <span className="ml-1 text-xs text-slate-500">— valuta uso dei paragrafi (aggiunge tab)</span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -2781,47 +2836,91 @@ export default function AnalysisPage() {
                 </p>
               </div>
 
-              {/* Opzioni soluzioni */}
+              {/* Sezioni da analizzare */}
               <div className="mb-5 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5">
-                <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400">💡 Soluzioni proposte</p>
-                <p className="mb-3 text-xs text-slate-500">Chiedi all&apos;IA di proporre testi sostitutivi concreti. Aumenta leggermente il tempo e i token.</p>
-                <div className="space-y-2">
+                <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400">📋 Sezioni da analizzare</p>
+                <div className="space-y-1.5">
                   <label className="flex cursor-pointer items-center gap-2.5">
                     <input
                       type="checkbox"
-                      checked={withWeaknessSolutions}
-                      onChange={(e) => setWithWeaknessSolutions(e.target.checked)}
+                      checked={withStrengths}
+                      onChange={(e) => setWithStrengths(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-emerald-500"
+                    />
+                    <span className="text-sm font-medium text-emerald-400">Punti di forza</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={withWeaknesses}
+                      onChange={(e) => setWithWeaknesses(e.target.checked)}
                       className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-amber-500"
                     />
-                    <span className="text-sm text-slate-300">
-                      Per le <span className="font-medium text-amber-400">debolezze</span>
-                      <span className="ml-1 text-xs text-slate-500">— riscrittura del passaggio problematico</span>
-                    </span>
+                    <span className="text-sm font-medium text-amber-400">Debolezze</span>
                   </label>
+                  {withWeaknesses && (
+                    <label className="ml-6 flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={withWeaknessSolutions}
+                        onChange={(e) => setWithWeaknessSolutions(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-slate-600 bg-[var(--bg-card)] accent-amber-400"
+                      />
+                      <span className="text-xs text-slate-500">Con soluzioni proposte <span className="text-slate-600">— riscrittura del passaggio</span></span>
+                    </label>
+                  )}
                   <label className="flex cursor-pointer items-center gap-2.5">
                     <input
                       type="checkbox"
-                      checked={withSuggestionSolutions}
-                      onChange={(e) => setWithSuggestionSolutions(e.target.checked)}
+                      checked={withSuggestions}
+                      onChange={(e) => setWithSuggestions(e.target.checked)}
                       className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-violet-500"
                     />
-                    <span className="text-sm text-slate-300">
-                      Per i <span className="font-medium text-violet-400">suggerimenti</span>
-                      <span className="ml-1 text-xs text-slate-500">— esempio pratico di applicazione</span>
-                    </span>
+                    <span className="text-sm font-medium text-violet-400">Suggerimenti</span>
+                  </label>
+                  {withSuggestions && (
+                    <label className="ml-6 flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={withSuggestionSolutions}
+                        onChange={(e) => setWithSuggestionSolutions(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-slate-600 bg-[var(--bg-card)] accent-violet-400"
+                      />
+                      <span className="text-xs text-slate-500">Con soluzioni proposte <span className="text-slate-600">— esempio pratico di applicazione</span></span>
+                    </label>
+                  )}
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={withCorrections}
+                      onChange={(e) => setWithCorrections(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-rose-500"
+                    />
+                    <span className="text-sm font-medium text-rose-400">Correzioni</span>
                   </label>
                   <label className="flex cursor-pointer items-center gap-2.5">
                     <input
                       type="checkbox"
-                      checked={withParagraphAnalysis}
-                      onChange={(e) => setWithParagraphAnalysis(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
+                      checked={withReaderReactions}
+                      onChange={(e) => setWithReaderReactions(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-sky-500"
                     />
-                    <span className="text-sm text-slate-300">
-                      <span className="font-medium text-teal-400">¶ Analizza a capo</span>
-                      <span className="ml-1 text-xs text-slate-500">— valuta uso dei paragrafi (aggiunge tab)</span>
-                    </span>
+                    <span className="text-sm font-medium text-sky-400">Reazioni Lettori</span>
                   </label>
+                  <div className="mt-1 border-t border-[var(--border)] pt-1.5">
+                    <label className="flex cursor-pointer items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={withParagraphAnalysis}
+                        onChange={(e) => setWithParagraphAnalysis(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
+                      />
+                      <span className="text-sm text-slate-300">
+                        <span className="font-medium text-teal-400">¶ Analizza a capo</span>
+                        <span className="ml-1 text-xs text-slate-500">— valuta uso dei paragrafi (aggiunge tab)</span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
               </div>
 

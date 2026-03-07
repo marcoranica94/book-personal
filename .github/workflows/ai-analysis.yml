@@ -30,6 +30,26 @@ on:
         description: 'Analizza uso dei paragrafi / a capo (true/false)'
         required: false
         default: 'false'
+      with_strengths:
+        description: 'Includi sezione Punti di forza (true/false)'
+        required: false
+        default: 'true'
+      with_weaknesses:
+        description: 'Includi sezione Debolezze (true/false)'
+        required: false
+        default: 'true'
+      with_suggestions:
+        description: 'Includi sezione Suggerimenti (true/false)'
+        required: false
+        default: 'true'
+      with_corrections:
+        description: 'Includi sezione Correzioni (true/false)'
+        required: false
+        default: 'true'
+      with_reader_reactions:
+        description: 'Includi sezione Reazioni Lettori (true/false)'
+        required: false
+        default: 'true'
 jobs:
   analyze:
     runs-on: ubuntu-latest
@@ -54,6 +74,11 @@ jobs:
           WITH_WEAKNESS_SOLUTIONS: ${{ inputs.with_weakness_solutions }}
           WITH_SUGGESTION_SOLUTIONS: ${{ inputs.with_suggestion_solutions }}
           WITH_PARAGRAPH_ANALYSIS: ${{ inputs.with_paragraph_analysis }}
+          WITH_STRENGTHS: ${{ inputs.with_strengths }}
+          WITH_WEAKNESSES: ${{ inputs.with_weaknesses }}
+          WITH_SUGGESTIONS: ${{ inputs.with_suggestions }}
+          WITH_CORRECTIONS: ${{ inputs.with_corrections }}
+          WITH_READER_REACTIONS: ${{ inputs.with_reader_reactions }}
           REPO_DIR: ${{ github.workspace }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

@@ -34,6 +34,12 @@ const WITH_WEAKNESS_SOLUTIONS = (process.env.WITH_WEAKNESS_SOLUTIONS ?? 'true') 
 const WITH_SUGGESTION_SOLUTIONS = (process.env.WITH_SUGGESTION_SOLUTIONS ?? 'true') === 'true'
 /** Se true, l'IA analizzerà anche l'uso dei paragrafi (a capo) */
 const WITH_PARAGRAPH_ANALYSIS = (process.env.WITH_PARAGRAPH_ANALYSIS ?? 'false') === 'true'
+// Sezioni da includere nell'analisi (tutte abilitate di default per retrocompatibilità)
+const WITH_STRENGTHS = (process.env.WITH_STRENGTHS ?? 'true') === 'true'
+const WITH_WEAKNESSES = (process.env.WITH_WEAKNESSES ?? 'true') === 'true'
+const WITH_SUGGESTIONS = (process.env.WITH_SUGGESTIONS ?? 'true') === 'true'
+const WITH_CORRECTIONS = (process.env.WITH_CORRECTIONS ?? 'true') === 'true'
+const WITH_READER_REACTIONS = (process.env.WITH_READER_REACTIONS ?? 'true') === 'true'
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
 initializeApp({credential: cert(serviceAccount)})
@@ -215,12 +221,19 @@ function buildPreviousAnalysisContext(prev) {
   return parts.join('\n')
 }
 
-function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorComment, withWeaknessSolutions = true, withSuggestionSolutions = true, withParagraphAnalysis = false) {
+function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorComment, withWeaknessSolutions = true, withSuggestionSolutions = true, withParagraphAnalysis = false, opts = {}) {
+  const {
+    withStrengths = true,
+    withWeaknesses = true,
+    withSuggestions = true,
+    withCorrections = true,
+    withReaderReactions = true,
+  } = opts
   const isHistorical = bookType === 'storico'
   const personas = READER_PERSONAS[isHistorical ? 'storico' : 'default']
 
   const historicalSection = isHistorical ? buildHistoricalSection() : ''
-  const reactionsSection = buildReaderReactionsSection(personas)
+  const reactionsSection = withReaderReactions ? buildReaderReactionsSection(personas) : ''
   const paragraphSection = withParagraphAnalysis ? buildParagraphSection() : ''
 
   const previousBlock = previousContext ? `
@@ -245,7 +258,7 @@ NOTA DELL'AUTORE (considera questo come contesto prioritario per l'analisi):
 
 ` : ''
 
-  const weaknessSchema = withWeaknessSolutions
+  const weaknessSchema = !withWeaknesses ? '' : withWeaknessSolutions
     ? `  "weaknesses": [
     {
       "text": "<descrizione del punto debole>",
@@ -260,7 +273,7 @@ NOTA DELL'AUTORE (considera questo come contesto prioritario per l'analisi):
     }
   ],`
 
-  const suggestionSchema = withSuggestionSolutions
+  const suggestionSchema = !withSuggestions ? '' : withSuggestionSolutions
     ? `  "suggestions": [
     {
       "text": "<suggerimento specifico>",
@@ -269,11 +282,34 @@ NOTA DELL'AUTORE (considera questo come contesto prioritario per l'analisi):
   ],`
     : `  "suggestions": ["<suggerimento specifico 1>", "<suggerimento specifico 2>", ...],`
 
-  const solutionInstructions = (withWeaknessSolutions || withSuggestionSolutions) ? `
-IMPORTANTE su ${withWeaknessSolutions && withSuggestionSolutions ? 'weaknesses e suggestions' : withWeaknessSolutions ? 'weaknesses' : 'suggestions'}:
-${withWeaknessSolutions ? '- Per ogni debolezza, il campo "solution" deve contenere un testo sostitutivo concreto o una riscrittura del passaggio citato (max 60 parole). Se non è possibile proporre una riscrittura, scrivi almeno un\'indicazione operativa precisa.' : ''}
-${withSuggestionSolutions ? '- Per ogni suggerimento, il campo "solution" deve contenere un esempio pratico su come applicarlo: una riscrittura di una frase/paragrafo del capitolo oppure un\'indicazione concreta (max 60 parole).' : ''}
+  const strengthsSchema = withStrengths ? '  "strengths": ["<punto di forza 1>", "<punto di forza 2>", ...],' : ''
+
+  const correctionsSchema = withCorrections ? `  "corrections": [
+    {
+      "original": "<testo originale>",
+      "suggested": "<testo corretto>",
+      "type": "grammar|style|clarity|continuity",
+      "note": "<spiegazione breve>"
+    }
+  ],` : ''
+
+  const solutionInstructions = (withWeaknesses && withWeaknessSolutions || withSuggestions && withSuggestionSolutions) ? `
+IMPORTANTE su ${withWeaknesses && withWeaknessSolutions && withSuggestions && withSuggestionSolutions ? 'weaknesses e suggestions' : withWeaknesses && withWeaknessSolutions ? 'weaknesses' : 'suggestions'}:
+${withWeaknesses && withWeaknessSolutions ? '- Per ogni debolezza, il campo "solution" deve contenere un testo sostitutivo concreto o una riscrittura del passaggio citato (max 60 parole). Se non è possibile proporre una riscrittura, scrivi almeno un\'indicazione operativa precisa.' : ''}
+${withSuggestions && withSuggestionSolutions ? '- Per ogni suggerimento, il campo "solution" deve contenere un esempio pratico su come applicarlo: una riscrittura di una frase/paragrafo del capitolo oppure un\'indicazione concreta (max 60 parole).' : ''}
 - Il campo "solution" NON deve essere una ripetizione del testo del punto debole/suggerimento, ma una proposta operativa.` : ''
+
+  // Istruzione sulle sezioni escluse (per non inventare campi non richiesti)
+  const excludedSections = [
+    !withStrengths && 'strengths',
+    !withWeaknesses && 'weaknesses',
+    !withSuggestions && 'suggestions',
+    !withCorrections && 'corrections',
+    !withReaderReactions && 'readerReactions',
+  ].filter(Boolean)
+  const excludedNote = excludedSections.length > 0
+    ? `\nNOTA: le sezioni ${excludedSections.map(s => `"${s}"`).join(', ')} NON devono essere presenti nel JSON — sono state disabilitate dall'autore.`
+    : ''
 
   return `
 Sei un editor letterario italiano di alto livello. Analizza il seguente capitolo del libro
@@ -292,24 +328,17 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
     "overall": <media pesata 1-10>
   },${reactionsSection}
   "summary": "<sintesi dell'analisi, max 200 parole>",
-  "strengths": ["<punto di forza 1>", "<punto di forza 2>", ...],
+${strengthsSchema}
 ${weaknessSchema}
 ${suggestionSchema}
-  "corrections": [
-    {
-      "original": "<testo originale>",
-      "suggested": "<testo corretto>",
-      "type": "grammar|style|clarity|continuity",
-      "note": "<spiegazione breve>"
-    }
-  ],${historicalSection}${paragraphSection}
+${correctionsSchema}${historicalSection}${paragraphSection}
   "_placeholder": null
 }
-
-IMPORTANTE sulle correzioni:
+${excludedNote}
+${withCorrections ? `IMPORTANTE sulle correzioni:
 - Sii ESAUSTIVO: elenca le correzioni che trovi (grammatica, stile, chiarezza, continuità), con limite di 20.
 - Non fermarti alle prime 5-10: analizza ogni paragrafo del capitolo e segnala ogni problema.
-- Per ogni correzione, "original" deve essere il testo ESATTO presente nel capitolo (copia-incolla) per permettere la sostituzione automatica.
+- Per ogni correzione, "original" deve essere il testo ESATTO presente nel capitolo (copia-incolla) per permettere la sostituzione automatica.` : ''}
 ${solutionInstructions}
 
 Criteri di valutazione:
@@ -479,11 +508,18 @@ async function analyzeChapter(chapter, bookSettings) {
     }
   }
 
-  const prompt = buildPrompt(bookTitle, bookType, chapterText, previousContext || null, AUTHOR_COMMENT, WITH_WEAKNESS_SOLUTIONS, WITH_SUGGESTION_SOLUTIONS, WITH_PARAGRAPH_ANALYSIS)
+  const prompt = buildPrompt(bookTitle, bookType, chapterText, previousContext || null, AUTHOR_COMMENT, WITH_WEAKNESS_SOLUTIONS, WITH_SUGGESTION_SOLUTIONS, WITH_PARAGRAPH_ANALYSIS, {
+    withStrengths: WITH_STRENGTHS,
+    withWeaknesses: WITH_WEAKNESSES,
+    withSuggestions: WITH_SUGGESTIONS,
+    withCorrections: WITH_CORRECTIONS,
+    withReaderReactions: WITH_READER_REACTIONS,
+  })
   if (AUTHOR_COMMENT) {
     console.log(`  Nota autore inclusa nel prompt (${AUTHOR_COMMENT.length} chars)`)
   }
-  console.log(`  Opzioni soluzioni: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'} | paragrafi=${WITH_PARAGRAPH_ANALYSIS ? '✓' : '✗'}`)
+  console.log(`  Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'}`)
+  console.log(`  Soluzioni: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'} | paragrafi=${WITH_PARAGRAPH_ANALYSIS ? '✓' : '✗'}`)
 
   const modelName = PROVIDER_MODELS[AI_PROVIDER] ?? PROVIDER_MODELS.claude
   let responseText = ''
@@ -606,6 +642,7 @@ async function main() {
   console.log(`Modalità: ${INCLUDE_PREVIOUS ? 'con contesto analisi precedente' : 'analisi da zero'}`)
   console.log(`Soluzioni proposte: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'}`)
   console.log(`Analisi paragrafi: ${WITH_PARAGRAPH_ANALYSIS ? '✓ attiva' : '✗ disabilitata'}`)
+  console.log(`Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'}`)
 
   const toAnalyze =
     CHAPTER_ID === 'all'
