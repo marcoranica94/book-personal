@@ -330,6 +330,8 @@ export default function AnalysisPage() {
   const [acceptedCorrections, setAcceptedCorrections] = useState<Set<number>>(new Set())
   const [rejectedCorrections, setRejectedCorrections] = useState<Set<number>>(new Set())
   const [isApplying, setIsApplying] = useState(false)
+  // Accordion gruppi correzioni (set dei tipi collassati)
+  const [collapsedCorrGroups, setCollapsedCorrGroups] = useState<Set<string>>(new Set())
   // Editor inline
   const [editorContent, setEditorContent] = useState('')
   const [isSavingContent, setIsSavingContent] = useState(false)
@@ -965,14 +967,10 @@ export default function AnalysisPage() {
     setRejectedCorrections(new Set())
   }
 
-  // Chapters with analysis sorted by overall score desc
+  // Chapters with analysis sorted by title (natural numeric — handles es. 'Capitolo 1-A', '1-B')
   const analyzedChapters = [...chapters]
     .filter((c) => analyses[c.id] && Object.keys(analyses[c.id]).length > 0)
-    .sort((a, b) => {
-      const aScore = analyses[b.id]?.[activeProvider]?.scores.overall ?? Object.values(analyses[b.id] ?? {})[0]?.scores.overall ?? 0
-      const bScore = analyses[a.id]?.[activeProvider]?.scores.overall ?? Object.values(analyses[a.id] ?? {})[0]?.scores.overall ?? 0
-      return aScore - bScore
-    })
+    .sort((a, b) => a.title.localeCompare(b.title, 'it', {numeric: true, sensitivity: 'base'}))
 
   const radarData = analysis
     ? Object.entries(SCORE_LABELS).map(([key, label]) => ({
@@ -1520,6 +1518,19 @@ export default function AnalysisPage() {
                                   )}
                                   Applica {acceptedCorrections.size > 0 ? acceptedCorrections.size : ''} correzioni
                                 </button>
+                                {driveConfig?.folderId && (
+                                  <button
+                                    onClick={() => void handlePushToDrive()}
+                                    disabled={isPushingToDrive || !editorContent || !isPendingPush}
+                                    className={cn(
+                                      'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-40',
+                                      isPendingPush ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-700 hover:bg-slate-600'
+                                    )}
+                                  >
+                                    {isPushingToDrive ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
+                                    Salva su Drive{isPendingPush ? ' *' : ''}
+                                  </button>
+                                )}
                               </div>
 
                               {/* Correction list — raggruppata per tipo */}
@@ -1550,15 +1561,29 @@ export default function AnalysisPage() {
 
                                   return (
                                     <div key={type} className="rounded-xl border border-[var(--border)] overflow-hidden">
-                                      {/* Group header */}
-                                      <div className={cn(
-                                        'flex items-center gap-3 px-4 py-2.5',
-                                        type === 'grammar' ? 'bg-red-900/10 border-b border-red-800/20' :
-                                        type === 'style'   ? 'bg-violet-900/10 border-b border-violet-800/20' :
-                                        type === 'clarity' ? 'bg-blue-900/10 border-b border-blue-800/20' :
-                                        type === 'continuity' ? 'bg-amber-900/10 border-b border-amber-800/20' :
-                                        'bg-slate-900/10 border-b border-slate-700/20'
-                                      )}>
+                                      {/* Group header — click to collapse */}
+                                      <button
+                                        type="button"
+                                        onClick={() => setCollapsedCorrGroups((prev) => {
+                                          const next = new Set(prev)
+                                          next.has(type) ? next.delete(type) : next.add(type)
+                                          return next
+                                        })}
+                                        className={cn(
+                                          'flex w-full items-center gap-3 px-4 py-2.5 transition-colors hover:brightness-110',
+                                          type === 'grammar' ? 'bg-red-900/10' :
+                                          type === 'style'   ? 'bg-violet-900/10' :
+                                          type === 'clarity' ? 'bg-blue-900/10' :
+                                          type === 'continuity' ? 'bg-amber-900/10' :
+                                          'bg-slate-900/10',
+                                          !collapsedCorrGroups.has(type) && (
+                                            type === 'grammar' ? 'border-b border-red-800/20' :
+                                            type === 'style'   ? 'border-b border-violet-800/20' :
+                                            type === 'clarity' ? 'border-b border-blue-800/20' :
+                                            type === 'continuity' ? 'border-b border-amber-800/20' :
+                                            'border-b border-slate-700/20'
+                                          )
+                                        )}>
                                         <span className={cn(
                                           'rounded-full border px-2.5 py-0.5 text-xs font-semibold',
                                           CORRECTION_TYPE_COLORS[type] ?? 'border-[var(--border)] bg-[var(--overlay)] text-slate-400'
@@ -1577,7 +1602,8 @@ export default function AnalysisPage() {
                                         <div className="flex-1" />
                                         {/* Accetta tutte del gruppo */}
                                         <button
-                                          onClick={() => {
+                                          onClick={(e) => {
+                                            e.stopPropagation()
                                             if (allGroupAccepted) {
                                               // Deseleziona tutto il gruppo
                                               setAcceptedCorrections((prev) => {
@@ -1604,10 +1630,11 @@ export default function AnalysisPage() {
                                           <CheckCheck className="h-3 w-3" />
                                           {allGroupAccepted ? 'Deseleziona' : 'Accetta tutte'}
                                         </button>
-                                      </div>
+                                        <ChevronDown className={cn('h-3.5 w-3.5 text-slate-600 transition-transform', collapsedCorrGroups.has(type) && '-rotate-90')} />
+                                      </button>
 
-                                      {/* Items del gruppo */}
-                                      <div className="divide-y divide-[var(--border)]">
+                                      {/* Items del gruppo — collassabili */}
+                                      {!collapsedCorrGroups.has(type) && <div className="divide-y divide-[var(--border)]">
                                         {items.map(({c, i}) => {
                                           const isAccepted = acceptedCorrections.has(i)
                                           const isRejected = rejectedCorrections.has(i)
@@ -1620,7 +1647,7 @@ export default function AnalysisPage() {
                                               className={cn(
                                                 'cursor-pointer p-4 space-y-3 transition-colors',
                                                 isAccepted
-                                                  ? 'bg-emerald-900/10'
+                                                  ? 'bg-emerald-950/70 border-l-4 border-emerald-500/80'
                                                   : isRejected
                                                     ? 'bg-red-950/10 opacity-60'
                                                     : wasAccepted
@@ -1712,7 +1739,7 @@ export default function AnalysisPage() {
                                             </div>
                                           )
                                         })}
-                                      </div>
+                                      </div>}
                                     </div>
                                   )
                                 })
@@ -2173,23 +2200,62 @@ export default function AnalysisPage() {
                             </p>
                           ) : null}
 
-                          {/* lastSyncAt + reload */}
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-slate-600">
-                              {selectedChapter?.lastSyncAt
-                                ? `Contenuto aggiornato ${formatRelativeDate(selectedChapter.lastSyncAt)}`
-                                : 'Nessuna sincronizzazione registrata'}
-                            </span>
-                            {selectedChapter?.driveFileId && driveConfig?.folderId && (
-                              <button
-                                onClick={() => void handleReloadFromDrive()}
-                                disabled={isForceSyncingDrive}
-                                className="flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-slate-300 disabled:opacity-50"
-                              >
-                                <RefreshCw className={cn('h-3 w-3', isForceSyncingDrive && 'animate-spin')} />
-                                Ricarica da Drive
-                              </button>
-                            )}
+                          {/* Top bar: sync info + save button */}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-xs text-slate-600 truncate">
+                                {selectedChapter?.lastSyncAt
+                                  ? `Aggiornato ${formatRelativeDate(selectedChapter.lastSyncAt)}`
+                                  : 'Nessuna sincronizzazione registrata'}
+                              </span>
+                              {isDirty && (
+                                <span className="flex shrink-0 items-center gap-1 text-xs text-amber-500">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                  non salvato
+                                </span>
+                              )}
+                              {!isDirty && !!editorContent && (
+                                <span className="flex shrink-0 items-center gap-1 text-xs text-emerald-600">
+                                  <CheckCheck className="h-3 w-3" />
+                                  salvato
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2">
+                              {selectedChapter?.driveFileId && driveConfig?.folderId && (
+                                <button
+                                  onClick={() => void handleReloadFromDrive()}
+                                  disabled={isForceSyncingDrive}
+                                  className="flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-slate-300 disabled:opacity-50"
+                                >
+                                  <RefreshCw className={cn('h-3 w-3', isForceSyncingDrive && 'animate-spin')} />
+                                  Ricarica
+                                </button>
+                              )}
+                              {driveConfig?.folderId && (
+                                <button
+                                  onClick={() => void handlePushToDrive()}
+                                  disabled={isPushingToDrive || !editorContent || !isPendingPush}
+                                  className={cn(
+                                    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-40',
+                                    isPendingPush ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-700 hover:bg-slate-600'
+                                  )}
+                                >
+                                  {isPushingToDrive ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
+                                  Salva su Drive{isPendingPush ? ' *' : ''}
+                                </button>
+                              )}
+                              {!driveConfig?.folderId && (
+                                <button
+                                  onClick={() => void handleSaveEditorContent()}
+                                  disabled={isSavingContent || !editorContent || !isDirty}
+                                  className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                                >
+                                  {isSavingContent ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
+                                  Salva bozza{isDirty ? ' *' : ''}
+                                </button>
+                              )}
+                            </div>
                           </div>
 
                           {/* Rich Text Editor */}
@@ -2219,54 +2285,6 @@ export default function AnalysisPage() {
                             </div>
                           )}
 
-                          <div className="flex items-center justify-between">
-                            <div />
-                            <div className="flex items-center gap-2">
-                              {/* Stato sync */}
-                              {!isDirty && (
-                                <span className="flex items-center gap-1 text-xs text-emerald-600">
-                                  <CheckCheck className="h-3 w-3" />
-                                  Nessuna modifica
-                                </span>
-                              )}
-                              {isDirty && (
-                                <span className="flex items-center gap-1 text-xs text-amber-500">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                  Modifiche non salvate
-                                </span>
-                              )}
-                              {/* Salva su Drive */}
-                              {driveConfig?.folderId && (
-                                <button
-                                  onClick={() => void handlePushToDrive()}
-                                  disabled={isPushingToDrive || !editorContent || !isPendingPush}
-                                  className={cn(
-                                    'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-40',
-                                    isPendingPush
-                                      ? 'bg-amber-600 hover:bg-amber-500'
-                                      : 'bg-slate-700 hover:bg-slate-600'
-                                  )}
-                                >
-                                  {isPushingToDrive ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <FileEdit className="h-4 w-4" />
-                                  )}
-                                  Salva su Drive{isPendingPush ? ' *' : ''}
-                                </button>
-                              )}
-                              {!driveConfig?.folderId && (
-                                <button
-                                  onClick={() => void handleSaveEditorContent()}
-                                  disabled={isSavingContent || !editorContent || !isDirty}
-                                  className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
-                                >
-                                  {isSavingContent ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileEdit className="h-4 w-4" />}
-                                  Salva bozza{isDirty ? ' *' : ''}
-                                </button>
-                              )}
-                            </div>
-                          </div>
                           {!driveConfig?.folderId && (
                             <p className="text-xs text-slate-600">
                               Drive non connesso — il testo viene salvato come bozza su Firestore.
