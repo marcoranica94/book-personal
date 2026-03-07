@@ -1178,6 +1178,17 @@ export default function AnalysisPage() {
             exit={{opacity: 0}}
             className="space-y-4"
           >
+            {/* Close button */}
+            <div className="flex items-center justify-end">
+              <button
+                onClick={() => { setSelectedId(''); setActiveTab('strengths'); }}
+                title="Chiudi analisi e torna al confronto"
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs text-slate-500 transition-colors hover:bg-[var(--overlay)] hover:text-slate-300"
+              >
+                <X className="h-3.5 w-3.5" />
+                Chiudi analisi
+              </button>
+            </div>
             {isLoading && !analysis && (
               <div className="flex h-40 items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
@@ -1234,6 +1245,11 @@ export default function AnalysisPage() {
                               <span className="text-slate-600 ml-0.5">
                                 ({new Date(chapterAnalyses[provider].analyzedAt).toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit'})}
                                 {' '}{new Date(chapterAnalyses[provider].analyzedAt).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})})
+                              </span>
+                            )}
+                            {isActive && hasAnalysis && (
+                              <span className="rounded-full border border-emerald-700/30 bg-emerald-900/50 px-1.5 py-px text-[9px] font-medium text-emerald-400">
+                                ultima
                               </span>
                             )}
                           </button>
@@ -2521,33 +2537,39 @@ export default function AnalysisPage() {
                               ) : (() => {
                                 const providerEntries = Object.entries(chapterHistory) as [AIProvider, import('@/types').ChapterAnalysis[]][]
                                 const hasHistory = providerEntries.some(([, list]) => list.length > 1)
-                                if (!hasHistory) {
-                                  return (
-                                    <div className="py-4 text-center">
-                                      <History className="mx-auto mb-2 h-6 w-6 text-slate-700" />
-                                      <p className="text-xs text-slate-500">Solo un'analisi disponibile — avvia un'altra analisi per vedere il trend.</p>
-                                    </div>
-                                  )
-                                }
                                 return (
                                   <div className="space-y-4">
                                     <div className="flex items-center gap-2">
                                       <TrendingUp className="h-4 w-4 text-violet-400" />
                                       <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                                        Andamento score nel tempo
+                                        Storico analisi
                                       </h3>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          setSelectedId(c.id)
-                                          setActiveTab('strengths')
-                                          window.scrollTo({top: 0, behavior: 'smooth'})
-                                        }}
-                                        className="ml-auto text-xs text-violet-400 hover:text-violet-300"
-                                      >
-                                        Vai all'analisi ↑
-                                      </button>
+                                      <div className="ml-auto flex items-center gap-3">
+                                        {providerEntries.map(([prov]) => {
+                                          const pcfg = AI_PROVIDER_CONFIG[prov]
+                                          return (
+                                            <button
+                                              key={prov}
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                setSelectedId(c.id)
+                                                setActiveProvider(prov)
+                                                setActiveTab('strengths')
+                                                window.scrollTo({top: 0, behavior: 'smooth'})
+                                              }}
+                                              className="text-xs text-violet-400 hover:text-violet-300"
+                                            >
+                                              Vai all'analisi {pcfg.label} ↑
+                                            </button>
+                                          )
+                                        })}
+                                      </div>
                                     </div>
+                                    {!hasHistory && (
+                                      <div className="py-2 text-center">
+                                        <p className="text-xs text-slate-500">Solo un'analisi disponibile — avvia un'altra analisi per vedere il trend.</p>
+                                      </div>
+                                    )}
                                     {providerEntries.map(([provider, historyList]) => {
                                       if (historyList.length < 2) return null
                                       const cfg = AI_PROVIDER_CONFIG[provider]
