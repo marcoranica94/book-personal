@@ -165,6 +165,26 @@ export interface ParagraphBreaksAnalysis {
   issues: ParagraphBreakIssue[]
 }
 
+// ─── Show Don't Tell Analysis ─────────────────────────────────────────────────
+
+export interface ShowDontTellIssue {
+  /** Citazione esatta dal testo ("telling") */
+  quote: string
+  /** Spiegazione breve del perché è "telling" */
+  explanation: string
+  /** Riscrittura proposta in chiave "showing" */
+  rewrite: string
+}
+
+export interface ShowDontTellAnalysis {
+  /** Voto 1-10 (10 = eccellente showing, 1 = tutto telling) */
+  score: number
+  /** Sintesi breve (max 100 parole) */
+  summary: string
+  /** Casi problematici trovati con riscrittura proposta */
+  issues: ShowDontTellIssue[]
+}
+
 // ─── Word Frequency Analysis ─────────────────────────────────────────────────
 
 export interface WordFrequencyEntry {
@@ -219,6 +239,7 @@ export interface ChapterAnalysis {
   readerReactions?: ReaderReaction[]
   paragraphBreaks?: ParagraphBreaksAnalysis
   wordFrequency?: WordFrequencyAnalysis
+  showDontTell?: ShowDontTellAnalysis
 }
 
 export interface BookSettings {

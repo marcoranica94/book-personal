@@ -42,6 +42,8 @@ const WITH_CORRECTIONS = (process.env.WITH_CORRECTIONS ?? 'true') === 'true'
 const WITH_READER_REACTIONS = (process.env.WITH_READER_REACTIONS ?? 'true') === 'true'
 /** Se true, calcola la frequenza delle parole del capitolo (no AI, puro JS) */
 const WITH_WORD_FREQUENCY = (process.env.WITH_WORD_FREQUENCY ?? 'false') === 'true'
+/** Se true, analizza i casi di "telling" invece di "showing" con riscritture proposte */
+const WITH_SHOW_DONT_TELL = (process.env.WITH_SHOW_DONT_TELL ?? 'false') === 'true'
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
 initializeApp({credential: cert(serviceAccount)})
@@ -246,6 +248,21 @@ function buildHistoricalSection() {
   },`
 }
 
+function buildShowDontTellSection() {
+  return `
+  "showDontTell": {
+    "score": <1-10 dove 10=ottimo showing, 1=tutto telling>,
+    "summary": "<sintesi max 100 parole sul bilanciamento showing/telling del capitolo>",
+    "issues": [
+      {
+        "quote": "<citazione esatta dal testo (max 50 parole) che mostra un caso di 'telling'>",
+        "explanation": "<spiegazione breve (max 30 parole) del perché è 'telling' e non 'showing'>",
+        "rewrite": "<riscrittura proposta del passaggio in chiave 'showing' (max 80 parole)>"
+      }
+    ]
+  },`
+}
+
 function buildParagraphSection() {
   return `
   "paragraphBreaks": {
@@ -313,6 +330,7 @@ function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorCo
     withSuggestions = true,
     withCorrections = true,
     withReaderReactions = true,
+    withShowDontTell = false,
   } = opts
   const isHistorical = bookType === 'storico'
   const personas = READER_PERSONAS[isHistorical ? 'storico' : 'default']
@@ -320,6 +338,7 @@ function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorCo
   const historicalSection = isHistorical ? buildHistoricalSection() : ''
   const reactionsSection = withReaderReactions ? buildReaderReactionsSection(personas) : ''
   const paragraphSection = withParagraphAnalysis ? buildParagraphSection() : ''
+  const showDontTellSection = withShowDontTell ? buildShowDontTellSection() : ''
 
   const previousBlock = previousContext ? `
 
@@ -391,6 +410,7 @@ ${withSuggestions && withSuggestionSolutions ? '- Per ogni suggerimento, il camp
     !withSuggestions && 'suggestions',
     !withCorrections && 'corrections',
     !withReaderReactions && 'readerReactions',
+    !withShowDontTell && 'showDontTell',
   ].filter(Boolean)
   const excludedNote = excludedSections.length > 0
     ? `\nNOTA: le sezioni ${excludedSections.map(s => `"${s}"`).join(', ')} NON devono essere presenti nel JSON — sono state disabilitate dall'autore.`
@@ -416,7 +436,7 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
 ${strengthsSchema}
 ${weaknessSchema}
 ${suggestionSchema}
-${correctionsSchema}${historicalSection}${paragraphSection}
+${correctionsSchema}${historicalSection}${paragraphSection}${showDontTellSection}
   "_placeholder": null
 }
 ${excludedNote}
@@ -446,6 +466,15 @@ Criteri analisi paragrafi (paragraphBreaks) — leggi ATTENTAMENTE ogni blocco d
 - Valuta se l'alternanza tra blocchi brevi e lunghi supporta il ritmo narrativo
 - Segnala sezioni di flusso di coscienza/stream non marcate che disorientano il lettore
 - Non segnalare come problema stili intenzionali coerenti (es. paragrafi brevissimi per tensione)
+` : ''}
+${withShowDontTell ? `
+Criteri Show Don't Tell (showDontTell) — PRINCIPIO FONDAMENTALE della narrativa:
+- "Telling": l'autore DESCRIVE DIRETTAMENTE emozioni, carattere, situazioni (es: "Era triste", "Era un uomo crudele", "Si sentiva in imbarazzo")
+- "Showing": l'autore li MOSTRA attraverso azioni, dialoghi, dettagli sensoriali, reazioni fisiche (es: "Le lacrime le rigarono le guance senza che se ne accorgesse")
+- CERCA ATTIVAMENTE frasi come: "Era [aggettivo emozione]", "Si sentiva [stato d'animo]", "Era una persona [carattere]", narrazioni dirette di stati interiori senza ancorarli in azioni/dettagli concreti
+- Per ogni caso trovato proponi una riscrittura CONCRETA: usa dettagli fisici, comportamenti osservabili, dialoghi rivelatori
+- Il voto 10 indica un eccellente uso dello showing; voto 1 indica un testo quasi interamente basato sul telling
+- Segnala SOLO i casi più significativi e correggibili (max 8-10 issues)
 ` : ''}
 --- CAPITOLO ---
 ${chapterText}
@@ -599,11 +628,12 @@ async function analyzeChapter(chapter, bookSettings) {
     withSuggestions: WITH_SUGGESTIONS,
     withCorrections: WITH_CORRECTIONS,
     withReaderReactions: WITH_READER_REACTIONS,
+    withShowDontTell: WITH_SHOW_DONT_TELL,
   })
   if (AUTHOR_COMMENT) {
     console.log(`  Nota autore inclusa nel prompt (${AUTHOR_COMMENT.length} chars)`)
   }
-  console.log(`  Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'}`)
+  console.log(`  Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'} showDontTell=${WITH_SHOW_DONT_TELL?'✓':'✗'}`)
   console.log(`  Soluzioni: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'} | paragrafi=${WITH_PARAGRAPH_ANALYSIS ? '✓' : '✗'}`)
 
   const modelName = PROVIDER_MODELS[AI_PROVIDER] ?? PROVIDER_MODELS.claude
@@ -733,7 +763,8 @@ async function main() {
   console.log(`Soluzioni proposte: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'}`)
   console.log(`Analisi paragrafi: ${WITH_PARAGRAPH_ANALYSIS ? '✓ attiva' : '✗ disabilitata'}`)
   console.log(`Frequenza parole: ${WITH_WORD_FREQUENCY ? '✓ attiva' : '✗ disabilitata'}`)
-  console.log(`Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'}`)  
+  console.log(`Show Don't Tell: ${WITH_SHOW_DONT_TELL ? '✓ attiva' : '✗ disabilitata'}`)
+  console.log(`Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'} showDontTell=${WITH_SHOW_DONT_TELL?'✓':'✗'}`)
 
   const toAnalyze =
     CHAPTER_ID === 'all'

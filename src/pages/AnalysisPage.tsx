@@ -79,7 +79,7 @@ const CORRECTION_TYPE_COLORS: Record<string, string> = {
   continuity: 'border-amber-800/30 bg-amber-900/30 text-amber-400',
 }
 
-type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor' | 'storico' | 'reazioni' | 'acapo' | 'parole'
+type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor' | 'storico' | 'reazioni' | 'acapo' | 'parole' | 'showdontell'
 
 // ─── Author comment (localStorage persistence per capitolo) ──────────────────
 
@@ -359,6 +359,8 @@ export default function AnalysisPage() {
   const [withReaderReactions, setWithReaderReactions] = useState(true)
   // Analisi frequenza parole
   const [withWordFrequency, setWithWordFrequency] = useState(false)
+  // Show, don't tell
+  const [withShowDontTell, setWithShowDontTell] = useState(false)
   const [pendingReformat, setPendingReformat] = useState<PendingReformat | null>(() => loadPendingReformat())
   const [reformatResult, setReformatResult] = useState<ParagraphReformat | null>(null)
   const [reformatElapsed, setReformatElapsed] = useState(0)
@@ -582,6 +584,12 @@ export default function AnalysisPage() {
   const isGoogleDoc = selectedChapter?.driveMimeType === 'application/vnd.google-apps.document'
 
   async function triggerAnalysis(chapterId: string, includePrevious = false, provider: AIProvider = activeProvider, comment?: string) {
+    // Blocca se c'è già un'analisi in corso
+    if (pendingAnalysis) {
+      toast.warning(`Analisi già in corso per "${pendingAnalysis.chapterTitle}" — attendi il completamento prima di avviarne un'altra`)
+      return
+    }
+
     const hasExisting =
       chapterId === 'all'
         ? Object.keys(analyses).length > 0
@@ -657,6 +665,7 @@ export default function AnalysisPage() {
         with_corrections: withCorrections ? 'true' : 'false',
         with_reader_reactions: withReaderReactions ? 'true' : 'false',
         with_word_frequency: withWordFrequency ? 'true' : 'false',
+        with_show_dont_tell: withShowDontTell ? 'true' : 'false',
       }
       // Aggiungi il commento autore se presente (non vuoto)
       const effectiveComment = comment ?? (chapterId !== 'all' ? getAuthorComment(chapterId) : '')
@@ -996,6 +1005,9 @@ export default function AnalysisPage() {
       : []),
     ...(analysis?.wordFrequency
       ? [{id: 'parole' as Tab, label: '📊 Parole', count: analysis.wordFrequency.topWords.length}]
+      : []),
+    ...(analysis?.showDontTell
+      ? [{id: 'showdontell' as Tab, label: '👁 Show vs Tell', count: analysis.showDontTell.issues.length}]
       : []),
     {id: 'editor', label: 'Editor'},
   ]
@@ -2200,6 +2212,84 @@ export default function AnalysisPage() {
                             </div>
                           )}
                         </motion.div>
+                      ) : activeTab === 'showdontell' ? (
+                        /* Show Don't Tell tab */
+                        <motion.div
+                          key="showdontell"
+                          initial={{opacity: 0, x: -4}}
+                          animate={{opacity: 1, x: 0}}
+                          exit={{opacity: 0}}
+                          transition={{duration: 0.15}}
+                          className="space-y-5"
+                        >
+                          {analysis?.showDontTell ? (
+                            <div className="space-y-4">
+                              {/* Score + summary */}
+                              <div className="flex items-center gap-3">
+                                <span className={cn(
+                                  'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold',
+                                  analysis.showDontTell.score >= 8 ? 'bg-emerald-900/30 text-emerald-400' :
+                                  analysis.showDontTell.score >= 6 ? 'bg-blue-900/30 text-blue-400' :
+                                  analysis.showDontTell.score >= 4 ? 'bg-amber-900/30 text-amber-400' :
+                                  'bg-red-900/30 text-red-400'
+                                )}>
+                                  {analysis.showDontTell.score.toFixed(1)}
+                                </span>
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Voto Show Don&apos;t Tell</p>
+                                  <p className="mt-0.5 text-sm text-slate-300">{analysis.showDontTell.summary}</p>
+                                </div>
+                              </div>
+
+                              {/* Legend */}
+                              <div className="rounded-lg border border-orange-800/30 bg-orange-900/10 px-3 py-2 text-xs text-orange-300 leading-relaxed">
+                                <strong>Show, don&apos;t tell</strong>: mostra emozioni e situazioni attraverso azioni, dialoghi e dettagli sensoriali invece di descriverli direttamente.
+                                Esempio <span className="line-through opacity-50">«Era triste»</span> → <span className="text-emerald-300">«Le lacrime le rigarono le guance in silenzio»</span>
+                              </div>
+
+                              {/* Issues */}
+                              {analysis.showDontTell.issues.length > 0 ? (
+                                <div className="space-y-4">
+                                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                    {analysis.showDontTell.issues.length} caso{analysis.showDontTell.issues.length !== 1 ? 'i' : ''} trovato{analysis.showDontTell.issues.length !== 1 ? 'i' : ''}
+                                  </p>
+                                  {analysis.showDontTell.issues.map((issue, i) => (
+                                    <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-3">
+                                      {/* Telling badge */}
+                                      <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-800/40 bg-orange-900/20 px-2.5 py-0.5 text-xs font-semibold text-orange-400">
+                                        📢 Telling
+                                      </span>
+                                      {/* Original quote */}
+                                      <blockquote className="border-l-2 border-orange-500/40 pl-3 text-sm italic leading-relaxed text-slate-300">
+                                        &ldquo;{issue.quote}&rdquo;
+                                      </blockquote>
+                                      {/* Explanation */}
+                                      <p className="text-xs leading-relaxed text-slate-500">{issue.explanation}</p>
+                                      {/* Proposed rewrite */}
+                                      <div className="rounded-lg border border-emerald-800/40 bg-emerald-900/10 p-3 space-y-1.5">
+                                        <p className="text-xs font-semibold text-emerald-400">✨ Riscrittura proposta (Show)</p>
+                                        <p className="text-sm leading-relaxed text-slate-200">{issue.rewrite}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-3 rounded-xl border border-emerald-700/30 bg-emerald-900/10 px-4 py-3">
+                                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+                                  <p className="text-sm text-emerald-300">Eccellente uso dello showing — nessun caso problematico di &quot;telling&quot; rilevato.</p>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center">
+                              <Eye className="mx-auto mb-2 h-8 w-8 text-slate-700" />
+                              <p className="text-sm text-slate-500">Analisi Show Don&apos;t Tell non disponibile</p>
+                              <p className="mt-1 text-xs text-slate-600">
+                                Rianalizza il capitolo attivando l&apos;opzione <span className="text-orange-400">👁 Show Don&apos;t Tell</span> nel dialog di avvio.
+                              </p>
+                            </div>
+                          )}
+                        </motion.div>
                       ) : (
                         /* Editor tab */
                         <motion.div
@@ -3127,6 +3217,18 @@ export default function AnalysisPage() {
                         <span className="ml-1 text-xs text-slate-500">— conta parole più usate (aggiunge tab)</span>
                       </span>
                     </label>
+                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
+                      <input
+                        type="checkbox"
+                        checked={withShowDontTell}
+                        onChange={(e) => setWithShowDontTell(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-orange-500"
+                      />
+                      <span className="text-sm text-slate-300">
+                        <span className="font-medium text-orange-400">👁 Show Don&apos;t Tell</span>
+                        <span className="ml-1 text-xs text-slate-500">— trova i &quot;telling&quot; e propose riscritture <span className="text-slate-600">(aggiunge tab)</span></span>
+                      </span>
+                    </label>
                   </div>
                 </div>
               </div>
@@ -3294,6 +3396,18 @@ export default function AnalysisPage() {
                       <span className="text-sm text-slate-300">
                         <span className="font-medium text-indigo-400">📊 Analisi ripetizioni</span>
                         <span className="ml-1 text-xs text-slate-500">— conta parole più usate (aggiunge tab)</span>
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
+                      <input
+                        type="checkbox"
+                        checked={withShowDontTell}
+                        onChange={(e) => setWithShowDontTell(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-orange-500"
+                      />
+                      <span className="text-sm text-slate-300">
+                        <span className="font-medium text-orange-400">👁 Show Don&apos;t Tell</span>
+                        <span className="ml-1 text-xs text-slate-500">— trova i &quot;telling&quot; e propone riscritture <span className="text-slate-600">(aggiunge tab)</span></span>
                       </span>
                     </label>
                   </div>

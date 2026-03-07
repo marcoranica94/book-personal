@@ -1,13 +1,40 @@
-import {useCallback, useRef} from 'react'
+import {useCallback, useEffect, useRef} from 'react'
 import {Outlet, useLocation} from 'react-router-dom'
 import {AnimatePresence, motion} from 'framer-motion'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import Toaster from '@/components/ui/Toaster'
+import {toast} from '@/stores/toastStore'
+
+const LS_PENDING_KEY = 'book_pending_analysis'
+
+interface PendingAnalysis {
+  chapterId: string
+  chapterTitle: string
+  triggeredAt: string
+}
 
 export default function Layout() {
   const location = useLocation()
   const mainRef = useRef<HTMLDivElement>(null)
+  const prevPathRef = useRef(location.pathname)
+
+  // Show toast when navigating away from /analysis while an analysis is pending
+  useEffect(() => {
+    const prevPath = prevPathRef.current
+    prevPathRef.current = location.pathname
+    if (prevPath.includes('/analysis') && !location.pathname.includes('/analysis')) {
+      try {
+        const raw = localStorage.getItem(LS_PENDING_KEY)
+        if (raw) {
+          const pending = JSON.parse(raw) as PendingAnalysis
+          const elapsedSecs = Math.floor((Date.now() - new Date(pending.triggeredAt).getTime()) / 1000)
+          const elapsed = elapsedSecs < 60 ? `${elapsedSecs}s` : `${Math.floor(elapsedSecs / 60)}m ${elapsedSecs % 60 > 0 ? ` ${elapsedSecs % 60}s` : ''}`
+          toast.info(`⚙️ Analisi in corso: "${pending.chapterTitle}" (${elapsed}) — torna ad Analisi AI per monitorarla`)
+        }
+      } catch { /* ignore */ }
+    }
+  }, [location.pathname])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const el = mainRef.current
