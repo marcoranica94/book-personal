@@ -6,6 +6,7 @@ import {
   CheckCheck,
   CheckCircle2,
   ChevronDown,
+  Eye,
   FileEdit,
   History,
   Loader2,
@@ -366,6 +367,8 @@ export default function AnalysisPage() {
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null)
   // Cancellazione analisi — traccia quale provider è in corso di delete
   const [deletingAnalysis, setDeletingAnalysis] = useState<{chapterId: string; provider: AIProvider} | null>(null)
+  // Modale dettaglio voce storico
+  const [historyDetailModal, setHistoryDetailModal] = useState<{entry: import('@/types').ChapterAnalysis; chapterTitle: string; provider: AIProvider} | null>(null)
   // Editor fullscreen
   const [editorFullscreen, setEditorFullscreen] = useState(false)
   // Pending analysis progress
@@ -2592,18 +2595,30 @@ export default function AnalysisPage() {
                                                         )}
                                                       </td>
                                                       <td className="px-2 py-1.5 text-center">
-                                                        {entryWithId._docId && (
+                                                        <div className="flex items-center justify-center gap-1">
                                                           <button
                                                             onClick={(e) => {
                                                               e.stopPropagation()
-                                                              void deleteHistoryEntry(c.id, provider, entryWithId._docId!)
+                                                              setHistoryDetailModal({entry, chapterTitle: c.title, provider})
                                                             }}
-                                                            title="Elimina questa analisi"
-                                                            className="rounded p-0.5 text-slate-700 transition-colors hover:text-red-400"
+                                                            title="Visualizza analisi completa"
+                                                            className="rounded p-0.5 text-slate-500 transition-colors hover:text-violet-400"
                                                           >
-                                                            <Trash2 className="h-3 w-3" />
+                                                            <Eye className="h-3.5 w-3.5" />
                                                           </button>
-                                                        )}
+                                                          {entryWithId._docId && (
+                                                            <button
+                                                              onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                void deleteHistoryEntry(c.id, provider, entryWithId._docId!)
+                                                              }}
+                                                              title="Elimina questa analisi"
+                                                              className="rounded p-0.5 text-slate-700 transition-colors hover:text-red-400"
+                                                            >
+                                                              <Trash2 className="h-3 w-3" />
+                                                            </button>
+                                                          )}
+                                                        </div>
                                                       </td>
                                                     </tr>
                                                   )
@@ -2656,6 +2671,178 @@ export default function AnalysisPage() {
           <p className="mt-1 text-xs text-slate-600">Vai al Kanban per aggiungere capitoli</p>
         </div>
       )}
+
+      {/* Modale dettaglio voce storico */}
+      <AnimatePresence>
+        {historyDetailModal && (() => {
+          const {entry, chapterTitle, provider: hp} = historyDetailModal
+          const cfg = AI_PROVIDER_CONFIG[hp]
+          return (
+            <>
+              <motion.div
+                initial={{opacity: 0}}
+                animate={{opacity: 1}}
+                exit={{opacity: 0}}
+                onClick={() => setHistoryDetailModal(null)}
+                className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{opacity: 0, scale: 0.92, y: 20}}
+                animate={{opacity: 1, scale: 1, y: 0}}
+                exit={{opacity: 0, scale: 0.92}}
+                transition={{duration: 0.18}}
+                className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 max-h-[88vh] overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] shadow-2xl"
+              >
+                {/* Header */}
+                <div className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-t-2xl border-b border-[var(--border)] bg-[var(--bg-elevated)] px-6 py-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={cn('text-xs font-semibold', cfg.color)}>
+                        {cfg.icon} {cfg.label}
+                      </span>
+                      <span className="text-xs text-slate-600">&middot; {entry.model}</span>
+                    </div>
+                    <h2 className="mt-0.5 truncate text-base font-semibold text-[var(--text-primary)]">{chapterTitle}</h2>
+                    <p className="text-xs text-slate-500">
+                      {new Date(entry.analyzedAt).toLocaleDateString('it-IT', {day: '2-digit', month: 'long', year: 'numeric'})}
+                      {' '}
+                      {new Date(entry.analyzedAt).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setHistoryDetailModal(null)}
+                    className="shrink-0 rounded-lg p-2 text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-5 p-6">
+                  {/* Scores grid */}
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                    {[...Object.entries(SCORE_LABELS), ['overall', 'Overall'] as [string, string]].map(([key, label]) => {
+                      const val = entry.scores[key as keyof typeof entry.scores] as number
+                      return (
+                        <div key={key} className={cn(
+                          'rounded-xl border p-2.5 text-center',
+                          key === 'overall' ? 'border-violet-700/40 bg-violet-900/15' : 'border-[var(--border)] bg-[var(--overlay)]'
+                        )}>
+                          <p className={cn('text-lg font-bold', getScoreColor(val))}>{val.toFixed(1)}</p>
+                          <p className="mt-0.5 text-[10px] text-slate-500 leading-tight">{label}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Summary */}
+                  {entry.summary && (
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Sintesi</p>
+                      <p className="text-sm leading-relaxed text-slate-300">{entry.summary}</p>
+                    </div>
+                  )}
+
+                  {/* Strengths */}
+                  {entry.strengths?.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-emerald-500">Punti di forza</p>
+                      {entry.strengths.map((s, i) => (
+                        <div key={i} className="flex gap-2 rounded-lg border border-emerald-800/20 bg-emerald-900/10 px-3 py-2">
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                          <p className="text-sm text-slate-300">{s}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Weaknesses */}
+                  {entry.weaknesses?.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-amber-500">Debolezze</p>
+                      {entry.weaknesses.map((w, i) => {
+                        const isObj = typeof w === 'object' && w !== null
+                        const text = isObj ? (w as {text: string}).text : w as string
+                        const quotes = isObj ? (w as {quotes?: string[]}).quotes ?? [] : []
+                        const solution = isObj ? (w as {solution?: string}).solution : undefined
+                        return (
+                          <div key={i} className="rounded-lg border border-amber-800/20 bg-amber-900/10 px-3 py-2 space-y-1">
+                            <p className="text-sm text-slate-300">{text}</p>
+                            {quotes.map((q, qi) => (
+                              <blockquote key={qi} className="border-l-2 border-amber-700/40 pl-2 text-xs italic text-slate-500">&ldquo;{q}&rdquo;</blockquote>
+                            ))}
+                            {solution && <p className="text-xs text-amber-300 mt-1">💡 {solution}</p>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Suggestions */}
+                  {entry.suggestions?.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-violet-400">Suggerimenti</p>
+                      {entry.suggestions.map((s, i) => {
+                        const isObj = typeof s === 'object' && s !== null
+                        const text = isObj ? (s as {text: string}).text : s as string
+                        const solution = isObj ? (s as {solution?: string}).solution : undefined
+                        return (
+                          <div key={i} className="rounded-lg border border-violet-800/20 bg-violet-900/10 px-3 py-2 space-y-1">
+                            <p className="text-sm text-slate-300">{text}</p>
+                            {solution && <p className="text-xs text-violet-300 mt-1">💡 {solution}</p>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Corrections */}
+                  {entry.corrections?.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Correzioni ({entry.corrections.length})</p>
+                      {entry.corrections.map((c, i) => (
+                        <div key={i} className={cn('rounded-lg border px-3 py-2 text-xs space-y-1', CORRECTION_TYPE_COLORS[c.type] ?? CORRECTION_TYPE_COLORS.style)}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold">{CORRECTION_TYPE_LABELS[c.type] ?? c.type}</span>
+                            <span className="text-slate-600">&middot;</span>
+                            <span className="text-slate-500">{c.note}</span>
+                          </div>
+                          <p className="line-through opacity-60">{c.original}</p>
+                          <p className="font-medium">{c.suggested}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Reader reactions */}
+                  {(entry.readerReactions?.length ?? 0) > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-sky-400">Reazioni Lettori</p>
+                      {(entry.readerReactions ?? []).map((r, i) => (
+                        <div key={i} className="flex items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2">
+                          <span className="text-xl leading-none">{r.emoji}</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-slate-300">{r.persona}</p>
+                            <p className="mt-0.5 text-xs text-slate-500">{r.reaction}</p>
+                          </div>
+                          <span className={cn('ml-auto shrink-0 text-sm font-bold', getScoreColor(r.rating * 2))}>{r.rating}/5</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Note autore */}
+                  {entry.authorComment && (
+                    <div className="rounded-xl border border-slate-700/30 bg-slate-800/20 px-4 py-3">
+                      <p className="mb-1 text-xs font-semibold text-slate-500">Nota autore inviata</p>
+                      <p className="text-xs italic text-slate-400">&ldquo;{entry.authorComment}&rdquo;</p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </>
+          )
+        })()}
+      </AnimatePresence>
 
       {/* Re-analysis dialog — scelta tra analisi da zero o con contesto precedente */}
       <AnimatePresence>
