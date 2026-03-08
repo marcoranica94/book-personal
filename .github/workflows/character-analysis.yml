@@ -1,0 +1,41 @@
+name: AI Character Analysis
+on:
+  workflow_dispatch:
+    inputs:
+      character_id:
+        description: 'ID personaggio da analizzare'
+        required: true
+      ai_provider:
+        description: 'Provider AI (claude / gemini / chatgpt)'
+        required: false
+        default: 'claude'
+      author_comment:
+        description: "Nota autore per orientare l'analisi (opzionale)"
+        required: false
+        default: ''
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install script dependencies
+        working-directory: scripts
+        run: npm install
+      - name: Run character analysis
+        working-directory: scripts
+        env:
+          CHARACTER_ID: ${{ inputs.character_id }}
+          AI_PROVIDER: ${{ inputs.ai_provider }}
+          AUTHOR_COMMENT: ${{ inputs.author_comment }}
+          REPO_DIR: ${{ github.workspace }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: node analyze-character.mjs

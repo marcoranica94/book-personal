@@ -240,6 +240,98 @@ export interface ChapterAnalysis {
   paragraphBreaks?: ParagraphBreaksAnalysis
   wordFrequency?: WordFrequencyAnalysis
   showDontTell?: ShowDontTellAnalysis
+  // Characters extracted from this chapter during analysis
+  characters?: CharacterChapterAppearance[]
+}
+
+// ─── Character Types ──────────────────────────────────────────────────────────
+
+export const CharacterRole = {
+  PROTAGONIST: 'protagonist',
+  ANTAGONIST: 'antagonist',
+  SECONDARY: 'secondary',
+  MINOR: 'minor',
+} as const
+export type CharacterRole = (typeof CharacterRole)[keyof typeof CharacterRole]
+
+export const CHARACTER_ROLE_CONFIG: Record<CharacterRole, {label: string; color: string; bg: string; border: string}> = {
+  protagonist: {label: 'Protagonista', color: 'text-violet-300', bg: 'bg-violet-900/30', border: 'border-violet-700/40'},
+  antagonist:  {label: 'Antagonista',  color: 'text-rose-300',   bg: 'bg-rose-900/30',   border: 'border-rose-700/40'},
+  secondary:   {label: 'Secondario',   color: 'text-amber-300',  bg: 'bg-amber-900/30',  border: 'border-amber-700/40'},
+  minor:       {label: 'Minore',       color: 'text-slate-400',  bg: 'bg-slate-800/50',  border: 'border-slate-700/40'},
+}
+
+export interface CharacterChapterAppearance {
+  chapterId: string
+  chapterTitle: string
+  role: CharacterRole
+  description: string
+  keyMoments?: string[]
+}
+
+export interface Character {
+  id: string
+  name: string
+  aliases: string[]
+  role: CharacterRole
+  age?: string
+  physicalDescription: string
+  personalityTraits: string[]
+  backstory: string
+  motivation: string
+  chaptersAppearing: CharacterChapterAppearance[]
+  notes: string
+  createdAt: string
+  updatedAt: string
+  extractedFromAnalysis?: boolean
+  lastAnalyzedAt?: string
+}
+
+export interface CharacterAnalysisScores {
+  consistency: number
+  depth: number
+  development: number
+  motivation: number
+  uniqueness: number
+  overall: number
+}
+
+export interface CharacterConsistencyIssue {
+  chapterId?: string
+  chapterTitle?: string
+  issue: string
+}
+
+export interface CharacterChapterBreakdown {
+  chapterId: string
+  chapterTitle: string
+  role: string
+  summary: string
+}
+
+export interface CharacterAnalysis {
+  characterId: string
+  characterName: string
+  provider: AIProvider
+  analyzedAt: string
+  model: string
+  scores: CharacterAnalysisScores
+  overview: string
+  arc: string
+  strengths: string[]
+  weaknesses: string[]
+  consistencyIssues: CharacterConsistencyIssue[]
+  suggestions: string[]
+  chaptersBreakdown: CharacterChapterBreakdown[]
+}
+
+export const CHARACTER_SCORE_LABELS: Record<keyof CharacterAnalysisScores, string> = {
+  consistency: 'Coerenza',
+  depth: 'Profondità',
+  development: 'Sviluppo',
+  motivation: 'Motivazioni',
+  uniqueness: 'Originalità',
+  overall: 'Complessivo',
 }
 
 export interface BookSettings {

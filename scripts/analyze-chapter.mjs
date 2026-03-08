@@ -44,6 +44,8 @@ const WITH_READER_REACTIONS = (process.env.WITH_READER_REACTIONS ?? 'true') === 
 const WITH_WORD_FREQUENCY = (process.env.WITH_WORD_FREQUENCY ?? 'false') === 'true'
 /** Se true, analizza i casi di "telling" invece di "showing" con riscritture proposte */
 const WITH_SHOW_DONT_TELL = (process.env.WITH_SHOW_DONT_TELL ?? 'false') === 'true'
+/** Se true, estrae i personaggi presenti nel capitolo e aggiorna /characters su Firestore */
+const WITH_CHARACTERS = (process.env.WITH_CHARACTERS ?? 'false') === 'true'
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
 initializeApp({credential: cert(serviceAccount)})
@@ -96,6 +98,50 @@ async function getPreviousAnalysis(chapterId) {
   // Fallback: doc root (retrocompatibilità)
   const snap = await db.collection('analyses').doc(chapterId).get()
   return snap.exists ? snap.data() : null
+}
+
+/** Upsert personaggi estratti dall'analisi nella collection /characters */
+async function upsertCharacters(chapterId, chapterTitle, characters) {
+  const snap = await db.collection('characters').get()
+  const existing = snap.docs.map((d) => ({id: d.id, ...d.data()}))
+
+  for (const c of characters) {
+    const match = existing.find((e) => e.name?.toLowerCase().trim() === c.name?.toLowerCase().trim())
+    const appearance = {
+      chapterId,
+      chapterTitle,
+      role: c.role ?? 'secondary',
+      description: c.description ?? '',
+      keyMoments: c.keyMoments ?? [],
+    }
+
+    if (match) {
+      const appearances = (match.chaptersAppearing ?? []).filter((a) => a.chapterId !== chapterId)
+      appearances.push(appearance)
+      await db.collection('characters').doc(match.id).update({
+        chaptersAppearing: appearances,
+        updatedAt: new Date().toISOString(),
+      })
+      console.log(`  → Personaggio aggiornato: "${c.name}"`)
+    } else {
+      await db.collection('characters').add({
+        name: c.name,
+        aliases: [],
+        role: c.role ?? 'secondary',
+        age: '',
+        physicalDescription: '',
+        personalityTraits: [],
+        backstory: '',
+        motivation: '',
+        chaptersAppearing: [appearance],
+        notes: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        extractedFromAnalysis: true,
+      })
+      console.log(`  → Nuovo personaggio creato: "${c.name}"`)
+    }
+  }
 }
 
 async function saveAnalysis(chapterId, analysis) {
@@ -331,6 +377,7 @@ function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorCo
     withCorrections = true,
     withReaderReactions = true,
     withShowDontTell = false,
+    withCharacters = false,
   } = opts
   const isHistorical = bookType === 'storico'
   const personas = READER_PERSONAS[isHistorical ? 'storico' : 'default']
@@ -397,6 +444,15 @@ NOTA DELL'AUTORE (considera questo come contesto prioritario per l'analisi):
     }
   ],` : ''
 
+  const charactersSchema = opts.withCharacters ? `  "characters": [
+    {
+      "name": "<nome del personaggio>",
+      "role": "protagonist|antagonist|secondary|minor",
+      "description": "<breve descrizione di cosa fa/come si comporta in questo capitolo (max 80 parole)>",
+      "keyMoments": ["<momento chiave 1>", "<momento chiave 2>"]
+    }
+  ],` : ''
+
   const solutionInstructions = (withWeaknesses && withWeaknessSolutions || withSuggestions && withSuggestionSolutions) ? `
 IMPORTANTE su ${withWeaknesses && withWeaknessSolutions && withSuggestions && withSuggestionSolutions ? 'weaknesses e suggestions' : withWeaknesses && withWeaknessSolutions ? 'weaknesses' : 'suggestions'}:
 ${withWeaknesses && withWeaknessSolutions ? '- Per ogni debolezza, il campo "solution" deve contenere un testo sostitutivo concreto o una riscrittura del passaggio citato (max 60 parole). Se non è possibile proporre una riscrittura, scrivi almeno un\'indicazione operativa precisa.' : ''}
@@ -436,7 +492,7 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
 ${strengthsSchema}
 ${weaknessSchema}
 ${suggestionSchema}
-${correctionsSchema}${historicalSection}${paragraphSection}${showDontTellSection}
+${correctionsSchema}${historicalSection}${paragraphSection}${showDontTellSection}${charactersSchema}
   "_placeholder": null
 }
 ${excludedNote}
@@ -629,6 +685,7 @@ async function analyzeChapter(chapter, bookSettings) {
     withCorrections: WITH_CORRECTIONS,
     withReaderReactions: WITH_READER_REACTIONS,
     withShowDontTell: WITH_SHOW_DONT_TELL,
+    withCharacters: WITH_CHARACTERS,
   })
   if (AUTHOR_COMMENT) {
     console.log(`  Nota autore inclusa nel prompt (${AUTHOR_COMMENT.length} chars)`)
@@ -781,6 +838,11 @@ async function main() {
     if (!analysis) continue
     await saveAnalysis(chapter.id, analysis)
     console.log(`  ✓ Analisi salvata su Firestore (analyses/${chapter.id})`)
+    // Estrai e upsert personaggi se richiesto
+    if (WITH_CHARACTERS && analysis.characters?.length > 0) {
+      console.log(`  → Estrazione personaggi: ${analysis.characters.length} trovati`)
+      await upsertCharacters(chapter.id, chapter.title, analysis.characters)
+    }
   }
 
   console.log('Analisi completata.')
