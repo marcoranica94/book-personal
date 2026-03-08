@@ -21,7 +21,7 @@ import {
   Upload,
   X
 } from 'lucide-react'
-import {Bar, BarChart, Cell, PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts'
+import {Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
 import {useDriveStore} from '@/stores/driveStore'
@@ -52,7 +52,7 @@ import {formatRelativeDate} from '@/utils/formatters'
 import {cn} from '@/utils/cn'
 import {applyCorrectionsToContent} from '@/utils/corrections'
 import ProgressRing from '@/components/dashboard/ProgressRing'
-import RichTextEditor from '@/components/editor/RichTextEditor'
+import RichTextEditor, {type InlineCorrection} from '@/components/editor/RichTextEditor'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -79,7 +79,8 @@ const CORRECTION_TYPE_COLORS: Record<string, string> = {
   continuity: 'border-amber-800/30 bg-amber-900/30 text-amber-400',
 }
 
-type Tab = 'strengths' | 'weaknesses' | 'suggestions' | 'corrections' | 'editor' | 'storico' | 'reazioni' | 'acapo' | 'parole' | 'showdontell'
+type Tab = 'feedback' | 'corrections' | 'extra'
+type ExtraTab = 'storico' | 'reazioni' | 'acapo' | 'parole' | 'showdontell'
 
 // ─── Author comment (localStorage persistence per capitolo) ──────────────────
 
@@ -323,7 +324,8 @@ export default function AnalysisPage() {
   const {user} = useAuthStore()
   const {settings, loadSettings} = useSettingsStore()
   const [selectedId, setSelectedId] = useState<string>('')
-  const [activeTab, setActiveTab] = useState<Tab>('strengths')
+  const [activeTab, setActiveTab] = useState<Tab>('feedback')
+  const [activeExtraTab, setActiveExtraTab] = useState<ExtraTab>('storico')
   const [activeProvider, setActiveProvider] = useState<AIProvider>((settings.defaultAIProvider ?? 'claude') as AIProvider)
   const [triggering, setTriggering] = useState(false)
   // Correzioni — 3 stati: accettata / rifiutata / da rivedere (default)
@@ -332,6 +334,8 @@ export default function AnalysisPage() {
   const [isApplying, setIsApplying] = useState(false)
   // Accordion gruppi correzioni (set dei tipi collassati)
   const [collapsedCorrGroups, setCollapsedCorrGroups] = useState<Set<string>>(new Set())
+  // Correzione attiva (evidenziata nell'editor inline)
+  const [activeInlineCorrection, setActiveInlineCorrection] = useState<number | null>(null)
   // Editor inline
   const [editorContent, setEditorContent] = useState('')
   const [isSavingContent, setIsSavingContent] = useState(false)
@@ -452,7 +456,7 @@ export default function AnalysisPage() {
           toast.success(`Analisi completata per "${pending.chapterTitle}"!`)
           if (pending.chapterId !== 'all') {
             setSelectedId(pending.chapterId)
-            setActiveTab('strengths')
+            setActiveTab('feedback')
             window.scrollTo({top: 0, behavior: 'smooth'})
           }
           savePending(null)
@@ -525,7 +529,8 @@ export default function AnalysisPage() {
           setReformatResult(result)
           toast.success(`Riformattazione completata per "${pending.chapterTitle}"!`)
           if (pending.chapterId === selectedId) {
-            setActiveTab('acapo')
+            setActiveTab('extra')
+            setActiveExtraTab('acapo')
             window.scrollTo({top: 0, behavior: 'smooth'})
           }
           savePendingReformat(null)
@@ -981,39 +986,18 @@ export default function AnalysisPage() {
     .filter((c) => analyses[c.id] && Object.keys(analyses[c.id]).length > 0)
     .sort((a, b) => a.title.localeCompare(b.title, 'it', {numeric: true, sensitivity: 'base'}))
 
-  const radarData = analysis
-    ? Object.entries(SCORE_LABELS).map(([key, label]) => ({
-        subject: label,
-        value: analysis.scores[key as keyof typeof analysis.scores] as number,
-        fullMark: 10,
-      }))
-    : []
 
-  const tabs: {id: Tab; label: string; count?: number}[] = [
-    {id: 'strengths', label: 'Punti di forza', count: analysis?.strengths.length},
-    {id: 'weaknesses', label: 'Debolezze', count: analysis?.weaknesses.length},
-    {id: 'suggestions', label: 'Suggerimenti', count: analysis?.suggestions.length},
-    {id: 'corrections', label: 'Correzioni', count: analysis?.corrections.length},
-    ...(settings.bookType === 'storico' || analysis?.historicalAccuracy
-      ? [{id: 'storico' as Tab, label: 'Accuratezza Storica'}]
-      : []),
-    ...(analysis?.readerReactions?.length
-      ? [{id: 'reazioni' as Tab, label: 'Reazioni Lettori', count: analysis.readerReactions.length}]
-      : []),
-    ...(analysis?.paragraphBreaks || reformatResult
-      ? [{id: 'acapo' as Tab, label: '¶ A Capo', count: analysis?.paragraphBreaks?.issues?.length}]
-      : []),
-    ...(analysis?.wordFrequency
-      ? [{id: 'parole' as Tab, label: '📊 Parole', count: analysis.wordFrequency.topWords.length}]
-      : []),
-    ...(analysis?.showDontTell
-      ? [{id: 'showdontell' as Tab, label: '👁 Show vs Tell', count: analysis.showDontTell.issues.length}]
-      : []),
-    {id: 'editor', label: 'Editor'},
-  ]
+  // Inline corrections per l'editor
+  const inlineCorrections: InlineCorrection[] = (analysis?.corrections ?? []).map((c, i) => ({
+    index: i,
+    original: c.original,
+    suggested: c.suggested,
+    type: c.type,
+    note: c.note,
+  }))
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="flex flex-col gap-4 p-6">
 
       {/* Header */}
       <div className="flex flex-wrap items-start gap-3">
@@ -1029,7 +1013,7 @@ export default function AnalysisPage() {
           value={selectedId}
           onChange={(e) => {
             setSelectedId(e.target.value)
-            setActiveTab('strengths')
+            setActiveTab('feedback')
           }}
           className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm text-slate-300 outline-none focus:border-violet-500/40"
         >
@@ -1193,7 +1177,7 @@ export default function AnalysisPage() {
             {/* Close button */}
             <div className="flex items-center justify-end">
               <button
-                onClick={() => { setSelectedId(''); setActiveTab('strengths'); }}
+                onClick={() => { setSelectedId(''); setActiveTab('feedback'); }}
                 title="Chiudi analisi e torna al confronto"
                 className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs text-slate-500 transition-colors hover:bg-[var(--overlay)] hover:text-slate-300"
               >
@@ -1300,1107 +1284,641 @@ export default function AnalysisPage() {
                   )
                 })()}
 
-                {/* Score section */}
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                  {/* Radar + overall */}
-                  <div className="flex flex-col items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
-                    <ProgressRing
-                      value={analysis.scores.overall * 10}
-                      size={96}
-                      stroke={8}
-                      label={analysis.scores.overall.toFixed(1)}
-                      sublabel="overall"
-                    />
-                    <div className="h-44 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart data={radarData} margin={{top: 4, right: 20, bottom: 4, left: 20}}>
-                          <PolarGrid stroke="rgba(255,255,255,0.06)" />
-                          <PolarAngleAxis dataKey="subject" tick={{fill: '#64748B', fontSize: 10}} />
-                          <Radar
-                            dataKey="value"
-                            stroke="#7C3AED"
-                            fill="#7C3AED"
-                            fillOpacity={0.25}
-                            dot={{fill: '#7C3AED', r: 2}}
-                          />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <p className="text-center text-xs text-slate-600">
-                      {selectedChapter?.title} ·{' '}
-                      {formatRelativeDate(analysis.analyzedAt)}{' '}
-                      ({new Date(analysis.analyzedAt).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})})
-                    </p>
-                    <p className="text-xs text-slate-700">{analysis.model}</p>
-                  </div>
-
-                  {/* Score bars + summary */}
-                  <div className="lg:col-span-2 space-y-4">
-                    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
-                      <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Punteggi dettagliati
-                      </h3>
-                      <div className="space-y-3">
-                        {Object.entries(SCORE_LABELS).map(([key, label]) => (
-                          <ScoreBar
-                            key={key}
-                            label={label}
-                            value={analysis.scores[key as keyof typeof analysis.scores] as number}
-                          />
-                        ))}
+                {/* ── Split-pane: LEFT analysis + RIGHT editor ── */}
+                <div className="grid grid-cols-[42%_1fr] gap-4 items-start">
+                  {/* ──────── LEFT: Analysis panel ──────────── */}
+                  <div
+                    className="flex flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]"
+                    style={{maxHeight: 'calc(100vh - 160px)'}}
+                  >
+                    {/* Compact scores header */}
+                    <div className="shrink-0 border-b border-[var(--border)] p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <ProgressRing
+                          value={analysis.scores.overall * 10}
+                          size={72}
+                          stroke={7}
+                          label={analysis.scores.overall.toFixed(1)}
+                          sublabel="overall"
+                        />
+                        <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                          {Object.entries(SCORE_LABELS).map(([key, label]) => (
+                            <ScoreBar
+                              key={key}
+                              label={label}
+                              value={analysis.scores[key as keyof typeof analysis.scores] as number}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-xs leading-relaxed text-slate-400 line-clamp-2">{analysis.summary}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-slate-600">{formatRelativeDate(analysis.analyzedAt)} · {analysis.model}</p>
+                        {analysis.authorComment && (
+                          <span title={analysis.authorComment} className="cursor-help text-xs text-violet-500 truncate max-w-[140px]">
+                            📝 nota autore
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
-                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Sintesi</h3>
-                      <p className="text-sm leading-relaxed text-slate-300">{analysis.summary}</p>
-                      {/* Commento autore inviato prima dell'analisi */}
-                      {analysis.authorComment && (
-                        <div className="mt-4 rounded-lg border border-violet-800/30 bg-violet-900/10 px-3 py-2.5">
-                          <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-violet-400">
-                            <FileEdit className="h-3 w-3" />
-                            Nota autore
-                          </p>
-                          <p className="text-xs italic leading-relaxed text-slate-400">&ldquo;{analysis.authorComment}&rdquo;</p>
-                        </div>
-                      )}
+
+                    {/* Tab bar — 3 tabs */}
+                    <div className="shrink-0 flex border-b border-[var(--border)]">
+                      {([
+                        {id: 'feedback' as Tab, label: 'Feedback', count: analysis.strengths.length + analysis.weaknesses.length + analysis.suggestions.length},
+                        {id: 'corrections' as Tab, label: 'Correzioni', count: analysis.corrections.length},
+                        {id: 'extra' as Tab, label: 'Altro', count: undefined},
+                      ] as {id: Tab; label: string; count?: number}[]).map((tab) => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setActiveTab(tab.id)}
+                          className={cn(
+                            'flex flex-1 items-center justify-center gap-1.5 border-b-2 py-2.5 text-xs font-medium transition-colors',
+                            activeTab === tab.id
+                              ? 'border-violet-500 text-violet-300'
+                              : 'border-transparent text-slate-500 hover:text-slate-300'
+                          )}
+                        >
+                          {tab.label}
+                          {tab.count != null && (
+                            <span className={cn(
+                              'rounded-full px-1.5 py-0.5 text-xs tabular-nums',
+                              activeTab === tab.id ? 'bg-violet-900/30 text-violet-300' : 'bg-[var(--overlay)] text-slate-500'
+                            )}>{tab.count}</span>
+                          )}
+                        </button>
+                      ))}
                     </div>
-                  </div>
-                </div>
 
-                {/* Tabs */}
-                <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-                  <div className="flex overflow-x-auto border-b border-[var(--border)]">
-                    {tabs.map((tab) => (
-                      <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={cn(
-                          'flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-                          activeTab === tab.id
-                            ? 'border-violet-500 text-violet-300'
-                            : 'border-transparent text-slate-500 hover:text-slate-300'
-                        )}
-                      >
-                        {tab.label}
-                        {tab.count !== undefined && (
-                          <span className="rounded-full bg-[var(--overlay)] px-1.5 py-0.5 text-xs">{tab.count}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="p-5">
-                    <AnimatePresence mode="wait">
-                      {activeTab === 'strengths' || activeTab === 'weaknesses' || activeTab === 'suggestions' ? (
-                        <motion.ul
-                          key={activeTab}
-                          initial={{opacity: 0, x: -4}}
-                          animate={{opacity: 1, x: 0}}
-                          exit={{opacity: 0}}
-                          transition={{duration: 0.15}}
-                          className="space-y-2"
-                        >
-                          {(activeTab === 'strengths'
-                            ? analysis.strengths
-                            : activeTab === 'weaknesses'
-                              ? analysis.weaknesses
-                              : analysis.suggestions
-                          ).map((item, i) => {
-                            const isClickable = activeTab === 'weaknesses' || activeTab === 'suggestions'
-                            const itemText = typeof item === 'string' ? item : item.text
-                            const itemQuotes = typeof item === 'string' ? [] : ((item as {quotes?: string[]}).quotes ?? [])
-                            const itemSolution = typeof item === 'string' ? undefined : (item as {solution?: string}).solution
-                            return (
-                              <li
-                                key={i}
-                                onClick={isClickable ? () => setItemDetailModal({type: activeTab as 'weaknesses' | 'suggestions', item}) : undefined}
-                                className={cn(
-                                  'flex items-start gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2.5 text-sm',
-                                  isClickable && 'cursor-pointer transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]'
-                                )}
-                              >
-                                <span
-                                  className={cn(
-                                    'mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full',
-                                    activeTab === 'strengths'
-                                      ? 'bg-emerald-500'
-                                      : activeTab === 'weaknesses'
-                                        ? 'bg-amber-500'
-                                        : 'bg-blue-500'
-                                  )}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <span className="text-[var(--text-primary)]">{itemText}</span>
-                                  {/* Per debolezze: mostra citazione */}
-                                  {activeTab === 'weaknesses' && itemQuotes.length > 0 && (
-                                    <p className="mt-1.5 truncate text-xs italic text-slate-500">
-                                      &ldquo;{itemQuotes[0]}&rdquo;{itemQuotes.length > 1 && ` (+${itemQuotes.length - 1})`}
-                                    </p>
-                                  )}
-                                  {/* Indicatore soluzione disponibile */}
-                                  {itemSolution && (
-                                    <p className={cn(
-                                      'mt-1 text-xs font-medium',
-                                      activeTab === 'weaknesses' ? 'text-emerald-500' : 'text-violet-400'
-                                    )}>
-                                      💡 soluzione disponibile
-                                    </p>
-                                  )}
-                                </div>
-                                {isClickable && (
-                                  <span className="shrink-0 text-xs text-slate-500 mt-0.5">dettagli →</span>
-                                )}
-                              </li>
-                            )
-                          })}
-                          {(activeTab === 'strengths'
-                            ? analysis.strengths
-                            : activeTab === 'weaknesses'
-                              ? analysis.weaknesses
-                              : analysis.suggestions
-                          ).length === 0 && (
-                            <p className="text-sm text-slate-600">Nessun elemento disponibile.</p>
-                          )}
-                        </motion.ul>
-                      ) : activeTab === 'corrections' ? (
-                        <motion.div
-                          key="corrections"
-                          initial={{opacity: 0, x: -4}}
-                          animate={{opacity: 1, x: 0}}
-                          exit={{opacity: 0}}
-                          transition={{duration: 0.15}}
-                        >
-                          {analysis.corrections.length === 0 ? (
-                            <p className="text-sm text-slate-600">Nessuna correzione suggerita.</p>
-                          ) : (
-                            <div className="space-y-3">
-                              {/* Already applied banner */}
-                              {analysis.appliedAt && (
-                                <div className="flex items-center gap-2 rounded-lg border border-emerald-800/30 bg-emerald-900/15 px-3 py-2">
-                                  <CheckCheck className="h-3.5 w-3.5 text-emerald-400" />
-                                  <span className="text-xs text-emerald-400">
-                                    Correzioni revisionate il {new Date(analysis.appliedAt).toLocaleDateString('it-IT')}
-                                    {' '}· {analysis.acceptedCorrections?.length ?? 0} accettate
-                                    {analysis.rejectedCorrections && analysis.rejectedCorrections.length > 0 && (
-                                      <>, {analysis.rejectedCorrections.length} rifiutate</>
-                                    )}
-                                    {(() => {
-                                      const pending = analysis.corrections.length
-                                        - (analysis.acceptedCorrections?.length ?? 0)
-                                        - (analysis.rejectedCorrections?.length ?? 0)
-                                      return pending > 0 ? <>, {pending} da rivedere</> : null
-                                    })()}
-                                  </span>
-                                </div>
-                              )}
+                    {/* Scrollable tab content */}
+                    <div className="flex-1 overflow-y-auto p-4 min-h-0">
+                      <AnimatePresence mode="wait">
 
-                              {/* Toolbar */}
-                              {!selectedChapter?.driveContent && (
-                                <p className="text-xs text-amber-400 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2">
-                                  Nessun testo disponibile — sincronizza il capitolo da Drive per applicare le correzioni
+                        {/* ── FEEDBACK TAB: strengths + weaknesses + suggestions ── */}
+                        {activeTab === 'feedback' && (
+                          <motion.div key="feedback" initial={{opacity:0,x:-4}} animate={{opacity:1,x:0}} exit={{opacity:0}} transition={{duration:0.15}} className="space-y-5">
+                            {/* Strengths */}
+                            {analysis.strengths.length > 0 && (
+                              <div>
+                                <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-500">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                  Punti di forza ({analysis.strengths.length})
                                 </p>
-                              )}
-                              <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                  onClick={selectAllCorrections}
-                                  className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
-                                >
-                                  <CheckCheck className="h-3 w-3" />
-                                  Accetta tutte
-                                </button>
-                                <button
-                                  onClick={deselectAllCorrections}
-                                  className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
-                                >
-                                  <Square className="h-3 w-3" />
-                                  Resetta tutte
-                                </button>
-                                {(acceptedCorrections.size > 0 || rejectedCorrections.size > 0) && (
-                                  <span className="text-xs text-slate-500">
-                                    {acceptedCorrections.size > 0 && (
-                                      <span className="text-emerald-500">{acceptedCorrections.size} ✓</span>
-                                    )}
-                                    {acceptedCorrections.size > 0 && rejectedCorrections.size > 0 && <span className="mx-1 text-slate-700">·</span>}
-                                    {rejectedCorrections.size > 0 && (
-                                      <span className="text-red-400">{rejectedCorrections.size} ✗</span>
-                                    )}
-                                    {(() => {
-                                      const pending = analysis!.corrections.length - acceptedCorrections.size - rejectedCorrections.size
-                                      return pending > 0 ? <span className="text-slate-600 ml-1">· {pending} da rivedere</span> : null
-                                    })()}
-                                  </span>
-                                )}
-                                <div className="flex-1" />
-                                <button
-                                  onClick={() => void handleApplyCorrections()}
-                                  disabled={
-                                    acceptedCorrections.size === 0 ||
-                                    isApplying ||
-                                    !selectedChapter?.driveContent
-                                  }
-                                  className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
-                                >
-                                  {isApplying ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <FileEdit className="h-3 w-3" />
-                                  )}
-                                  Applica {acceptedCorrections.size > 0 ? acceptedCorrections.size : ''} correzioni
-                                </button>
-                                {driveConfig?.folderId && (
-                                  <button
-                                    onClick={() => void handlePushToDrive()}
-                                    disabled={isPushingToDrive || !editorContent || !isPendingPush}
-                                    className={cn(
-                                      'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-40',
-                                      isPendingPush ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-700 hover:bg-slate-600'
-                                    )}
-                                  >
-                                    {isPushingToDrive ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
-                                    Salva su Drive{isPendingPush ? ' *' : ''}
-                                  </button>
-                                )}
+                                <ul className="space-y-1.5">
+                                  {analysis.strengths.map((item, i) => (
+                                    <li key={i} className="flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm">
+                                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                      <span className="text-slate-300 leading-relaxed">{item}</span>
+                                    </li>
+                                  ))}
+                                </ul>
                               </div>
+                            )}
 
-                              {/* Correction list — raggruppata per tipo */}
-                              {(() => {
-                                // Ordine preferito dei tipi
-                                const TYPE_ORDER = ['grammar', 'style', 'clarity', 'continuity']
-                                // Raggruppa mantenendo l'indice originale per accettazione/rifiuto
-                                const groups = TYPE_ORDER
-                                  .map((type) => ({
-                                    type,
-                                    items: analysis.corrections
-                                      .map((c, i) => ({c, i}))
-                                      .filter(({c}) => c.type === type),
-                                  }))
-                                  .filter(({items}) => items.length > 0)
-                                // Tipi non standard (altri valori non previsti)
-                                const knownTypes = new Set(TYPE_ORDER)
-                                const others = analysis.corrections
-                                  .map((c, i) => ({c, i}))
-                                  .filter(({c}) => !knownTypes.has(c.type))
-                                if (others.length > 0) groups.push({type: 'other', items: others})
-
-                                return groups.map(({type, items}) => {
-                                  const groupAccepted = items.filter(({i}) => acceptedCorrections.has(i)).length
-                                  const groupRejected = items.filter(({i}) => rejectedCorrections.has(i)).length
-                                  const groupPending = items.length - groupAccepted - groupRejected
-                                  const allGroupAccepted = items.every(({i}) => acceptedCorrections.has(i))
-
-                                  return (
-                                    <div key={type} className="rounded-xl border border-[var(--border)] overflow-hidden">
-                                      {/* Group header — click to collapse */}
-                                      <button
-                                        type="button"
-                                        onClick={() => setCollapsedCorrGroups((prev) => {
-                                          const next = new Set(prev)
-                                          next.has(type) ? next.delete(type) : next.add(type)
-                                          return next
-                                        })}
-                                        className={cn(
-                                          'flex w-full items-center gap-3 px-4 py-2.5 transition-colors hover:brightness-110',
-                                          type === 'grammar' ? 'bg-red-900/10' :
-                                          type === 'style'   ? 'bg-violet-900/10' :
-                                          type === 'clarity' ? 'bg-blue-900/10' :
-                                          type === 'continuity' ? 'bg-amber-900/10' :
-                                          'bg-slate-900/10',
-                                          !collapsedCorrGroups.has(type) && (
-                                            type === 'grammar' ? 'border-b border-red-800/20' :
-                                            type === 'style'   ? 'border-b border-violet-800/20' :
-                                            type === 'clarity' ? 'border-b border-blue-800/20' :
-                                            type === 'continuity' ? 'border-b border-amber-800/20' :
-                                            'border-b border-slate-700/20'
-                                          )
-                                        )}>
-                                        <span className={cn(
-                                          'rounded-full border px-2.5 py-0.5 text-xs font-semibold',
-                                          CORRECTION_TYPE_COLORS[type] ?? 'border-[var(--border)] bg-[var(--overlay)] text-slate-400'
-                                        )}>
-                                          {CORRECTION_TYPE_LABELS[type] ?? type}
-                                        </span>
-                                        <span className="text-xs text-slate-500">
-                                          {items.length} {items.length === 1 ? 'correzione' : 'correzioni'}
-                                        </span>
-                                        {/* Mini contatori stato */}
-                                        <div className="flex items-center gap-1.5 text-xs">
-                                          {groupAccepted > 0 && <span className="text-emerald-500">✓ {groupAccepted}</span>}
-                                          {groupRejected > 0 && <span className="text-red-400">✗ {groupRejected}</span>}
-                                          {groupPending > 0 && <span className="text-slate-600">◯ {groupPending}</span>}
-                                        </div>
-                                        <div className="flex-1" />
-                                        {/* Accetta tutte del gruppo */}
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation()
-                                            if (allGroupAccepted) {
-                                              // Deseleziona tutto il gruppo
-                                              setAcceptedCorrections((prev) => {
-                                                const next = new Set(prev)
-                                                items.forEach(({i}) => next.delete(i))
-                                                return next
-                                              })
-                                            } else {
-                                              // Accetta tutto il gruppo
-                                              setAcceptedCorrections((prev) => {
-                                                const next = new Set(prev)
-                                                items.forEach(({i}) => next.add(i))
-                                                return next
-                                              })
-                                              setRejectedCorrections((prev) => {
-                                                const next = new Set(prev)
-                                                items.forEach(({i}) => next.delete(i))
-                                                return next
-                                              })
-                                            }
-                                          }}
-                                          className="flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-0.5 text-xs text-slate-500 transition-colors hover:bg-[var(--overlay)] hover:text-slate-300"
-                                        >
-                                          <CheckCheck className="h-3 w-3" />
-                                          {allGroupAccepted ? 'Deseleziona' : 'Accetta tutte'}
-                                        </button>
-                                        <ChevronDown className={cn('h-3.5 w-3.5 text-slate-600 transition-transform', collapsedCorrGroups.has(type) && '-rotate-90')} />
-                                      </button>
-
-                                      {/* Items del gruppo — collassabili */}
-                                      {!collapsedCorrGroups.has(type) && <div className="divide-y divide-[var(--border)]">
-                                        {items.map(({c, i}) => {
-                                          const isAccepted = acceptedCorrections.has(i)
-                                          const isRejected = rejectedCorrections.has(i)
-                                          const wasAccepted = analysis.acceptedCorrections?.includes(i)
-                                          const wasRejected = analysis.rejectedCorrections?.includes(i)
-                                          return (
-                                            <div
-                                              key={i}
-                                              onClick={() => toggleAccept(i)}
-                                              className={cn(
-                                                'cursor-pointer p-4 space-y-3 transition-colors',
-                                                isAccepted
-                                                  ? 'bg-emerald-950/70 border-l-4 border-emerald-500/80'
-                                                  : isRejected
-                                                    ? 'bg-red-950/10 opacity-60'
-                                                    : wasAccepted
-                                                      ? 'bg-emerald-900/5'
-                                                      : wasRejected
-                                                        ? 'bg-slate-900/10 opacity-50'
-                                                        : 'hover:bg-[var(--overlay)]'
-                                              )}
-                                            >
-                                              <div className="flex items-center gap-2">
-                                                {/* Accetta checkbox */}
-                                                <div
-                                                  onClick={(e) => { e.stopPropagation(); toggleAccept(i) }}
-                                                  className={cn(
-                                                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-                                                    isAccepted
-                                                      ? 'border-emerald-500 bg-emerald-600'
-                                                      : 'border-[var(--border-strong)] bg-transparent hover:border-emerald-600'
-                                                  )}
-                                                >
-                                                  {isAccepted && <CheckCheck className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
-                                                </div>
-                                                {/* Rifiuta button */}
-                                                <div
-                                                  onClick={(e) => { e.stopPropagation(); toggleReject(i) }}
-                                                  title={isRejected ? 'Annulla rifiuto' : 'Rifiuta correzione'}
-                                                  className={cn(
-                                                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-                                                    isRejected
-                                                      ? 'border-red-500 bg-red-600'
-                                                      : 'border-[var(--border-strong)] bg-transparent hover:border-red-600'
-                                                  )}
-                                                >
-                                                  {isRejected && <X className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
-                                                </div>
-                                                {/* Stato sessione */}
-                                                {isAccepted && (
-                                                  <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-900/40 border border-emerald-700/50 px-2 py-0.5 text-xs font-medium text-emerald-400">
-                                                    <CheckCheck className="h-3 w-3" /> da applicare
-                                                  </span>
-                                                )}
-                                                {isRejected && (
-                                                  <span className="ml-auto flex items-center gap-1 rounded-full bg-red-900/30 border border-red-800/40 px-2 py-0.5 text-xs text-red-400">
-                                                    <X className="h-3 w-3" /> rifiutata
-                                                  </span>
-                                                )}
-                                                {!isAccepted && !isRejected && (
-                                                  <span className="ml-auto text-xs text-slate-700 italic">da rivedere</span>
-                                                )}
-                                                {!isAccepted && !isRejected && wasAccepted && (
-                                                  <span className="flex items-center gap-1 rounded-full bg-emerald-900/30 border border-emerald-800/30 px-2 py-0.5 text-xs text-emerald-600">
-                                                    <CheckCheck className="h-3 w-3" /> già accettata
-                                                  </span>
-                                                )}
-                                                {!isAccepted && !isRejected && wasRejected && (
-                                                  <span className="flex items-center gap-1 rounded-full bg-slate-800/40 border border-slate-700/30 px-2 py-0.5 text-xs text-slate-600">
-                                                    <X className="h-3 w-3" /> già rifiutata
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <div className="grid grid-cols-2 gap-3 text-xs">
-                                                <div>
-                                                  <p className="mb-1 text-slate-600">Originale</p>
-                                                  <p className="rounded-lg bg-red-950/20 p-2.5 text-slate-400 line-through">{c.original}</p>
-                                                </div>
-                                                <div>
-                                                  <p className="mb-1 text-slate-600">Suggerito</p>
-                                                  <p className="rounded-lg bg-emerald-950/20 p-2.5 text-emerald-300">{c.suggested}</p>
-                                                </div>
-                                              </div>
-                                              {(() => {
-                                                const ctx = selectedChapter?.driveContent
-                                                  ? findContext(selectedChapter.driveContent, c.original)
-                                                  : null
-                                                if (!ctx) return null
-                                                const parts = ctx.split(c.original)
-                                                return (
-                                                  <div className="rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-xs text-slate-500">
-                                                    <p className="mb-1 text-slate-600">Contesto nel testo</p>
-                                                    <p className="leading-relaxed">
-                                                      {parts[0]}
-                                                      <mark className="rounded bg-amber-900/40 px-0.5 text-amber-300 not-italic">{c.original}</mark>
-                                                      {parts.slice(1).join(c.original)}
-                                                    </p>
-                                                  </div>
-                                                )
-                                              })()}
-                                              {c.note && <p className="text-xs text-slate-600 italic">{c.note}</p>}
-                                            </div>
-                                          )
-                                        })}
-                                      </div>}
-                                    </div>
-                                  )
-                                })
-                              })()}
-                            </div>
-                          )}
-                        </motion.div>
-                      ) : activeTab === 'storico' ? (
-                        <motion.div
-                          key="storico"
-                          initial={{opacity: 0, x: -4}}
-                          animate={{opacity: 1, x: 0}}
-                          exit={{opacity: 0}}
-                          transition={{duration: 0.15}}
-                          className="space-y-4"
-                        >
-                          {analysis.historicalAccuracy ? (
-                            <>
-                              {/* Score e sintesi */}
-                              <div className="flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
-                                <div className="flex flex-col items-center gap-1">
-                                  <span className={cn(
-                                    'text-3xl font-bold tabular-nums',
-                                    analysis.historicalAccuracy.score >= 8 ? 'text-emerald-400' :
-                                    analysis.historicalAccuracy.score >= 6 ? 'text-blue-400' :
-                                    analysis.historicalAccuracy.score >= 4 ? 'text-amber-400' : 'text-red-400'
-                                  )}>
-                                    {analysis.historicalAccuracy.score.toFixed(1)}
-                                  </span>
-                                  <span className="text-xs text-slate-600">/10</span>
-                                </div>
-                                <p className="flex-1 text-sm leading-relaxed text-slate-300">
-                                  {analysis.historicalAccuracy.summary}
+                            {/* Weaknesses */}
+                            {analysis.weaknesses.length > 0 && (
+                              <div>
+                                <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-500">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                                  Debolezze ({analysis.weaknesses.length})
                                 </p>
-                              </div>
-
-                              {/* Elementi corretti */}
-                              {analysis.historicalAccuracy.correct.length > 0 && (
-                                <div>
-                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-emerald-500">
-                                    Accurato ({analysis.historicalAccuracy.correct.length})
-                                  </p>
-                                  <ul className="space-y-1.5">
-                                    {analysis.historicalAccuracy.correct.map((item, i) => (
-                                      <li key={i} className="flex items-start gap-2.5 text-sm">
-                                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-                                        <span className="text-slate-300">{item}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-
-                              {/* Anacronismi */}
-                              {analysis.historicalAccuracy.anachronisms.length > 0 && (
-                                <div>
-                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-amber-500">
-                                    Anacronismi ({analysis.historicalAccuracy.anachronisms.length})
-                                  </p>
-                                  <ul className="space-y-1.5">
-                                    {analysis.historicalAccuracy.anachronisms.map((item, i) => (
-                                      <li key={i} className="flex items-start gap-2.5 text-sm">
-                                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-                                        <span className="text-slate-300">{item}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-
-                              {/* Problemi specifici */}
-                              {analysis.historicalAccuracy.issues.length > 0 && (
-                                <div>
-                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-400">
-                                    Problemi da correggere ({analysis.historicalAccuracy.issues.length})
-                                  </p>
-                                  <div className="space-y-3">
-                                    {analysis.historicalAccuracy.issues.map((issue, i) => (
-                                      <div key={i} className="rounded-xl border border-red-800/30 bg-red-900/10 p-4 space-y-2">
-                                        <p className="rounded-lg bg-[var(--overlay)] px-3 py-2 text-xs text-slate-400 italic">
-                                          "{issue.quote}"
-                                        </p>
-                                        <p className="text-sm text-red-300">{issue.issue}</p>
-                                        <p className="flex items-start gap-1.5 text-xs text-slate-500">
-                                          <span className="shrink-0 font-medium text-blue-400">Suggerimento:</span>
-                                          {issue.suggestion}
-                                        </p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div className="rounded-xl border border-dashed border-[var(--border)] py-10 text-center">
-                              <p className="text-sm text-slate-500">
-                                Dati sull'accuratezza storica non disponibili.
-                              </p>
-                              <p className="mt-1 text-xs text-slate-600">
-                                Rianalizza il capitolo per ottenere questa sezione.
-                              </p>
-                            </div>
-                          )}
-                        </motion.div>
-                      ) : activeTab === 'reazioni' ? (
-                        <motion.div
-                          key="reazioni"
-                          initial={{opacity: 0, x: -4}}
-                          animate={{opacity: 1, x: 0}}
-                          exit={{opacity: 0}}
-                          transition={{duration: 0.15}}
-                          className="space-y-3"
-                        >
-                          {analysis.readerReactions && analysis.readerReactions.length > 0 ? (
-                            analysis.readerReactions.map((r, i) => (
-                              <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xl">{r.emoji}</span>
-                                    <span className="text-sm font-medium text-slate-300">{r.persona}</span>
-                                  </div>
-                                  <div className="flex gap-0.5">
-                                    {Array.from({length: 5}).map((_, star) => (
-                                      <span key={star} className={star < r.rating ? 'text-amber-400' : 'text-slate-700'}>★</span>
-                                    ))}
-                                  </div>
-                                </div>
-                                <p className="text-sm italic text-slate-300">"{r.reaction}"</p>
-                                <p className="text-sm leading-relaxed text-slate-400">{r.comment}</p>
-                                {r.questions.length > 0 && (
-                                  <div className="rounded-lg border border-blue-800/30 bg-blue-900/10 p-3">
-                                    <p className="mb-2 text-xs font-semibold text-blue-400">Domande che si farebbe:</p>
-                                    <ul className="space-y-1">
-                                      {r.questions.map((q, qi) => (
-                                        <li key={qi} className="flex items-start gap-2 text-xs text-slate-400">
-                                          <span className="shrink-0 text-blue-600">?</span>
-                                          {q}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-                              </div>
-                            ))
-                          ) : (
-                            <div className="rounded-xl border border-dashed border-[var(--border)] py-10 text-center">
-                              <p className="text-sm text-slate-500">
-                                Reazioni dei lettori non disponibili.
-                              </p>
-                              <p className="mt-1 text-xs text-slate-600">
-                                Rianalizza il capitolo per ottenere questa sezione.
-                              </p>
-                            </div>
-                          )}
-                        </motion.div>
-                      ) : activeTab === 'acapo' ? (
-                        /* A Capo tab */
-                        <motion.div
-                          key="acapo"
-                          initial={{opacity: 0, x: -4}}
-                          animate={{opacity: 1, x: 0}}
-                          exit={{opacity: 0}}
-                          transition={{duration: 0.15}}
-                          className="space-y-5"
-                        >
-                          {/* Sezione analisi a capo (dall'analisi AI) */}
-                          {analysis?.paragraphBreaks ? (
-                            <div className="space-y-4">
-                              <div className="flex items-center gap-3">
-                                <span className={cn(
-                                  'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold',
-                                  analysis.paragraphBreaks.score >= 8 ? 'bg-emerald-900/30 text-emerald-400' :
-                                  analysis.paragraphBreaks.score >= 6 ? 'bg-blue-900/30 text-blue-400' :
-                                  analysis.paragraphBreaks.score >= 4 ? 'bg-amber-900/30 text-amber-400' :
-                                  'bg-red-900/30 text-red-400'
-                                )}>
-                                  {analysis.paragraphBreaks.score.toFixed(1)}
-                                </span>
-                                <div>
-                                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Voto uso paragrafi</p>
-                                  <p className="mt-0.5 text-sm text-slate-300">{analysis.paragraphBreaks.summary}</p>
-                                </div>
-                              </div>
-
-                              {analysis.paragraphBreaks.issues.length > 0 && (
-                                <div className="space-y-3">
-                                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                    {analysis.paragraphBreaks.issues.length} problema{analysis.paragraphBreaks.issues.length !== 1 ? 'i' : ''} trovato{analysis.paragraphBreaks.issues.length !== 1 ? 'i' : ''}
-                                  </p>
-                                  {analysis.paragraphBreaks.issues.map((issue, i) => {
-                                    const typeColors: Record<string, string> = {
-                                      blocco_troppo_lungo: 'border-orange-800/40 bg-orange-900/10 text-orange-400',
-                                      assenza_pausa: 'border-red-800/40 bg-red-900/10 text-red-400',
-                                      pausa_prematura: 'border-blue-800/40 bg-blue-900/10 text-blue-400',
-                                      flusso_coscienza: 'border-violet-800/40 bg-violet-900/10 text-violet-400',
-                                      altro: 'border-slate-700/40 bg-slate-800/20 text-slate-400',
-                                    }
-                                    const typeLabels: Record<string, string> = {
-                                      blocco_troppo_lungo: 'Blocco troppo lungo',
-                                      assenza_pausa: 'Manca una pausa',
-                                      pausa_prematura: 'Pausa prematura',
-                                      flusso_coscienza: 'Flusso di coscienza',
-                                      altro: 'Altro',
-                                    }
+                                <ul className="space-y-1.5">
+                                  {analysis.weaknesses.map((item, i) => {
+                                    const itemText = typeof item === 'string' ? item : item.text
+                                    const itemQuotes = typeof item === 'string' ? [] : ((item as {quotes?: string[]}).quotes ?? [])
+                                    const itemSolution = typeof item === 'string' ? undefined : (item as {solution?: string}).solution
                                     return (
-                                      <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-2">
-                                        <div className="flex items-center gap-2">
-                                          <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold border', typeColors[issue.type] ?? typeColors.altro)}>
-                                            {typeLabels[issue.type] ?? issue.type}
-                                          </span>
+                                      <li
+                                        key={i}
+                                        onClick={() => setItemDetailModal({type: 'weaknesses', item})}
+                                        className="cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]"
+                                      >
+                                        <div className="flex items-start gap-2">
+                                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                                          <div className="flex-1 min-w-0">
+                                            <span className="text-[var(--text-primary)] leading-relaxed">{itemText}</span>
+                                            {itemQuotes.length > 0 && (
+                                              <p className="mt-1 truncate text-xs italic text-slate-500">&ldquo;{itemQuotes[0]}&rdquo;</p>
+                                            )}
+                                            {itemSolution && <p className="mt-0.5 text-xs font-medium text-emerald-500">💡 soluzione disponibile</p>}
+                                          </div>
+                                          <span className="shrink-0 text-xs text-slate-600 mt-0.5">→</span>
                                         </div>
-                                        {issue.quote && (
-                                          <blockquote className="border-l-2 border-slate-600/50 pl-3 text-xs italic leading-relaxed text-slate-400">
-                                            &ldquo;{issue.quote}&rdquo;
-                                          </blockquote>
-                                        )}
-                                        <p className="text-sm text-slate-300">{issue.suggestion}</p>
-                                      </div>
+                                      </li>
                                     )
                                   })}
-                                </div>
-                              )}
-
-                              {analysis.paragraphBreaks.issues.length === 0 && (
-                                <div className="flex items-center gap-3 rounded-xl border border-emerald-700/30 bg-emerald-900/10 px-4 py-3">
-                                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
-                                  <p className="text-sm text-emerald-300">Uso dei paragrafi ottimale — nessun problema rilevato.</p>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center">
-                              <AlignLeft className="mx-auto mb-2 h-8 w-8 text-slate-700" />
-                              <p className="text-sm text-slate-500">Analisi dei paragrafi non disponibile</p>
-                              <p className="mt-1 text-xs text-slate-600">
-                                Rianalizza il capitolo attivando l&apos;opzione <span className="text-teal-400">¶ Analizza a capo</span> nel dialog di avvio.
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Separatore */}
-                          <div className="border-t border-[var(--border)]" />
-
-                          {/* Sezione riformattazione automatica */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-300">Riformatta automaticamente</p>
-                                <p className="mt-0.5 text-xs text-slate-500">
-                                  L&apos;IA rilegge il capitolo e aggiusta i paragrafi senza modificare le parole.
-                                  Il testo riformattato viene proposto per la revisione — sei tu a decidere se applicarlo.
-                                </p>
+                                </ul>
                               </div>
-                              <button
-                                onClick={() => void triggerReformat()}
-                                disabled={triggeringReformat || !!pendingReformat}
-                                className="flex shrink-0 items-center gap-2 rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-600 disabled:opacity-40"
-                              >
-                                {triggeringReformat || pendingReformat
-                                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                                  : <AlignLeft className="h-4 w-4" />}
-                                {pendingReformat ? 'In corso…' : 'Riformatta a capo'}
-                              </button>
-                            </div>
-
-                            {/* Risultato riformattazione */}
-                            {reformatResult && reformatResult.chapterId === selectedId && (
-                              <motion.div
-                                initial={{opacity: 0, y: 4}}
-                                animate={{opacity: 1, y: 0}}
-                                className="rounded-xl border border-teal-700/40 bg-teal-900/10 p-4 space-y-3"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="text-sm font-semibold text-teal-300">
-                                      Riformattazione pronta
-                                      {reformatResult.paragraphsChanged > 0 && (
-                                        <span className="ml-2 text-xs font-normal text-slate-400">
-                                          · {reformatResult.paragraphsChanged} paragrafo{reformatResult.paragraphsChanged !== 1 ? 'i' : ''} modificato{reformatResult.paragraphsChanged !== 1 ? 'i' : ''}
-                                        </span>
-                                      )}
-                                    </p>
-                                    <p className="mt-0.5 text-xs text-slate-400">{reformatResult.changesSummary}</p>
-                                    <p className="mt-1 text-xs text-slate-600">
-                                      {AI_PROVIDER_CONFIG[reformatResult.provider]?.label} · {reformatResult.model} · {formatRelativeDate(reformatResult.reformattedAt)}
-                                    </p>
-                                  </div>
-                                  <button
-                                    onClick={async () => { await deleteParagraphReformat(selectedId); setReformatResult(null) }}
-                                    title="Scarta riformattazione"
-                                    className="rounded p-1 text-slate-600 hover:text-slate-300 transition-colors"
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </button>
-                                </div>
-
-                                {/* Preview testo riformattato (prime 600 chars) */}
-                                <div className="max-h-40 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--overlay)] p-3 text-xs leading-relaxed text-slate-400 whitespace-pre-wrap">
-                                  {reformatResult.reformattedText.slice(0, 600)}
-                                  {reformatResult.reformattedText.length > 600 && '…'}
-                                </div>
-
-                                <div className="flex gap-3">
-                                  <button
-                                    onClick={() => void handleApplyReformat()}
-                                    disabled={isApplyingReformat}
-                                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-500 disabled:opacity-40"
-                                  >
-                                    {isApplyingReformat
-                                      ? <Loader2 className="h-4 w-4 animate-spin" />
-                                      : <Upload className="h-4 w-4" />}
-                                    Applica e salva
-                                  </button>
-                                  <button
-                                    onClick={() => { setActiveTab('editor'); }}
-                                    className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)]"
-                                  >
-                                    Vedi in Editor
-                                  </button>
-                                </div>
-                              </motion.div>
                             )}
-                          </div>
-                        </motion.div>
-                      ) : activeTab === 'parole' ? (
-                        /* Parole tab */
-                        <motion.div
-                          key="parole"
-                          initial={{opacity: 0, x: -4}}
-                          animate={{opacity: 1, x: 0}}
-                          exit={{opacity: 0}}
-                          transition={{duration: 0.15}}
-                          className="space-y-5"
-                        >
-                          {analysis?.wordFrequency ? (() => {
-                            const wf = analysis.wordFrequency
-                            const total = wf.totalWords || 1
-                            const chartWords = wf.topWords.slice(0, 20)
-                            const repScore = wf.repetitionScore
-                            const repColor = repScore >= 60 ? 'text-red-400 bg-red-900/20 border-red-700/30'
-                              : repScore >= 35 ? 'text-amber-400 bg-amber-900/20 border-amber-700/30'
-                              : 'text-emerald-400 bg-emerald-900/20 border-emerald-700/30'
-                            const repLabel = repScore >= 60 ? 'Alta ripetitività' : repScore >= 35 ? 'Ripetitività media' : 'Bassa ripetitività'
-                            return (
-                              <>
-                                {/* Summary stats */}
-                                <div className="grid grid-cols-3 gap-3">
-                                  <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3 text-center">
-                                    <p className="text-xl font-bold text-slate-200">{wf.totalWords.toLocaleString('it-IT')}</p>
-                                    <p className="mt-0.5 text-xs text-slate-500">Parole significative</p>
-                                  </div>
-                                  <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3 text-center">
-                                    <p className="text-xl font-bold text-slate-200">{wf.uniqueWords.toLocaleString('it-IT')}</p>
-                                    <p className="mt-0.5 text-xs text-slate-500">Parole uniche</p>
-                                  </div>
-                                  <div className={`rounded-xl border p-3 text-center ${repColor}`}>
-                                    <p className="text-xl font-bold">{repScore}</p>
-                                    <p className="mt-0.5 text-xs opacity-80">{repLabel}</p>
-                                  </div>
-                                </div>
 
-                                {/* Bar chart — top 20 */}
-                                <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
-                                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Top 20 parole più usate</p>
-                                  <ResponsiveContainer width="100%" height={220}>
-                                    <BarChart data={chartWords} margin={{top: 0, right: 0, left: -20, bottom: 60}}>
-                                      <XAxis
-                                        dataKey="word"
-                                        tick={{fill: '#94a3b8', fontSize: 11}}
-                                        angle={-45}
-                                        textAnchor="end"
-                                        interval={0}
-                                      />
-                                      <YAxis tick={{fill: '#64748b', fontSize: 11}} />
-                                      <Tooltip
-                                        contentStyle={{background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12}}
-                                        labelStyle={{color: '#e2e8f0'}}
-                                        formatter={(value: number | undefined) => [value ?? 0, 'occorrenze']}
-                                      />
-                                      <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                                        {chartWords.map((entry, i) => {
-                                          const pct = (entry.count / total) * 100
-                                          const color = pct >= 2 ? '#f87171' : pct >= 1 ? '#fb923c' : '#818cf8'
-                                          return <Cell key={i} fill={color} />
-                                        })}
-                                      </Bar>
-                                    </BarChart>
-                                  </ResponsiveContainer>
-                                  <div className="mt-3 flex items-center gap-4 text-xs text-slate-500">
-                                    <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-red-400" />&ge;2% del totale</span>
-                                    <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-orange-400" />&ge;1%</span>
-                                    <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-indigo-400" />normale</span>
-                                  </div>
-                                </div>
-
-                                {/* Full table */}
-                                <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] overflow-hidden">
-                                  <table className="w-full text-sm">
-                                    <thead>
-                                      <tr className="border-b border-[var(--border)]">
-                                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">#</th>
-                                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Parola</th>
-                                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">N</th>
-                                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">%</th>
-                                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"></th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {wf.topWords.map((entry, i) => {
-                                        const pct = (entry.count / total) * 100
-                                        const barColor = pct >= 2 ? 'bg-red-500' : pct >= 1 ? 'bg-amber-500' : 'bg-indigo-500'
-                                        const textColor = pct >= 2 ? 'text-red-300' : pct >= 1 ? 'text-amber-300' : 'text-slate-300'
-                                        return (
-                                          <tr key={entry.word} className="border-b border-[var(--border)]/50 hover:bg-white/[0.02]">
-                                            <td className="px-4 py-2 text-xs text-slate-600 tabular-nums">{i + 1}</td>
-                                            <td className={`px-4 py-2 font-medium ${textColor}`}>{entry.word}</td>
-                                            <td className="px-4 py-2 text-right tabular-nums text-slate-400">{entry.count}</td>
-                                            <td className="px-4 py-2 text-right tabular-nums text-slate-500 text-xs">{pct.toFixed(1)}%</td>
-                                            <td className="px-3 py-2 w-28">
-                                              <div className="h-1.5 rounded-full bg-slate-800">
-                                                <div
-                                                  className={`h-1.5 rounded-full ${barColor}`}
-                                                  style={{width: `${Math.min(100, (entry.count / (wf.topWords[0]?.count || 1)) * 100)}%`}}
-                                                />
-                                              </div>
-                                            </td>
-                                          </tr>
-                                        )
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </>
-                            )
-                          })() : (
-                            <div className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center">
-                              <span className="mb-2 block text-3xl">📊</span>
-                              <p className="text-sm text-slate-500">Analisi ripetizioni non disponibile</p>
-                              <p className="mt-1 text-xs text-slate-600">
-                                Rianalizza il capitolo attivando l&apos;opzione <span className="text-indigo-400">📊 Analisi ripetizioni</span> nel dialog di avvio.
-                              </p>
-                            </div>
-                          )}
-                        </motion.div>
-                      ) : activeTab === 'showdontell' ? (
-                        /* Show Don't Tell tab */
-                        <motion.div
-                          key="showdontell"
-                          initial={{opacity: 0, x: -4}}
-                          animate={{opacity: 1, x: 0}}
-                          exit={{opacity: 0}}
-                          transition={{duration: 0.15}}
-                          className="space-y-5"
-                        >
-                          {analysis?.showDontTell ? (
-                            <div className="space-y-4">
-                              {/* Score + summary */}
-                              <div className="flex items-center gap-3">
-                                <span className={cn(
-                                  'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold',
-                                  analysis.showDontTell.score >= 8 ? 'bg-emerald-900/30 text-emerald-400' :
-                                  analysis.showDontTell.score >= 6 ? 'bg-blue-900/30 text-blue-400' :
-                                  analysis.showDontTell.score >= 4 ? 'bg-amber-900/30 text-amber-400' :
-                                  'bg-red-900/30 text-red-400'
-                                )}>
-                                  {analysis.showDontTell.score.toFixed(1)}
-                                </span>
-                                <div>
-                                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Voto Show Don&apos;t Tell</p>
-                                  <p className="mt-0.5 text-sm text-slate-300">{analysis.showDontTell.summary}</p>
-                                </div>
+                            {/* Suggestions */}
+                            {analysis.suggestions.length > 0 && (
+                              <div>
+                                <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-400">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
+                                  Suggerimenti ({analysis.suggestions.length})
+                                </p>
+                                <ul className="space-y-1.5">
+                                  {analysis.suggestions.map((item, i) => {
+                                    const itemText = typeof item === 'string' ? item : item.text
+                                    const itemSolution = typeof item === 'string' ? undefined : (item as {solution?: string}).solution
+                                    return (
+                                      <li
+                                        key={i}
+                                        onClick={() => setItemDetailModal({type: 'suggestions', item})}
+                                        className="cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]"
+                                      >
+                                        <div className="flex items-start gap-2">
+                                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
+                                          <div className="flex-1 min-w-0">
+                                            <span className="text-[var(--text-primary)] leading-relaxed">{itemText}</span>
+                                            {itemSolution && <p className="mt-0.5 text-xs font-medium text-violet-400">💡 soluzione disponibile</p>}
+                                          </div>
+                                          <span className="shrink-0 text-xs text-slate-600 mt-0.5">→</span>
+                                        </div>
+                                      </li>
+                                    )
+                                  })}
+                                </ul>
                               </div>
+                            )}
 
-                              {/* Legend */}
-                              <div className="rounded-lg border border-orange-800/30 bg-orange-900/10 px-3 py-2 text-xs text-orange-300 leading-relaxed">
-                                <strong>Show, don&apos;t tell</strong>: mostra emozioni e situazioni attraverso azioni, dialoghi e dettagli sensoriali invece di descriverli direttamente.
-                                Esempio <span className="line-through opacity-50">«Era triste»</span> → <span className="text-emerald-300">«Le lacrime le rigarono le guance in silenzio»</span>
-                              </div>
+                            {analysis.strengths.length === 0 && analysis.weaknesses.length === 0 && analysis.suggestions.length === 0 && (
+                              <p className="text-sm text-slate-600">Nessun dato di feedback disponibile.</p>
+                            )}
+                          </motion.div>
+                        )}
 
-                              {/* Issues */}
-                              {analysis.showDontTell.issues.length > 0 ? (
-                                <div className="space-y-4">
-                                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                    {analysis.showDontTell.issues.length} caso{analysis.showDontTell.issues.length !== 1 ? 'i' : ''} trovato{analysis.showDontTell.issues.length !== 1 ? 'i' : ''}
+                        {/* ── CORRECTIONS TAB ── */}
+                        {activeTab === 'corrections' && (
+                          <motion.div key="corrections" initial={{opacity:0,x:-4}} animate={{opacity:1,x:0}} exit={{opacity:0}} transition={{duration:0.15}}>
+                            {analysis.corrections.length === 0 ? (
+                              <p className="text-sm text-slate-600">Nessuna correzione suggerita.</p>
+                            ) : (
+                              <div className="space-y-3">
+                                {analysis.appliedAt && (
+                                  <div className="flex items-center gap-2 rounded-lg border border-emerald-800/30 bg-emerald-900/15 px-3 py-2">
+                                    <CheckCheck className="h-3.5 w-3.5 text-emerald-400" />
+                                    <span className="text-xs text-emerald-400">
+                                      Revisionate il {new Date(analysis.appliedAt).toLocaleDateString('it-IT')} · {analysis.acceptedCorrections?.length ?? 0} accettate
+                                    </span>
+                                  </div>
+                                )}
+                                {!selectedChapter?.driveContent && (
+                                  <p className="text-xs text-amber-400 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2">
+                                    Sincronizza da Drive per applicare le correzioni
                                   </p>
-                                  {analysis.showDontTell.issues.map((issue, i) => (
-                                    <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-3">
-                                      {/* Telling badge */}
-                                      <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-800/40 bg-orange-900/20 px-2.5 py-0.5 text-xs font-semibold text-orange-400">
-                                        📢 Telling
-                                      </span>
-                                      {/* Original quote */}
-                                      <blockquote className="border-l-2 border-orange-500/40 pl-3 text-sm italic leading-relaxed text-slate-300">
-                                        &ldquo;{issue.quote}&rdquo;
-                                      </blockquote>
-                                      {/* Explanation */}
-                                      <p className="text-xs leading-relaxed text-slate-500">{issue.explanation}</p>
-                                      {/* Proposed rewrite */}
-                                      <div className="rounded-lg border border-emerald-800/40 bg-emerald-900/10 p-3 space-y-1.5">
-                                        <p className="text-xs font-semibold text-emerald-400">✨ Riscrittura proposta (Show)</p>
-                                        <p className="text-sm leading-relaxed text-slate-200">{issue.rewrite}</p>
+                                )}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button onClick={selectAllCorrections} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200">
+                                    <CheckCheck className="h-3 w-3" /> Accetta tutte
+                                  </button>
+                                  <button onClick={deselectAllCorrections} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200">
+                                    <Square className="h-3 w-3" /> Resetta
+                                  </button>
+                                  {(acceptedCorrections.size > 0 || rejectedCorrections.size > 0) && (
+                                    <span className="text-xs text-slate-500">
+                                      {acceptedCorrections.size > 0 && <span className="text-emerald-500">{acceptedCorrections.size} ✓</span>}
+                                      {acceptedCorrections.size > 0 && rejectedCorrections.size > 0 && <span className="mx-1 text-slate-700">·</span>}
+                                      {rejectedCorrections.size > 0 && <span className="text-red-400">{rejectedCorrections.size} ✗</span>}
+                                    </span>
+                                  )}
+                                  <div className="flex-1" />
+                                  <button
+                                    onClick={() => void handleApplyCorrections()}
+                                    disabled={acceptedCorrections.size === 0 || isApplying || !selectedChapter?.driveContent}
+                                    className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                                  >
+                                    {isApplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
+                                    Applica {acceptedCorrections.size > 0 ? acceptedCorrections.size : ''}
+                                  </button>
+                                </div>
+                                {/* Correction list grouped by type */}
+                                {(() => {
+                                  const TYPE_ORDER = ['grammar', 'style', 'clarity', 'continuity']
+                                  const groups = TYPE_ORDER
+                                    .map((type) => ({type, items: analysis.corrections.map((c, i) => ({c, i})).filter(({c}) => c.type === type)}))
+                                    .filter(({items}) => items.length > 0)
+                                  const knownTypes = new Set(TYPE_ORDER)
+                                  const others = analysis.corrections.map((c, i) => ({c, i})).filter(({c}) => !knownTypes.has(c.type))
+                                  if (others.length > 0) groups.push({type: 'other', items: others})
+                                  return groups.map(({type, items}) => {
+                                    const groupAccepted = items.filter(({i}) => acceptedCorrections.has(i)).length
+                                    const groupRejected = items.filter(({i}) => rejectedCorrections.has(i)).length
+                                    const groupPending = items.length - groupAccepted - groupRejected
+                                    const allGroupAccepted = items.every(({i}) => acceptedCorrections.has(i))
+                                    return (
+                                      <div key={type} className="rounded-xl border border-[var(--border)] overflow-hidden">
+                                        <button
+                                          type="button"
+                                          onClick={() => setCollapsedCorrGroups((prev) => {
+                                            const next = new Set(prev)
+                                            next.has(type) ? next.delete(type) : next.add(type)
+                                            return next
+                                          })}
+                                          className={cn(
+                                            'flex w-full items-center gap-3 px-4 py-2.5 transition-colors hover:brightness-110',
+                                            type === 'grammar' ? 'bg-red-900/10' : type === 'style' ? 'bg-violet-900/10' : type === 'clarity' ? 'bg-blue-900/10' : type === 'continuity' ? 'bg-amber-900/10' : 'bg-slate-900/10',
+                                            !collapsedCorrGroups.has(type) && (type === 'grammar' ? 'border-b border-red-800/20' : type === 'style' ? 'border-b border-violet-800/20' : type === 'clarity' ? 'border-b border-blue-800/20' : type === 'continuity' ? 'border-b border-amber-800/20' : 'border-b border-slate-700/20')
+                                          )}
+                                        >
+                                          <span className={cn('rounded-full border px-2.5 py-0.5 text-xs font-semibold', CORRECTION_TYPE_COLORS[type] ?? 'border-[var(--border)] bg-[var(--overlay)] text-slate-400')}>
+                                            {CORRECTION_TYPE_LABELS[type] ?? type}
+                                          </span>
+                                          <span className="text-xs text-slate-500">{items.length}</span>
+                                          <div className="flex items-center gap-1.5 text-xs">
+                                            {groupAccepted > 0 && <span className="text-emerald-500">✓{groupAccepted}</span>}
+                                            {groupRejected > 0 && <span className="text-red-400">✗{groupRejected}</span>}
+                                            {groupPending > 0 && <span className="text-slate-600">◯{groupPending}</span>}
+                                          </div>
+                                          <div className="flex-1" />
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              if (allGroupAccepted) {
+                                                setAcceptedCorrections((prev) => { const next = new Set(prev); items.forEach(({i}) => next.delete(i)); return next })
+                                              } else {
+                                                setAcceptedCorrections((prev) => { const next = new Set(prev); items.forEach(({i}) => next.add(i)); return next })
+                                                setRejectedCorrections((prev) => { const next = new Set(prev); items.forEach(({i}) => next.delete(i)); return next })
+                                              }
+                                            }}
+                                            className="flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-0.5 text-xs text-slate-500 transition-colors hover:bg-[var(--overlay)] hover:text-slate-300"
+                                          >
+                                            <CheckCheck className="h-3 w-3" />
+                                            {allGroupAccepted ? 'Deseleziona' : 'Accetta'}
+                                          </button>
+                                          <ChevronDown className={cn('h-3.5 w-3.5 text-slate-600 transition-transform', collapsedCorrGroups.has(type) && '-rotate-90')} />
+                                        </button>
+                                        {!collapsedCorrGroups.has(type) && (
+                                          <div className="divide-y divide-[var(--border)]">
+                                            {items.map(({c, i}) => {
+                                              const isAccepted = acceptedCorrections.has(i)
+                                              const isRejected = rejectedCorrections.has(i)
+                                              const wasAccepted = analysis.acceptedCorrections?.includes(i)
+                                              const wasRejected = analysis.rejectedCorrections?.includes(i)
+                                              return (
+                                                <div
+                                                  key={i}
+                                                  onClick={() => { toggleAccept(i); setActiveInlineCorrection(i) }}
+                                                  className={cn(
+                                                    'cursor-pointer p-3 space-y-2 transition-colors',
+                                                    isAccepted ? 'bg-emerald-950/70 border-l-4 border-emerald-500/80'
+                                                      : isRejected ? 'bg-red-950/10 opacity-60'
+                                                      : activeInlineCorrection === i ? 'bg-violet-900/20'
+                                                      : wasAccepted ? 'bg-emerald-900/5'
+                                                      : wasRejected ? 'bg-slate-900/10 opacity-50'
+                                                      : 'hover:bg-[var(--overlay)]'
+                                                  )}
+                                                >
+                                                  <div className="flex items-center gap-2">
+                                                    <div onClick={(e) => { e.stopPropagation(); toggleAccept(i) }} className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors', isAccepted ? 'border-emerald-500 bg-emerald-600' : 'border-[var(--border-strong)] bg-transparent hover:border-emerald-600')}>
+                                                      {isAccepted && <CheckCheck className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                                                    </div>
+                                                    <div onClick={(e) => { e.stopPropagation(); toggleReject(i) }} className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors', isRejected ? 'border-red-500 bg-red-600' : 'border-[var(--border-strong)] bg-transparent hover:border-red-600')}>
+                                                      {isRejected && <X className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                                                    </div>
+                                                    {isAccepted && <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-900/40 border border-emerald-700/50 px-2 py-0.5 text-xs font-medium text-emerald-400"><CheckCheck className="h-3 w-3" />da applicare</span>}
+                                                    {isRejected && <span className="ml-auto flex items-center gap-1 rounded-full bg-red-900/30 border border-red-800/40 px-2 py-0.5 text-xs text-red-400"><X className="h-3 w-3" />rifiutata</span>}
+                                                    {!isAccepted && !isRejected && wasAccepted && <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-900/30 border border-emerald-800/30 px-2 py-0.5 text-xs text-emerald-600"><CheckCheck className="h-3 w-3" />già accettata</span>}
+                                                    {!isAccepted && !isRejected && wasRejected && <span className="ml-auto flex items-center gap-1 rounded-full bg-slate-800/40 border border-slate-700/30 px-2 py-0.5 text-xs text-slate-600"><X className="h-3 w-3" />già rifiutata</span>}
+                                                    {!isAccepted && !isRejected && !wasAccepted && !wasRejected && <span className="ml-auto text-xs text-slate-700 italic">da rivedere</span>}
+                                                  </div>
+                                                  <div className="grid grid-cols-2 gap-2 text-xs">
+                                                    <div>
+                                                      <p className="mb-1 text-slate-600">Originale</p>
+                                                      <p className="rounded-lg bg-red-950/20 p-2 text-slate-400 line-through leading-relaxed">{c.original}</p>
+                                                    </div>
+                                                    <div>
+                                                      <p className="mb-1 text-slate-600">Suggerito</p>
+                                                      <p className="rounded-lg bg-emerald-950/20 p-2 text-emerald-300 leading-relaxed">{c.suggested}</p>
+                                                    </div>
+                                                  </div>
+                                                  {c.note && <p className="text-xs text-slate-600 italic">{c.note}</p>}
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )
+                                  })
+                                })()}
+                              </div>
+                            )}
+                          </motion.div>
+                        )}
+
+                        {/* ── EXTRA TAB ── */}
+                        {activeTab === 'extra' && (
+                          <motion.div key="extra" initial={{opacity:0,x:-4}} animate={{opacity:1,x:0}} exit={{opacity:0}} transition={{duration:0.15}} className="space-y-4">
+                            {(() => {
+                              const subTabs: {id: ExtraTab; label: string}[] = [
+                                ...(settings.bookType === 'storico' || analysis.historicalAccuracy ? [{id: 'storico' as ExtraTab, label: 'Storico'}] : []),
+                                ...(analysis.readerReactions?.length ? [{id: 'reazioni' as ExtraTab, label: 'Reazioni'}] : []),
+                                ...(analysis.paragraphBreaks || reformatResult ? [{id: 'acapo' as ExtraTab, label: '¶ A Capo'}] : []),
+                                ...(analysis.wordFrequency ? [{id: 'parole' as ExtraTab, label: 'Parole'}] : []),
+                                ...(analysis.showDontTell ? [{id: 'showdontell' as ExtraTab, label: 'Show vs Tell'}] : []),
+                              ]
+                              if (subTabs.length === 0) return (
+                                <div className="rounded-xl border border-dashed border-[var(--border)] py-8 text-center">
+                                  <p className="text-sm text-slate-500">Nessuna analisi extra disponibile.</p>
+                                  <p className="mt-1 text-xs text-slate-600">Attiva le opzioni nel dialog di analisi.</p>
+                                </div>
+                              )
+                              return (
+                                <>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {subTabs.map(({id, label}) => (
+                                      <button
+                                        key={id}
+                                        onClick={() => setActiveExtraTab(id)}
+                                        className={cn(
+                                          'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                                          activeExtraTab === id
+                                            ? 'border-violet-500/40 bg-violet-900/30 text-violet-300'
+                                            : 'border-[var(--border)] text-slate-500 hover:text-slate-300'
+                                        )}
+                                      >
+                                        {label}
+                                      </button>
+                                    ))}
+                                  </div>
+
+                                  {/* storico */}
+                                  {activeExtraTab === 'storico' && (
+                                    <div className="space-y-4">
+                                      {analysis.historicalAccuracy ? (
+                                        <>
+                                          <div className="flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
+                                            <div className="flex flex-col items-center gap-1">
+                                              <span className={cn('text-3xl font-bold tabular-nums', analysis.historicalAccuracy.score >= 8 ? 'text-emerald-400' : analysis.historicalAccuracy.score >= 6 ? 'text-blue-400' : analysis.historicalAccuracy.score >= 4 ? 'text-amber-400' : 'text-red-400')}>{analysis.historicalAccuracy.score.toFixed(1)}</span>
+                                              <span className="text-xs text-slate-600">/10</span>
+                                            </div>
+                                            <p className="flex-1 text-sm leading-relaxed text-slate-300">{analysis.historicalAccuracy.summary}</p>
+                                          </div>
+                                          {analysis.historicalAccuracy.correct.length > 0 && (
+                                            <div>
+                                              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-emerald-500">Accurato ({analysis.historicalAccuracy.correct.length})</p>
+                                              <ul className="space-y-1.5">{analysis.historicalAccuracy.correct.map((item, i) => (<li key={i} className="flex items-start gap-2.5 text-sm"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" /><span className="text-slate-300">{item}</span></li>))}</ul>
+                                            </div>
+                                          )}
+                                          {analysis.historicalAccuracy.anachronisms.length > 0 && (
+                                            <div>
+                                              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-amber-500">Anacronismi ({analysis.historicalAccuracy.anachronisms.length})</p>
+                                              <ul className="space-y-1.5">{analysis.historicalAccuracy.anachronisms.map((item, i) => (<li key={i} className="flex items-start gap-2.5 text-sm"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" /><span className="text-slate-300">{item}</span></li>))}</ul>
+                                            </div>
+                                          )}
+                                          {analysis.historicalAccuracy.issues.length > 0 && (
+                                            <div>
+                                              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-400">Problemi ({analysis.historicalAccuracy.issues.length})</p>
+                                              <div className="space-y-3">{analysis.historicalAccuracy.issues.map((issue, i) => (<div key={i} className="rounded-xl border border-red-800/30 bg-red-900/10 p-4 space-y-2"><p className="rounded-lg bg-[var(--overlay)] px-3 py-2 text-xs text-slate-400 italic">"{issue.quote}"</p><p className="text-sm text-red-300">{issue.issue}</p><p className="flex items-start gap-1.5 text-xs text-slate-500"><span className="shrink-0 font-medium text-blue-400">Suggerimento:</span>{issue.suggestion}</p></div>))}</div>
+                                            </div>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <div className="rounded-xl border border-dashed border-[var(--border)] py-8 text-center"><p className="text-sm text-slate-500">Dati storici non disponibili. Rianalizza per ottenerli.</p></div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* reazioni */}
+                                  {activeExtraTab === 'reazioni' && (
+                                    <div className="space-y-3">
+                                      {analysis.readerReactions?.map((r, i) => (
+                                        <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-3">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2"><span className="text-xl">{r.emoji}</span><span className="text-sm font-medium text-slate-300">{r.persona}</span></div>
+                                            <div className="flex gap-0.5">{Array.from({length: 5}).map((_, star) => (<span key={star} className={star < r.rating ? 'text-amber-400' : 'text-slate-700'}>★</span>))}</div>
+                                          </div>
+                                          <p className="text-sm italic text-slate-300">"{r.reaction}"</p>
+                                          <p className="text-sm leading-relaxed text-slate-400">{r.comment}</p>
+                                          {r.questions.length > 0 && (
+                                            <div className="rounded-lg border border-blue-800/30 bg-blue-900/10 p-3">
+                                              <p className="mb-2 text-xs font-semibold text-blue-400">Domande:</p>
+                                              <ul className="space-y-1">{r.questions.map((q, qi) => (<li key={qi} className="flex items-start gap-2 text-xs text-slate-400"><span className="shrink-0 text-blue-600">?</span>{q}</li>))}</ul>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {/* acapo */}
+                                  {activeExtraTab === 'acapo' && (
+                                    <div className="space-y-5">
+                                      {analysis?.paragraphBreaks ? (
+                                        <div className="space-y-4">
+                                          <div className="flex items-center gap-3">
+                                            <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold', analysis.paragraphBreaks.score >= 8 ? 'bg-emerald-900/30 text-emerald-400' : analysis.paragraphBreaks.score >= 6 ? 'bg-blue-900/30 text-blue-400' : analysis.paragraphBreaks.score >= 4 ? 'bg-amber-900/30 text-amber-400' : 'bg-red-900/30 text-red-400')}>{analysis.paragraphBreaks.score.toFixed(1)}</span>
+                                            <div><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Paragrafi</p><p className="mt-0.5 text-sm text-slate-300">{analysis.paragraphBreaks.summary}</p></div>
+                                          </div>
+                                          {analysis.paragraphBreaks.issues.length > 0 && (
+                                            <div className="space-y-3">
+                                              {analysis.paragraphBreaks.issues.map((issue, i) => {
+                                                const typeColors: Record<string, string> = {blocco_troppo_lungo:'border-orange-800/40 bg-orange-900/10 text-orange-400',assenza_pausa:'border-red-800/40 bg-red-900/10 text-red-400',pausa_prematura:'border-blue-800/40 bg-blue-900/10 text-blue-400',flusso_coscienza:'border-violet-800/40 bg-violet-900/10 text-violet-400',altro:'border-slate-700/40 bg-slate-800/20 text-slate-400'}
+                                                const typeLabels: Record<string, string> = {blocco_troppo_lungo:'Blocco lungo',assenza_pausa:'Manca pausa',pausa_prematura:'Pausa prematura',flusso_coscienza:'Flusso di coscienza',altro:'Altro'}
+                                                return (
+                                                  <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-2">
+                                                    <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold border', typeColors[issue.type] ?? typeColors.altro)}>{typeLabels[issue.type] ?? issue.type}</span>
+                                                    {issue.quote && <blockquote className="border-l-2 border-slate-600/50 pl-3 text-xs italic leading-relaxed text-slate-400">&ldquo;{issue.quote}&rdquo;</blockquote>}
+                                                    <p className="text-sm text-slate-300">{issue.suggestion}</p>
+                                                  </div>
+                                                )
+                                              })}
+                                            </div>
+                                          )}
+                                          {analysis.paragraphBreaks.issues.length === 0 && (
+                                            <div className="flex items-center gap-3 rounded-xl border border-emerald-700/30 bg-emerald-900/10 px-4 py-3"><CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" /><p className="text-sm text-emerald-300">Uso dei paragrafi ottimale.</p></div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center"><AlignLeft className="mx-auto mb-2 h-8 w-8 text-slate-700" /><p className="text-sm text-slate-500">Analisi paragrafi non disponibile</p></div>
+                                      )}
+                                      <div className="border-t border-[var(--border)]" />
+                                      <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                          <div>
+                                            <p className="text-sm font-semibold text-slate-300">Riformatta automaticamente</p>
+                                            <p className="mt-0.5 text-xs text-slate-500">L&apos;IA aggiusta i paragrafi senza modificare le parole.</p>
+                                          </div>
+                                          <button onClick={() => void triggerReformat()} disabled={triggeringReformat || !!pendingReformat} className="flex shrink-0 items-center gap-2 rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-teal-600 disabled:opacity-40">
+                                            {triggeringReformat || pendingReformat ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <AlignLeft className="h-3.5 w-3.5" />}
+                                            {pendingReformat ? 'In corso\u2026' : 'Riformatta'}
+                                          </button>
+                                        </div>
+                                        {reformatResult && reformatResult.chapterId === selectedId && (
+                                          <motion.div initial={{opacity:0,y:4}} animate={{opacity:1,y:0}} className="rounded-xl border border-teal-700/40 bg-teal-900/10 p-4 space-y-3">
+                                            <div className="flex items-start justify-between gap-3">
+                                              <div>
+                                                <p className="text-sm font-semibold text-teal-300">Riformattazione pronta{reformatResult.paragraphsChanged > 0 && <span className="ml-1 text-xs font-normal text-slate-400">· {reformatResult.paragraphsChanged} paragrafi</span>}</p>
+                                                <p className="mt-0.5 text-xs text-slate-400">{reformatResult.changesSummary}</p>
+                                              </div>
+                                              <button onClick={async () => { await deleteParagraphReformat(selectedId); setReformatResult(null) }} className="rounded p-1 text-slate-600 hover:text-slate-300 transition-colors"><X className="h-4 w-4" /></button>
+                                            </div>
+                                            <div className="max-h-32 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--overlay)] p-3 text-xs leading-relaxed text-slate-400 whitespace-pre-wrap">{reformatResult.reformattedText.slice(0, 400)}{reformatResult.reformattedText.length > 400 && '\u2026'}</div>
+                                            <button onClick={() => void handleApplyReformat()} disabled={isApplyingReformat} className="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-500 disabled:opacity-40">
+                                              {isApplyingReformat ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                                              Applica e salva
+                                            </button>
+                                          </motion.div>
+                                        )}
                                       </div>
                                     </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-3 rounded-xl border border-emerald-700/30 bg-emerald-900/10 px-4 py-3">
-                                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
-                                  <p className="text-sm text-emerald-300">Eccellente uso dello showing — nessun caso problematico di &quot;telling&quot; rilevato.</p>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center">
-                              <Eye className="mx-auto mb-2 h-8 w-8 text-slate-700" />
-                              <p className="text-sm text-slate-500">Analisi Show Don&apos;t Tell non disponibile</p>
-                              <p className="mt-1 text-xs text-slate-600">
-                                Rianalizza il capitolo attivando l&apos;opzione <span className="text-orange-400">👁 Show Don&apos;t Tell</span> nel dialog di avvio.
-                              </p>
-                            </div>
-                          )}
-                        </motion.div>
-                      ) : (
-                        /* Editor tab */
-                        <motion.div
-                          key="editor"
-                          initial={{opacity: 0, x: -4}}
-                          animate={{opacity: 1, x: 0}}
-                          exit={{opacity: 0}}
-                          transition={{duration: 0.15}}
-                          className="space-y-3"
-                        >
-                          {!selectedChapter?.driveContent && !editorContent ? (
-                            <p className="text-xs text-amber-400 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2">
-                              Nessun testo sincronizzato da Drive. Sincronizza il capitolo nelle Impostazioni.
-                            </p>
-                          ) : null}
-
-                          {/* Top bar: sync info + save button */}
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-xs text-slate-600 truncate">
-                                {selectedChapter?.lastSyncAt
-                                  ? `Aggiornato ${formatRelativeDate(selectedChapter.lastSyncAt)}`
-                                  : 'Nessuna sincronizzazione registrata'}
-                              </span>
-                              {isDirty && (
-                                <span className="flex shrink-0 items-center gap-1 text-xs text-amber-500">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                  non salvato
-                                </span>
-                              )}
-                              {!isDirty && !!editorContent && (
-                                <span className="flex shrink-0 items-center gap-1 text-xs text-emerald-600">
-                                  <CheckCheck className="h-3 w-3" />
-                                  salvato
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex shrink-0 items-center gap-2">
-                              {selectedChapter?.driveFileId && driveConfig?.folderId && (
-                                <button
-                                  onClick={() => void handleReloadFromDrive()}
-                                  disabled={isForceSyncingDrive}
-                                  className="flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-slate-300 disabled:opacity-50"
-                                >
-                                  <RefreshCw className={cn('h-3 w-3', isForceSyncingDrive && 'animate-spin')} />
-                                  Ricarica
-                                </button>
-                              )}
-                              {driveConfig?.folderId && (
-                                <button
-                                  onClick={() => void handlePushToDrive()}
-                                  disabled={isPushingToDrive || !editorContent || !isPendingPush}
-                                  className={cn(
-                                    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-40',
-                                    isPendingPush ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-700 hover:bg-slate-600'
                                   )}
-                                >
-                                  {isPushingToDrive ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
-                                  Salva su Drive{isPendingPush ? ' *' : ''}
-                                </button>
-                              )}
-                              {!driveConfig?.folderId && (
-                                <button
-                                  onClick={() => void handleSaveEditorContent()}
-                                  disabled={isSavingContent || !editorContent || !isDirty}
-                                  className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
-                                >
-                                  {isSavingContent ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
-                                  Salva bozza{isDirty ? ' *' : ''}
-                                </button>
-                              )}
-                            </div>
-                          </div>
 
-                          {/* Rich Text Editor */}
-                          <RichTextEditor
-                            content={editorContent}
-                            onChange={(html) => {
-                              setEditorContent(html)
-                              setAppliedChanges([])
-                            }}
-                            placeholder="Il testo del capitolo apparirà qui dopo la sincronizzazione Drive..."
-                            isFullscreen={editorFullscreen}
-                            onToggleFullscreen={() => setEditorFullscreen((f) => !f)}
-                          />
+                                  {/* parole */}
+                                  {activeExtraTab === 'parole' && analysis?.wordFrequency && (() => {
+                                    const wf = analysis.wordFrequency
+                                    const total = wf.totalWords || 1
+                                    const chartWords = wf.topWords.slice(0, 20)
+                                    const repScore = wf.repetitionScore
+                                    const repColor = repScore >= 60 ? 'text-red-400 bg-red-900/20 border-red-700/30' : repScore >= 35 ? 'text-amber-400 bg-amber-900/20 border-amber-700/30' : 'text-emerald-400 bg-emerald-900/20 border-emerald-700/30'
+                                    const repLabel = repScore >= 60 ? 'Alta ripetitivit\u00e0' : repScore >= 35 ? 'Media' : 'Bassa'
+                                    return (
+                                      <div className="space-y-4">
+                                        <div className="grid grid-cols-3 gap-3">
+                                          <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3 text-center"><p className="text-xl font-bold text-slate-200">{wf.totalWords.toLocaleString('it-IT')}</p><p className="mt-0.5 text-xs text-slate-500">Parole</p></div>
+                                          <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3 text-center"><p className="text-xl font-bold text-slate-200">{wf.uniqueWords.toLocaleString('it-IT')}</p><p className="mt-0.5 text-xs text-slate-500">Uniche</p></div>
+                                          <div className={`rounded-xl border p-3 text-center ${repColor}`}><p className="text-xl font-bold">{repScore}</p><p className="mt-0.5 text-xs opacity-80">{repLabel}</p></div>
+                                        </div>
+                                        <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4">
+                                          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Top 20 parole</p>
+                                          <ResponsiveContainer width="100%" height={200}>
+                                            <BarChart data={chartWords} margin={{top:0,right:0,left:-20,bottom:55}}>
+                                              <XAxis dataKey="word" tick={{fill:'#94a3b8',fontSize:10}} angle={-45} textAnchor="end" interval={0} />
+                                              <YAxis tick={{fill:'#64748b',fontSize:10}} />
+                                              <Tooltip contentStyle={{background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:8,fontSize:12}} formatter={(v: unknown) => [v as number,'occorrenze']} />
+                                              <Bar dataKey="count" radius={[4,4,0,0]}>{chartWords.map((entry, i) => { const pct=(entry.count/total)*100; return <Cell key={i} fill={pct>=2?'#f87171':pct>=1?'#fb923c':'#818cf8'} /> })}</Bar>
+                                            </BarChart>
+                                          </ResponsiveContainer>
+                                        </div>
+                                        <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] overflow-hidden">
+                                          <table className="w-full text-sm">
+                                            <thead><tr className="border-b border-[var(--border)]"><th className="px-3 py-2 text-left text-xs text-slate-500">#</th><th className="px-3 py-2 text-left text-xs text-slate-500">Parola</th><th className="px-3 py-2 text-right text-xs text-slate-500">N</th><th className="px-3 py-2 text-right text-xs text-slate-500">%</th></tr></thead>
+                                            <tbody>{wf.topWords.map((entry, i) => { const pct=(entry.count/total)*100; const tc=pct>=2?'text-red-300':pct>=1?'text-amber-300':'text-slate-300'; return (<tr key={entry.word} className="border-b border-[var(--border)]/50"><td className="px-3 py-1.5 text-xs text-slate-600">{i+1}</td><td className={`px-3 py-1.5 font-medium ${tc}`}>{entry.word}</td><td className="px-3 py-1.5 text-right text-xs text-slate-400">{entry.count}</td><td className="px-3 py-1.5 text-right text-xs text-slate-500">{pct.toFixed(1)}%</td></tr>) })}</tbody>
+                                          </table>
+                                        </div>
+                                      </div>
+                                    )
+                                  })()}
 
-                          {/* Pannello modifiche applicate */}
-                          {appliedChanges.length > 0 && (
-                            <div className="rounded-xl border border-emerald-800/30 bg-emerald-900/10 p-4 space-y-2">
-                              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-500">
-                                {appliedChanges.length} modifiche applicate al testo
-                              </p>
-                              {appliedChanges.map((ch, i) => (
-                                <div key={i} className="grid grid-cols-2 gap-2 text-xs">
-                                  <p className="rounded bg-red-950/30 px-2 py-1.5 text-slate-500 line-through">{ch.original}</p>
-                                  <p className="rounded bg-emerald-950/30 px-2 py-1.5 text-emerald-300">{ch.suggested}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {!driveConfig?.folderId && (
-                            <p className="text-xs text-slate-600">
-                              Drive non connesso — il testo viene salvato come bozza su Firestore.
-                            </p>
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                                  {/* showdontell */}
+                                  {activeExtraTab === 'showdontell' && analysis?.showDontTell && (
+                                    <div className="space-y-4">
+                                      <div className="flex items-center gap-3">
+                                        <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold', analysis.showDontTell.score >= 8 ? 'bg-emerald-900/30 text-emerald-400' : analysis.showDontTell.score >= 6 ? 'bg-blue-900/30 text-blue-400' : analysis.showDontTell.score >= 4 ? 'bg-amber-900/30 text-amber-400' : 'bg-red-900/30 text-red-400')}>{analysis.showDontTell.score.toFixed(1)}</span>
+                                        <div><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Show vs Tell</p><p className="mt-0.5 text-sm text-slate-300">{analysis.showDontTell.summary}</p></div>
+                                      </div>
+                                      <div className="rounded-lg border border-orange-800/30 bg-orange-900/10 px-3 py-2 text-xs text-orange-300 leading-relaxed">
+                                        <strong>Show, don&apos;t tell:</strong> mostra emozioni attraverso azioni invece di descriverle direttamente. <span className="line-through opacity-50">\u00abEra triste\u00bb</span> \u2192 <span className="text-emerald-300">\u00abLe lacrime le rigarono le guance\u00bb</span>
+                                      </div>
+                                      {analysis.showDontTell.issues.length > 0 ? (
+                                        <div className="space-y-4">
+                                          {analysis.showDontTell.issues.map((issue, i) => (
+                                            <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-3">
+                                              <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-800/40 bg-orange-900/20 px-2.5 py-0.5 text-xs font-semibold text-orange-400">\ud83d\udce2 Telling</span>
+                                              <blockquote className="border-l-2 border-orange-500/40 pl-3 text-sm italic leading-relaxed text-slate-300">&ldquo;{issue.quote}&rdquo;</blockquote>
+                                              <p className="text-xs leading-relaxed text-slate-500">{issue.explanation}</p>
+                                              <div className="rounded-lg border border-emerald-800/40 bg-emerald-900/10 p-3 space-y-1.5">
+                                                <p className="text-xs font-semibold text-emerald-400">\u2728 Riscrittura proposta (Show)</p>
+                                                <p className="text-sm leading-relaxed text-slate-200">{issue.rewrite}</p>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-3 rounded-xl border border-emerald-700/30 bg-emerald-900/10 px-4 py-3"><CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" /><p className="text-sm text-emerald-300">Eccellente uso dello showing.</p></div>
+                                      )}
+                                    </div>
+                                  )}
+                                </>
+                              )
+                            })()}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
+                  {/* end LEFT panel */}
+
+                  {/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 RIGHT: Editor (sticky) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+                  <div className="sticky top-4 flex flex-col gap-3" style={{height: 'calc(100vh - 160px)'}}>
+                    {/* Drive actions bar */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs text-slate-600 truncate">
+                          {selectedChapter?.lastSyncAt ? `Aggiornato ${formatRelativeDate(selectedChapter.lastSyncAt)}` : 'Nessuna sincronizzazione'}
+                        </span>
+                        {isDirty && (
+                          <span className="flex shrink-0 items-center gap-1 text-xs text-amber-500">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />non salvato
+                          </span>
+                        )}
+                        {!isDirty && !!editorContent && (
+                          <span className="flex shrink-0 items-center gap-1 text-xs text-emerald-600">
+                            <CheckCheck className="h-3 w-3" /> salvato
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {selectedChapter?.driveFileId && driveConfig?.folderId && (
+                          <button onClick={() => void handleReloadFromDrive()} disabled={isForceSyncingDrive} className="flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-slate-300 disabled:opacity-50">
+                            <RefreshCw className={cn('h-3 w-3', isForceSyncingDrive && 'animate-spin')} /> Ricarica
+                          </button>
+                        )}
+                        {driveConfig?.folderId && (
+                          <button
+                            onClick={() => void handlePushToDrive()}
+                            disabled={isPushingToDrive || !editorContent || !isPendingPush}
+                            className={cn('flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-40', isPendingPush ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-700 hover:bg-slate-600')}
+                          >
+                            {isPushingToDrive ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
+                            Salva su Drive{isPendingPush ? ' *' : ''}
+                          </button>
+                        )}
+                        {!driveConfig?.folderId && (
+                          <button onClick={() => void handleSaveEditorContent()} disabled={isSavingContent || !editorContent || !isDirty} className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40">
+                            {isSavingContent ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
+                            Salva{isDirty ? ' *' : ''}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Applied changes summary */}
+                    {appliedChanges.length > 0 && (
+                      <div className="shrink-0 flex items-center gap-3 rounded-xl border border-emerald-800/30 bg-emerald-900/10 px-4 py-2.5">
+                        <CheckCheck className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                        <p className="flex-1 text-xs text-emerald-400">{appliedChanges.length} correzioni applicate \u2014 salva su Drive per confermare</p>
+                        <button onClick={() => setAppliedChanges([])} className="text-slate-600 hover:text-slate-400"><X className="h-3.5 w-3.5" /></button>
+                      </div>
+                    )}
+
+                    {!selectedChapter?.driveContent && !editorContent && (
+                      <p className="shrink-0 text-xs text-amber-400 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2">
+                        Nessun testo sincronizzato da Drive. Sincronizza il capitolo nelle Impostazioni.
+                      </p>
+                    )}
+
+                    {/* Rich Text Editor with inline corrections */}
+                    <RichTextEditor
+                      content={editorContent}
+                      onChange={(html) => { setEditorContent(html); setAppliedChanges([]) }}
+                      className="flex-1 min-h-0"
+                      placeholder="Il testo del capitolo apparir\u00e0 qui dopo la sincronizzazione Drive..."
+                      isFullscreen={editorFullscreen}
+                      onToggleFullscreen={() => setEditorFullscreen((f) => !f)}
+                      inlineCorrections={inlineCorrections}
+                      acceptedCorrections={acceptedCorrections}
+                      rejectedCorrections={rejectedCorrections}
+                      focusedCorrection={activeInlineCorrection}
+                      onAcceptInline={toggleAccept}
+                      onRejectInline={toggleReject}
+                    />
+                  </div>
+                  {/* end RIGHT panel */}
                 </div>
+                {/* end split-pane grid */}
               </>
             )}
             {!isLoading && !analysis && availableProviders.length > 0 && (
@@ -2644,7 +2162,7 @@ export default function AnalysisPage() {
                                                 e.stopPropagation()
                                                 setSelectedId(c.id)
                                                 setActiveProvider(prov)
-                                                setActiveTab('strengths')
+                                                setActiveTab('feedback')
                                                 window.scrollTo({top: 0, behavior: 'smooth'})
                                               }}
                                               className="text-xs text-violet-400 hover:text-violet-300"

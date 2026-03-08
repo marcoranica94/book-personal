@@ -1,72 +1,218 @@
-import {useCallback, useEffect} from 'react'
-import {EditorContent, useEditor} from '@tiptap/react'
+import {useCallback, useEffect, useRef, useState} from 'react'
+import {EditorContent, Extension, useEditor} from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import Highlight from '@tiptap/extension-highlight'
+import {Plugin, PluginKey} from 'prosemirror-state'
+import {Decoration, DecorationSet} from 'prosemirror-view'
+import type {Node as PMNode} from 'prosemirror-model'
 import {
-    AlignCenter,
-    AlignJustify,
-    AlignLeft,
-    AlignRight,
-    Bold,
-    Heading1,
-    Heading2,
-    Heading3,
-    Highlighter,
-    Italic,
-    List,
-    ListOrdered,
-    Maximize2,
-    Minimize2,
-    Minus,
-    Pilcrow,
-    Quote,
-    Redo2,
-    Strikethrough,
-    Underline as UnderlineIcon,
-    Undo2,
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
+  Bold,
+  CheckCheck,
+  Heading1,
+  Heading2,
+  Heading3,
+  Highlighter,
+  Italic,
+  List,
+  ListOrdered,
+  Maximize2,
+  Minimize2,
+  Minus,
+  Pilcrow,
+  Quote,
+  Redo2,
+  Strikethrough,
+  Underline as UnderlineIcon,
+  Undo2,
+  X,
 } from 'lucide-react'
 import {cn} from '@/utils/cn'
 
-interface RichTextEditorProps {
-  content: string
-  onChange: (html: string) => void
-  placeholder?: string
-  readOnly?: boolean
-  className?: string
-  isFullscreen?: boolean
-  onToggleFullscreen?: () => void
+// ─── Inline correction types ───────────────────────────────────────────────────
+
+export interface InlineCorrection {
+  index: number
+  original: string
+  suggested: string
+  type: string
+  note?: string
 }
+
+// ─── ProseMirror plugin for correction highlights ──────────────────────────────
+
+const CORRECTION_PLUGIN_KEY = new PluginKey<DecorationSet>('correctionHighlights')
+
+function buildCorrectionDecorations(
+  doc: PMNode,
+  corrections: InlineCorrection[],
+  accepted: Set<number>,
+  rejected: Set<number>,
+  focused: number | null,
+): DecorationSet {
+  if (!corrections.length) return DecorationSet.empty
+  const decorations: Decoration[] = []
+
+  doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return
+    for (const corr of corrections) {
+      let searchFrom = 0
+      while (searchFrom < node.text!.length) {
+        const idx = node.text!.indexOf(corr.original, searchFrom)
+        if (idx === -1) break
+        const from = pos + idx
+        const to = from + corr.original.length
+        const isAccepted = accepted.has(corr.index)
+        const isRejected = rejected.has(corr.index)
+        const isFocused = focused === corr.index
+        const base = isAccepted
+          ? 'corr-accepted'
+          : isRejected
+          ? 'corr-rejected'
+          : `corr-pending corr-type-${corr.type}`
+        decorations.push(
+          Decoration.inline(from, to, {
+            class: isFocused ? `${base} corr-focused` : base,
+            'data-corr-idx': String(corr.index),
+          }),
+        )
+        searchFrom = idx + corr.original.length
+      }
+    }
+  })
+
+  return DecorationSet.create(doc, decorations)
+}
+
+// ─── Correction tooltip ────────────────────────────────────────────────────────
+
+const CORRECTION_TYPE_LABELS: Record<string, string> = {
+  grammar: 'Grammatica',
+  style: 'Stile',
+  clarity: 'Chiarezza',
+  continuity: 'Continuità',
+}
+
+const CORRECTION_TYPE_COLORS: Record<string, string> = {
+  grammar: 'text-red-400 border-red-800/30 bg-red-900/20',
+  style: 'text-violet-400 border-violet-800/30 bg-violet-900/20',
+  clarity: 'text-blue-400 border-blue-800/30 bg-blue-900/20',
+  continuity: 'text-amber-400 border-amber-800/30 bg-amber-900/20',
+}
+
+function CorrectionTooltip({
+  correction,
+  x,
+  y,
+  isAccepted,
+  isRejected,
+  onAccept,
+  onReject,
+  onClose,
+}: {
+  correction: InlineCorrection
+  x: number
+  y: number
+  isAccepted: boolean
+  isRejected: boolean
+  onAccept: () => void
+  onReject: () => void
+  onClose: () => void
+}) {
+  const typeColor = CORRECTION_TYPE_COLORS[correction.type] ?? 'text-slate-400 border-slate-700 bg-slate-800/20'
+  const typeLabel = CORRECTION_TYPE_LABELS[correction.type] ?? correction.type
+
+  // Keep tooltip inside viewport
+  const safeX = Math.min(x, window.innerWidth - 300)
+  const safeY = y + 4
+
+  return (
+    <div
+      className="corr-tooltip fixed z-[100] w-72 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] shadow-2xl p-3 space-y-2.5"
+      style={{left: safeX, top: safeY}}
+      onMouseLeave={onClose}
+    >
+      <div className="flex items-center justify-between">
+        <span className={cn('rounded-full border px-2 py-0.5 text-xs font-semibold', typeColor)}>
+          {typeLabel}
+        </span>
+        <button onClick={onClose} className="rounded p-0.5 text-slate-600 hover:text-slate-400 transition-colors">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <p className="mb-1 text-slate-600">Originale</p>
+          <p className="rounded-lg bg-red-950/30 px-2 py-1.5 text-slate-400 line-through leading-relaxed">{correction.original}</p>
+        </div>
+        <div>
+          <p className="mb-1 text-slate-600">Suggerito</p>
+          <p className="rounded-lg bg-emerald-950/30 px-2 py-1.5 text-emerald-300 leading-relaxed">{correction.suggested}</p>
+        </div>
+      </div>
+
+      {correction.note && (
+        <p className="text-xs text-slate-600 italic leading-relaxed">{correction.note}</p>
+      )}
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => { onAccept(); onClose() }}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-semibold transition-colors',
+            isAccepted
+              ? 'bg-emerald-600 text-white'
+              : 'border border-emerald-700/40 text-emerald-400 hover:bg-emerald-900/30',
+          )}
+        >
+          <CheckCheck className="h-3 w-3" />
+          {isAccepted ? 'Accettata' : 'Accetta'}
+        </button>
+        <button
+          onClick={() => { onReject(); onClose() }}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-semibold transition-colors',
+            isRejected
+              ? 'bg-red-700 text-white'
+              : 'border border-red-800/40 text-red-400 hover:bg-red-900/30',
+          )}
+        >
+          <X className="h-3 w-3" />
+          {isRejected ? 'Rifiutata' : 'Rifiuta'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Text conversion helpers ───────────────────────────────────────────────────
 
 /** Converte testo puro / markdown base → HTML per Tiptap */
 function textToHtml(text: string): string {
   if (!text) return ''
-  // Se contiene già tag HTML block, restituisce direttamente
   if (/<(p|h[1-6]|ul|ol|li|blockquote|div|br)\b/i.test(text)) return text
-
   return text
     .split(/\n\n+/)
     .map((para) => {
       const trimmed = para.trim()
       if (!trimmed) return ''
-
-      // Titoli markdown: # ## ###
       const h3 = trimmed.match(/^###\s+(.+)/)
       if (h3) return `<h3>${inlineMarkdown(h3[1])}</h3>`
       const h2 = trimmed.match(/^##\s+(.+)/)
       if (h2) return `<h2>${inlineMarkdown(h2[1])}</h2>`
       const h1 = trimmed.match(/^#\s+(.+)/)
       if (h1) return `<h1>${inlineMarkdown(h1[1])}</h1>`
-
-      // Citazione blockquote: >
       if (trimmed.startsWith('> ')) {
         return `<blockquote>${inlineMarkdown(trimmed.slice(2))}</blockquote>`
       }
-
-      // Paragrafo normale — mantieni gli a-capo singoli come <br>
       const lines = trimmed.split(/\n/).map(inlineMarkdown).join('<br/>')
       return `<p>${lines}</p>`
     })
@@ -74,45 +220,36 @@ function textToHtml(text: string): string {
     .join('')
 }
 
-/** Applica formattazione inline markdown: **bold**, *italic*, ~~strike~~ */
+/** Applica formattazione inline markdown */
 function inlineMarkdown(text: string): string {
   return text
-    // **grassetto** o __grassetto__
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    // *corsivo* o _corsivo_  (non dopo spazio+asterisco di bullet)
     .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
     .replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em>$1</em>')
-    // ~~barrato~~
     .replace(/~~(.+?)~~/g, '<s>$1</s>')
-    // `codice`
     .replace(/`(.+?)`/g, '<code>$1</code>')
 }
 
-/** Estrae testo puro dall'HTML di Tiptap (per salvare su Drive/Firestore) */
+/** Estrae testo puro dall'HTML di Tiptap */
 function htmlToPlainText(html: string): string {
   if (!html) return ''
-  // Se non contiene tag HTML, è già testo puro
   if (!/<[a-z][\s\S]*>/i.test(html)) return html
-
   return html
-    // Blocchi che diventano paragrafi separati da doppia newline
     .replace(/<\/(p|h[1-6]|blockquote|li)>/gi, '\n\n')
-    // <br> → a-capo singolo
     .replace(/<br\s*\/?>/gi, '\n')
-    // Rimuovi tutti i tag rimanenti
     .replace(/<[^>]+>/g, '')
-    // Decode entità HTML comuni
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ')
-    // Normalizza: max 2 newline consecutive, rimuovi spazi finali
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
+
+// ─── Toolbar helpers ───────────────────────────────────────────────────────────
 
 function ToolbarButton({
   onClick,
@@ -150,6 +287,51 @@ function ToolbarDivider() {
   return <div className="mx-1 h-5 w-px bg-white/[0.08]" />
 }
 
+// ─── Props ─────────────────────────────────────────────────────────────────────
+
+interface RichTextEditorProps {
+  content: string
+  onChange: (html: string) => void
+  placeholder?: string
+  readOnly?: boolean
+  className?: string
+  isFullscreen?: boolean
+  onToggleFullscreen?: () => void
+  /** Correzioni AI da evidenziare nel testo */
+  inlineCorrections?: InlineCorrection[]
+  acceptedCorrections?: Set<number>
+  rejectedCorrections?: Set<number>
+  focusedCorrection?: number | null
+  onAcceptInline?: (idx: number) => void
+  onRejectInline?: (idx: number) => void
+}
+
+// ─── CSS for correction decorations (injected once) ───────────────────────────
+
+const CORRECTION_STYLES = `
+  .corr-pending { cursor: pointer; border-radius: 2px; }
+  .corr-type-grammar  { border-bottom: 2px solid rgba(239,68,68,0.7);  background: rgba(239,68,68,0.08); }
+  .corr-type-style    { border-bottom: 2px solid rgba(139,92,246,0.7); background: rgba(139,92,246,0.08); }
+  .corr-type-clarity  { border-bottom: 2px solid rgba(59,130,246,0.7); background: rgba(59,130,246,0.08); }
+  .corr-type-continuity { border-bottom: 2px solid rgba(245,158,11,0.7); background: rgba(245,158,11,0.08); }
+  .corr-pending:not([class*="corr-type-"]) { border-bottom: 2px solid rgba(100,116,139,0.7); background: rgba(100,116,139,0.08); }
+  .corr-accepted { border-bottom: 2px solid rgba(16,185,129,0.7); background: rgba(16,185,129,0.08); cursor: pointer; border-radius: 2px; }
+  .corr-rejected { opacity: 0.45; text-decoration: line-through; cursor: pointer; }
+  .corr-focused  { box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 2px; }
+  .corr-pending:hover, .corr-accepted:hover { filter: brightness(1.2); }
+`
+
+let stylesInjected = false
+function injectCorrectionStyles() {
+  if (stylesInjected) return
+  const style = document.createElement('style')
+  style.textContent = CORRECTION_STYLES
+  document.head.appendChild(style)
+  stylesInjected = true
+}
+
+// ─── Component ─────────────────────────────────────────────────────────────────
+
 export default function RichTextEditor({
   content,
   onChange,
@@ -158,8 +340,26 @@ export default function RichTextEditor({
   className,
   isFullscreen = false,
   onToggleFullscreen = () => {},
+  inlineCorrections,
+  acceptedCorrections,
+  rejectedCorrections,
+  focusedCorrection = null,
+  onAcceptInline,
+  onRejectInline,
 }: RichTextEditorProps) {
-  // Escape per uscire dal fullscreen
+  // Inject correction CSS once
+  useEffect(() => { injectCorrectionStyles() }, [])
+
+  // Refs to pass correction data into the ProseMirror plugin
+  const correctionsRef = useRef<InlineCorrection[]>([])
+  const acceptedRef = useRef<Set<number>>(new Set())
+  const rejectedRef = useRef<Set<number>>(new Set())
+  const focusedRef = useRef<number | null>(null)
+
+  // Tooltip state
+  const [tooltip, setTooltip] = useState<{corrIdx: number; x: number; y: number} | null>(null)
+
+  // Escape fullscreen
   useEffect(() => {
     if (!isFullscreen) return
     const handleKey = (e: KeyboardEvent) => {
@@ -181,19 +381,74 @@ export default function RichTextEditor({
       TextAlign.configure({types: ['heading', 'paragraph']}),
       Placeholder.configure({placeholder}),
       CharacterCount,
+      // Correction highlight plugin
+      Extension.create({
+        name: 'correctionHighlights',
+        addProseMirrorPlugins() {
+          return [
+            new Plugin({
+              key: CORRECTION_PLUGIN_KEY,
+              state: {
+                init(_, {doc}) {
+                  return buildCorrectionDecorations(
+                    doc,
+                    correctionsRef.current,
+                    acceptedRef.current,
+                    rejectedRef.current,
+                    focusedRef.current,
+                  )
+                },
+                apply(tr, old, _, newState) {
+                  if (tr.docChanged || tr.getMeta(CORRECTION_PLUGIN_KEY)) {
+                    return buildCorrectionDecorations(
+                      newState.doc,
+                      correctionsRef.current,
+                      acceptedRef.current,
+                      rejectedRef.current,
+                      focusedRef.current,
+                    )
+                  }
+                  return old.map(tr.mapping, newState.doc)
+                },
+              },
+              props: {
+                decorations(state) {
+                  return CORRECTION_PLUGIN_KEY.getState(state)
+                },
+              },
+            }),
+          ]
+        },
+      }),
     ],
     content: textToHtml(content),
     editable: !readOnly,
     onUpdate: ({editor: ed}) => {
-      // Restituisce testo puro — compatibile con Drive/Firestore
       onChange(htmlToPlainText(ed.getHTML()))
     },
     editorProps: {
-      attributes: {
-        class: 'rich-editor-content',
-      },
+      attributes: {class: 'rich-editor-content'},
     },
   })
+
+  // Update refs & dispatch re-render whenever correction data changes
+  useEffect(() => {
+    correctionsRef.current = inlineCorrections ?? []
+    acceptedRef.current = acceptedCorrections ?? new Set()
+    rejectedRef.current = rejectedCorrections ?? new Set()
+    focusedRef.current = focusedCorrection ?? null
+    if (editor?.view) {
+      editor.view.dispatch(editor.view.state.tr.setMeta(CORRECTION_PLUGIN_KEY, true))
+    }
+  }, [inlineCorrections, acceptedCorrections, rejectedCorrections, focusedCorrection, editor])
+
+  // Scroll editor to focused correction
+  useEffect(() => {
+    if (focusedCorrection == null || !editor?.view) return
+    // Find the decorated DOM element and scroll to it
+    const el = editor.view.dom.querySelector(`[data-corr-idx="${focusedCorrection}"]`)
+    el?.scrollIntoView({behavior: 'smooth', block: 'center'})
+  }, [focusedCorrection, editor])
 
   // Sync external content changes (e.g. reload from Drive)
   const setContent = useCallback(
@@ -201,7 +456,6 @@ export default function RichTextEditor({
       if (!editor) return
       const newHtml = textToHtml(newContent)
       const currentHtml = editor.getHTML()
-      // Confronta HTML con HTML per evitare loop infiniti
       if (currentHtml !== newHtml) {
         editor.commands.setContent(newHtml, {emitUpdate: false})
       }
@@ -214,184 +468,116 @@ export default function RichTextEditor({
   }, [content, setContent])
 
   useEffect(() => {
-    if (editor) {
-      editor.setEditable(!readOnly)
-    }
+    if (editor) editor.setEditable(!readOnly)
   }, [readOnly, editor])
 
   if (!editor) return null
 
-  const ic = 'h-4 w-4' // icon class
+  const ic = 'h-4 w-4'
+
+  // ─── Event handlers for inline correction tooltip ──────────────────────────
+
+  function handleEditorMouseOver(e: React.MouseEvent) {
+    if (!inlineCorrections?.length) return
+    const target = e.target as HTMLElement
+    const corrEl = target.closest('[data-corr-idx]') as HTMLElement | null
+    if (!corrEl) return
+    const idx = Number(corrEl.getAttribute('data-corr-idx'))
+    const rect = corrEl.getBoundingClientRect()
+    setTooltip({corrIdx: idx, x: rect.left, y: rect.bottom})
+  }
+
+  function handleEditorMouseLeave(e: React.MouseEvent) {
+    // Keep tooltip if moving into it
+    const related = e.relatedTarget as HTMLElement | null
+    if (related?.closest('.corr-tooltip')) return
+    setTooltip(null)
+  }
+
+  // ─── Toolbar ───────────────────────────────────────────────────────────────
 
   const toolbarContent = (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5">
-      {/* Undo / Redo */}
-      <ToolbarButton
-        onClick={() => editor.chain().focus().undo().run()}
-        disabled={!editor.can().undo()}
-        title="Annulla (Ctrl+Z)"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Annulla (Ctrl+Z)">
         <Undo2 className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().redo().run()}
-        disabled={!editor.can().redo()}
-        title="Ripeti (Ctrl+Y)"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title="Ripeti (Ctrl+Y)">
         <Redo2 className={ic} />
       </ToolbarButton>
-
       <ToolbarDivider />
-
-      {/* Headings */}
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setParagraph().run()}
-        isActive={editor.isActive('paragraph') && !editor.isActive('heading')}
-        title="Paragrafo"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().setParagraph().run()} isActive={editor.isActive('paragraph') && !editor.isActive('heading')} title="Paragrafo">
         <Pilcrow className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({level: 1}).run()}
-        isActive={editor.isActive('heading', {level: 1})}
-        title="Titolo 1"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({level: 1}).run()} isActive={editor.isActive('heading', {level: 1})} title="Titolo 1">
         <Heading1 className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({level: 2}).run()}
-        isActive={editor.isActive('heading', {level: 2})}
-        title="Titolo 2"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({level: 2}).run()} isActive={editor.isActive('heading', {level: 2})} title="Titolo 2">
         <Heading2 className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({level: 3}).run()}
-        isActive={editor.isActive('heading', {level: 3})}
-        title="Titolo 3"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({level: 3}).run()} isActive={editor.isActive('heading', {level: 3})} title="Titolo 3">
         <Heading3 className={ic} />
       </ToolbarButton>
-
       <ToolbarDivider />
-
-      {/* Inline formatting */}
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBold().run()}
-        isActive={editor.isActive('bold')}
-        title="Grassetto (Ctrl+B)"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive('bold')} title="Grassetto (Ctrl+B)">
         <Bold className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-        isActive={editor.isActive('italic')}
-        title="Corsivo (Ctrl+I)"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().toggleItalic().run()} isActive={editor.isActive('italic')} title="Corsivo (Ctrl+I)">
         <Italic className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
-        isActive={editor.isActive('underline')}
-        title="Sottolineato (Ctrl+U)"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive('underline')} title="Sottolineato (Ctrl+U)">
         <UnderlineIcon className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-        isActive={editor.isActive('strike')}
-        title="Barrato"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().toggleStrike().run()} isActive={editor.isActive('strike')} title="Barrato">
         <Strikethrough className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHighlight().run()}
-        isActive={editor.isActive('highlight')}
-        title="Evidenzia"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().toggleHighlight().run()} isActive={editor.isActive('highlight')} title="Evidenzia">
         <Highlighter className={ic} />
       </ToolbarButton>
-
       <ToolbarDivider />
-
-      {/* Lists */}
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-        isActive={editor.isActive('bulletList')}
-        title="Elenco puntato"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} isActive={editor.isActive('bulletList')} title="Elenco puntato">
         <List className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        isActive={editor.isActive('orderedList')}
-        title="Elenco numerato"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().toggleOrderedList().run()} isActive={editor.isActive('orderedList')} title="Elenco numerato">
         <ListOrdered className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        isActive={editor.isActive('blockquote')}
-        title="Citazione"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().toggleBlockquote().run()} isActive={editor.isActive('blockquote')} title="Citazione">
         <Quote className={ic} />
       </ToolbarButton>
-
       <ToolbarDivider />
-
-      {/* Alignment */}
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setTextAlign('left').run()}
-        isActive={editor.isActive({textAlign: 'left'})}
-        title="Allinea a sinistra"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('left').run()} isActive={editor.isActive({textAlign: 'left'})} title="Allinea a sinistra">
         <AlignLeft className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setTextAlign('center').run()}
-        isActive={editor.isActive({textAlign: 'center'})}
-        title="Centra"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('center').run()} isActive={editor.isActive({textAlign: 'center'})} title="Centra">
         <AlignCenter className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setTextAlign('right').run()}
-        isActive={editor.isActive({textAlign: 'right'})}
-        title="Allinea a destra"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('right').run()} isActive={editor.isActive({textAlign: 'right'})} title="Allinea a destra">
         <AlignRight className={ic} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setTextAlign('justify').run()}
-        isActive={editor.isActive({textAlign: 'justify'})}
-        title="Giustifica"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('justify').run()} isActive={editor.isActive({textAlign: 'justify'})} title="Giustifica">
         <AlignJustify className={ic} />
       </ToolbarButton>
-
       <ToolbarDivider />
-
-      {/* Horizontal rule */}
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setHorizontalRule().run()}
-        title="Linea orizzontale"
-      >
+      <ToolbarButton onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Linea orizzontale">
         <Minus className={ic} />
       </ToolbarButton>
-
-      {/* Spacer + Fullscreen toggle */}
       <div className="flex-1" />
-      <ToolbarButton
-        onClick={onToggleFullscreen}
-        title={isFullscreen ? 'Riduci (Esc)' : 'Espandi a tutto schermo'}
-      >
+      {inlineCorrections && inlineCorrections.length > 0 && (
+        <span className="mr-2 rounded-full border border-violet-700/40 bg-violet-900/20 px-2 py-0.5 text-xs text-violet-400">
+          {inlineCorrections.length} correzioni evidenziate
+        </span>
+      )}
+      <ToolbarButton onClick={onToggleFullscreen} title={isFullscreen ? 'Riduci (Esc)' : 'Espandi a tutto schermo'}>
         {isFullscreen ? <Minimize2 className={ic} /> : <Maximize2 className={ic} />}
       </ToolbarButton>
     </div>
   )
 
   const editorArea = (
-    <div className="rich-editor-doc-bg flex-1 overflow-y-auto bg-[#1a1a2e]">
+    <div
+      className="rich-editor-doc-bg flex-1 overflow-y-auto bg-[#1a1a2e]"
+      onMouseOver={handleEditorMouseOver}
+      onMouseLeave={handleEditorMouseLeave}
+    >
       <div className="rich-editor-doc-page mx-auto max-w-[800px] min-h-[500px] bg-[#0f0f1a] my-6 rounded-lg shadow-[0_0_40px_rgba(0,0,0,0.4)] border border-white/[0.04] px-12 py-10">
         <EditorContent editor={editor} />
       </div>
@@ -410,29 +596,51 @@ export default function RichTextEditor({
     </div>
   )
 
-  // ─── Fullscreen mode ───
+  // ─── Tooltip rendering ─────────────────────────────────────────────────────
+  const tooltipCorrection = tooltip != null
+    ? inlineCorrections?.find((c) => c.index === tooltip.corrIdx) ?? null
+    : null
+
+  const tooltipEl = tooltipCorrection ? (
+    <CorrectionTooltip
+      correction={tooltipCorrection}
+      x={tooltip!.x}
+      y={tooltip!.y}
+      isAccepted={acceptedCorrections?.has(tooltipCorrection.index) ?? false}
+      isRejected={rejectedCorrections?.has(tooltipCorrection.index) ?? false}
+      onAccept={() => onAcceptInline?.(tooltipCorrection.index)}
+      onReject={() => onRejectInline?.(tooltipCorrection.index)}
+      onClose={() => setTooltip(null)}
+    />
+  ) : null
+
+  // ─── Fullscreen mode ───────────────────────────────────────────────────────
   if (isFullscreen) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col bg-[var(--bg-base)]">
+      <>
+        <div className="fixed inset-0 z-50 flex flex-col bg-[var(--bg-base)]">
+          {!readOnly && toolbarContent}
+          {editorArea}
+          {statusBar}
+        </div>
+        {tooltipEl}
+      </>
+    )
+  }
+
+  return (
+    <>
+      <div
+        className={cn(
+          'flex flex-col rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden shadow-lg',
+          className,
+        )}
+      >
         {!readOnly && toolbarContent}
         {editorArea}
         {statusBar}
       </div>
-    )
-  }
-
-  // ─── Inline mode ───
-  return (
-    <div
-      className={cn(
-        'flex flex-col rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden shadow-lg',
-        className,
-      )}
-    >
-      {!readOnly && toolbarContent}
-      {editorArea}
-      {statusBar}
-    </div>
+      {tooltipEl}
+    </>
   )
 }
-
