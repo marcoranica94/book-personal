@@ -6,9 +6,9 @@ import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import Highlight from '@tiptap/extension-highlight'
-import {Plugin, PluginKey} from 'prosemirror-state'
-import {Decoration, DecorationSet} from 'prosemirror-view'
-import type {Node as PMNode} from 'prosemirror-model'
+import {Plugin, PluginKey, type EditorState, type EditorStateConfig, type Transaction} from '@tiptap/pm/state'
+import {Decoration, DecorationSet} from '@tiptap/pm/view'
+import type {Node as PMNode} from '@tiptap/pm/model'
 import {
   AlignCenter,
   AlignJustify,
@@ -60,7 +60,7 @@ function buildCorrectionDecorations(
   if (!corrections.length) return DecorationSet.empty
   const decorations: Decoration[] = []
 
-  doc.descendants((node, pos) => {
+  doc.descendants((node: PMNode, pos: number) => {
     if (!node.isText || !node.text) return
     for (const corr of corrections) {
       let searchFrom = 0
@@ -389,7 +389,7 @@ export default function RichTextEditor({
             new Plugin({
               key: CORRECTION_PLUGIN_KEY,
               state: {
-                init(_, {doc}) {
+                init(_: EditorStateConfig, {doc}: EditorState) {
                   return buildCorrectionDecorations(
                     doc,
                     correctionsRef.current,
@@ -398,7 +398,7 @@ export default function RichTextEditor({
                     focusedRef.current,
                   )
                 },
-                apply(tr, old, _, newState) {
+                apply(tr: Transaction, old: DecorationSet, _: EditorState, newState: EditorState) {
                   if (tr.docChanged || tr.getMeta(CORRECTION_PLUGIN_KEY)) {
                     return buildCorrectionDecorations(
                       newState.doc,
