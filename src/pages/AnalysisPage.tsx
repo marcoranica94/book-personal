@@ -2780,8 +2780,9 @@ export default function AnalysisPage() {
               animate={{opacity: 1, scale: 1, y: 0}}
               exit={{opacity: 0, scale: 0.92}}
               transition={{duration: 0.18}}
-              className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+              className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] shadow-2xl max-h-[90vh] flex flex-col"
             >
+              <div className="overflow-y-auto flex-1 p-6">
               <div className="mb-4 flex items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-900/40 text-violet-400">
                   <Play className="h-5 w-5" />
@@ -2947,6 +2948,7 @@ export default function AnalysisPage() {
                   {triggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                   Avvia analisi
                 </button>
+              </div>
               </div>
             </motion.div>
           </>
