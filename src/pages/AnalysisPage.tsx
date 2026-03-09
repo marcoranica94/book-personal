@@ -340,6 +340,8 @@ export default function AnalysisPage() {
   const [activeInlineCorrection, setActiveInlineCorrection] = useState<number | null>(null)
   // Editor inline
   const [editorContent, setEditorContent] = useState('')
+  // externalSearchQuery: stringa + timestamp per ritriggerare anche se stesso testo
+  const [editorSearchQuery, setEditorSearchQuery] = useState('')
   const [isSavingContent, setIsSavingContent] = useState(false)
   const [isForceSyncingDrive, setIsForceSyncingDrive] = useState(false)
   const [isPushingToDrive, setIsPushingToDrive] = useState(false)
@@ -388,6 +390,7 @@ export default function AnalysisPage() {
   const [workflowRun, setWorkflowRun] = useState<WorkflowRunInfo | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const isApplyingRef = useRef(false)
+  const analysisSectionRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     void loadChapters()
@@ -405,6 +408,11 @@ export default function AnalysisPage() {
       void loadAnalysisErrors()
     }
   }, [chapters, loadAllAnalyses, loadAnalysisErrors])
+
+  // Scroll all'analisi quando cambia provider
+  useEffect(() => {
+    analysisSectionRef.current?.scrollIntoView({behavior: 'smooth', block: 'start'})
+  }, [activeProvider])
 
   // Reset editor + corrections when switching chapter
   useEffect(() => {
@@ -1297,7 +1305,7 @@ export default function AnalysisPage() {
                 })()}
 
                 {/* ── Split-pane: LEFT analysis + RIGHT editor ── */}
-                <div className="grid grid-cols-[42%_1fr] gap-4 items-start">
+                <div ref={analysisSectionRef} className="grid grid-cols-[42%_1fr] gap-4 items-start">
                   {/* ──────── LEFT: Analysis panel ──────────── */}
                   <div
                     className="flex flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]"
@@ -1402,7 +1410,14 @@ export default function AnalysisPage() {
                                     return (
                                       <li
                                         key={i}
-                                        onClick={() => setItemDetailModal({type: 'weaknesses', item})}
+                                        onClick={() => {
+                                          setItemDetailModal({type: 'weaknesses', item})
+                                          if (itemQuotes.length > 0) {
+                                            setActiveTab('editor' as Tab)
+                                            setEditorSearchQuery(itemQuotes[0])
+                                            setTimeout(() => setEditorSearchQuery(''), 100)
+                                          }
+                                        }}
                                         className="cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]"
                                       >
                                         <div className="flex items-start gap-2">
@@ -1433,11 +1448,19 @@ export default function AnalysisPage() {
                                 <ul className="space-y-1.5">
                                   {analysis.suggestions.map((item, i) => {
                                     const itemText = typeof item === 'string' ? item : item.text
+                                    const itemQuotesSugg = typeof item === 'string' ? [] : ((item as {quotes?: string[]}).quotes ?? [])
                                     const itemSolution = typeof item === 'string' ? undefined : (item as {solution?: string}).solution
                                     return (
                                       <li
                                         key={i}
-                                        onClick={() => setItemDetailModal({type: 'suggestions', item})}
+                                        onClick={() => {
+                                          setItemDetailModal({type: 'suggestions', item})
+                                          if (itemQuotesSugg.length > 0) {
+                                            setActiveTab('editor' as Tab)
+                                            setEditorSearchQuery(itemQuotesSugg[0])
+                                            setTimeout(() => setEditorSearchQuery(''), 100)
+                                          }
+                                        }}
                                         className="cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]"
                                       >
                                         <div className="flex items-start gap-2">
@@ -1926,6 +1949,7 @@ export default function AnalysisPage() {
                       focusedCorrection={activeInlineCorrection}
                       onAcceptInline={handleAcceptInline}
                       onRejectInline={toggleReject}
+                      externalSearchQuery={editorSearchQuery}
                     />
                   </div>
                   {/* end RIGHT panel */}

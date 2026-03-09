@@ -61,35 +61,66 @@ function buildCorrectionDecorations(
   focused: number | null,
 ): DecorationSet {
   if (!corrections.length) return DecorationSet.empty
-  const decorations: Decoration[] = []
+
+  // Build flat text + position map so we can find corrections that span
+  // across hard-break nodes (single \n within a paragraph)
+  const pmPositions: number[] = [] // pmPositions[i] = PM pos of flat char i
+  let flatText = ''
 
   doc.descendants((node: PMNode, pos: number) => {
-    if (!node.isText || !node.text) return
-    for (const corr of corrections) {
-      let searchFrom = 0
-      while (searchFrom < node.text!.length) {
-        const idx = node.text!.indexOf(corr.original, searchFrom)
-        if (idx === -1) break
-        const from = pos + idx
-        const to = from + corr.original.length
-        const isAccepted = accepted.has(corr.index)
-        const isRejected = rejected.has(corr.index)
-        const isFocused = focused === corr.index
-        const base = isAccepted
-          ? 'corr-accepted'
-          : isRejected
-          ? 'corr-rejected'
-          : `corr-pending corr-type-${corr.type}`
-        decorations.push(
-          Decoration.inline(from, to, {
-            class: isFocused ? `${base} corr-focused` : base,
-            'data-corr-idx': String(corr.index),
-          }),
-        )
-        searchFrom = idx + corr.original.length
+    if (node.isText && node.text) {
+      for (let i = 0; i < node.text.length; i++) {
+        pmPositions.push(pos + i)
+      }
+      flatText += node.text
+    } else if (node.type.name === 'hardBreak') {
+      pmPositions.push(pos) // hardBreak occupies 1 PM position
+      flatText += '\n'
+    } else if (!node.isLeaf && !node.isText) {
+      // Add paragraph boundary as \n\n so multi-para corrections can match
+      // (we don't push PM positions for these since they're block boundaries)
+      if (flatText.length > 0 && !flatText.endsWith('\n')) {
+        flatText += '\n\n'
+        // push dummy positions (block boundaries) — we'll clamp later
+        pmPositions.push(pos, pos)
       }
     }
   })
+
+  const decorations: Decoration[] = []
+
+  for (const corr of corrections) {
+    if (!corr.original) continue
+    let searchFrom = 0
+    while (searchFrom < flatText.length) {
+      const idx = flatText.indexOf(corr.original, searchFrom)
+      if (idx === -1) break
+
+      const endIdx = idx + corr.original.length - 1
+      // Only decorate if both endpoints map to real PM positions
+      if (idx < pmPositions.length && endIdx < pmPositions.length) {
+        const from = pmPositions[idx]
+        const to = pmPositions[endIdx] + 1
+        if (from < to) {
+          const isAccepted = accepted.has(corr.index)
+          const isRejected = rejected.has(corr.index)
+          const isFocused = focused === corr.index
+          const base = isAccepted
+            ? 'corr-accepted'
+            : isRejected
+            ? 'corr-rejected'
+            : `corr-pending corr-type-${corr.type}`
+          decorations.push(
+            Decoration.inline(from, to, {
+              class: isFocused ? `${base} corr-focused` : base,
+              'data-corr-idx': String(corr.index),
+            }),
+          )
+        }
+      }
+      searchFrom = idx + Math.max(corr.original.length, 1)
+    }
+  }
 
   return DecorationSet.create(doc, decorations)
 }
@@ -323,6 +354,8 @@ interface RichTextEditorProps {
   focusedCorrection?: number | null
   onAcceptInline?: (idx: number) => void
   onRejectInline?: (idx: number) => void
+  /** Apri la barra di ricerca con questo testo (da componente esterno) */
+  externalSearchQuery?: string
 }
 
 // ─── CSS for correction decorations (injected once) ───────────────────────────
@@ -404,6 +437,7 @@ export default function RichTextEditor({
   focusedCorrection = null,
   onAcceptInline,
   onRejectInline,
+  externalSearchQuery,
 }: RichTextEditorProps) {
   // Inject correction CSS once
   useEffect(() => { injectCorrectionStyles() }, [])
@@ -600,6 +634,15 @@ export default function RichTextEditor({
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [searchVisible])
+
+  // Apri la barra di ricerca con testo esterno (debolezze/suggerimenti)
+  useEffect(() => {
+    if (!externalSearchQuery) return
+    setSearchQuery(externalSearchQuery)
+    setSearchCurrentIdx(0)
+    setSearchVisible(true)
+    setTimeout(() => searchInputRef.current?.focus(), 50)
+  }, [externalSearchQuery])
 
   function navigateSearch(dir: 1 | -1) {
     if (searchMatchCount === 0) return
