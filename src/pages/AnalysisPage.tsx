@@ -975,7 +975,7 @@ export default function AnalysisPage() {
 
   function selectAllCorrections() {
     if (!analysis) return
-    setAcceptedCorrections(new Set(analysis.corrections.map((_, i) => i)))
+    setAcceptedCorrections(new Set((analysis.corrections ?? []).map((_, i) => i)))
     setRejectedCorrections(new Set())
   }
 
@@ -1328,8 +1328,8 @@ export default function AnalysisPage() {
                     {/* Tab bar — 3 tabs */}
                     <div className="shrink-0 flex border-b border-[var(--border)]">
                       {([
-                        {id: 'feedback' as Tab, label: 'Feedback', count: analysis.strengths.length + analysis.weaknesses.length + analysis.suggestions.length},
-                        {id: 'corrections' as Tab, label: 'Correzioni', count: analysis.corrections.length},
+                        {id: 'feedback' as Tab, label: 'Feedback', count: (analysis.strengths?.length ?? 0) + (analysis.weaknesses?.length ?? 0) + (analysis.suggestions?.length ?? 0)},
+                        {id: 'corrections' as Tab, label: 'Correzioni', count: analysis.corrections?.length ?? 0},
                         {id: 'extra' as Tab, label: 'Altro', count: undefined},
                       ] as {id: Tab; label: string; count?: number}[]).map((tab) => (
                         <button
@@ -1361,7 +1361,7 @@ export default function AnalysisPage() {
                         {activeTab === 'feedback' && (
                           <motion.div key="feedback" initial={{opacity:0,x:-4}} animate={{opacity:1,x:0}} exit={{opacity:0}} transition={{duration:0.15}} className="space-y-5">
                             {/* Strengths */}
-                            {analysis.strengths.length > 0 && (
+                            {(analysis.strengths?.length ?? 0) > 0 && (
                               <div>
                                 <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-500">
                                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
@@ -1379,7 +1379,7 @@ export default function AnalysisPage() {
                             )}
 
                             {/* Weaknesses */}
-                            {analysis.weaknesses.length > 0 && (
+                            {(analysis.weaknesses?.length ?? 0) > 0 && (
                               <div>
                                 <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-500">
                                   <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
@@ -1415,7 +1415,7 @@ export default function AnalysisPage() {
                             )}
 
                             {/* Suggestions */}
-                            {analysis.suggestions.length > 0 && (
+                            {(analysis.suggestions?.length ?? 0) > 0 && (
                               <div>
                                 <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-400">
                                   <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
@@ -1446,7 +1446,7 @@ export default function AnalysisPage() {
                               </div>
                             )}
 
-                            {analysis.strengths.length === 0 && analysis.weaknesses.length === 0 && analysis.suggestions.length === 0 && (
+                            {(analysis.strengths?.length ?? 0) === 0 && (analysis.weaknesses?.length ?? 0) === 0 && (analysis.suggestions?.length ?? 0) === 0 && (
                               <p className="text-sm text-slate-600">Nessun dato di feedback disponibile.</p>
                             )}
                           </motion.div>
@@ -1455,7 +1455,7 @@ export default function AnalysisPage() {
                         {/* ── CORRECTIONS TAB ── */}
                         {activeTab === 'corrections' && (
                           <motion.div key="corrections" initial={{opacity:0,x:-4}} animate={{opacity:1,x:0}} exit={{opacity:0}} transition={{duration:0.15}}>
-                            {analysis.corrections.length === 0 ? (
+                            {(analysis.corrections?.length ?? 0) === 0 ? (
                               <p className="text-sm text-slate-600">Nessuna correzione suggerita.</p>
                             ) : (
                               <div className="space-y-3">
@@ -1500,10 +1500,10 @@ export default function AnalysisPage() {
                                 {(() => {
                                   const TYPE_ORDER = ['grammar', 'style', 'clarity', 'continuity']
                                   const groups = TYPE_ORDER
-                                    .map((type) => ({type, items: analysis.corrections.map((c, i) => ({c, i})).filter(({c}) => c.type === type)}))
+                                    .map((type) => ({type, items: (analysis.corrections ?? []).map((c, i) => ({c, i})).filter(({c}) => c.type === type)}))
                                     .filter(({items}) => items.length > 0)
                                   const knownTypes = new Set(TYPE_ORDER)
-                                  const others = analysis.corrections.map((c, i) => ({c, i})).filter(({c}) => !knownTypes.has(c.type))
+                                  const others = (analysis.corrections ?? []).map((c, i) => ({c, i})).filter(({c}) => !knownTypes.has(c.type))
                                   if (others.length > 0) groups.push({type: 'other', items: others})
                                   return groups.map(({type, items}) => {
                                     const groupAccepted = items.filter(({i}) => acceptedCorrections.has(i)).length
