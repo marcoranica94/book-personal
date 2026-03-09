@@ -104,6 +104,7 @@ export default function CharactersPage() {
   const [pendingAnalysis, setPendingAnalysis] = useState<{characterId: string; startedAt: string} | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [analyzingAll, setAnalyzingAll] = useState(false)
 
   // Load characters on mount
   useEffect(() => {
@@ -226,6 +227,24 @@ export default function CharactersPage() {
     await remove(id)
     if (selected?.id === id) setSelected(null)
     toast.success('Personaggio eliminato.')
+  }
+
+  const handleAnalyzeAll = async () => {
+    if (characters.length === 0) return
+    setAnalyzingAll(true)
+    try {
+      for (const char of characters) {
+        await triggerWorkflow(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'character-analysis.yml', {
+          character_id: char.id,
+          ai_provider: activeProvider,
+        })
+      }
+      toast.success(`${characters.length} analisi avviate! I risultati arriveranno in qualche minuto.`)
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setAnalyzingAll(false)
+    }
   }
 
   const addTrait = () => {
@@ -441,24 +460,19 @@ export default function CharactersPage() {
               initial={{opacity: 0}}
               animate={{opacity: 1}}
               exit={{opacity: 0}}
-              className="flex flex-1 flex-col items-center justify-center gap-4 text-center p-8"
+              className="flex-1 overflow-y-auto"
             >
-              <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[var(--overlay)]">
-                <BookUser className="h-10 w-10 text-slate-500" />
-              </div>
-              <div>
-                <p className="text-base font-medium text-slate-400">Seleziona un personaggio</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  Scegli dalla lista o crea un nuovo personaggio
-                </p>
-              </div>
-              <button
-                onClick={() => setIsCreating(true)}
-                className="flex items-center gap-2 rounded-lg bg-violet-600/20 border border-violet-700/40 px-4 py-2 text-sm text-violet-300 transition-colors hover:bg-violet-600/30"
-              >
-                <Plus className="h-4 w-4" />
-                Crea personaggio
-              </button>
+              <OverviewPanel
+                characters={characters}
+                allChapters={chapters}
+                analyses={analyses}
+                activeProvider={activeProvider}
+                analyzingAll={analyzingAll}
+                onProviderChange={setActiveProvider}
+                onAnalyzeAll={() => void handleAnalyzeAll()}
+                onSelect={handleSelect}
+                onCreateNew={() => setIsCreating(true)}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -799,6 +813,207 @@ function ChaptersTab({character, allChapters}: {character: Character; allChapter
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ─── Overview Panel ───────────────────────────────────────────────────────────
+
+type AnalysisMap = Partial<Record<string, Partial<Record<AIProvider, CharacterAnalysis | null>>>>
+
+function OverviewPanel({
+  characters,
+  allChapters,
+  analyses,
+  activeProvider,
+  analyzingAll,
+  onProviderChange,
+  onAnalyzeAll,
+  onSelect,
+  onCreateNew,
+}: {
+  characters: Character[]
+  allChapters: {id: string; title: string; number: number}[]
+  analyses: AnalysisMap
+  activeProvider: AIProvider
+  analyzingAll: boolean
+  onProviderChange: (p: AIProvider) => void
+  onAnalyzeAll: () => void
+  onSelect: (char: Character) => void
+  onCreateNew: () => void
+}) {
+  const withAnalysis = characters.filter((c) => analyses[c.id]?.[activeProvider])
+  const avgOverall =
+    withAnalysis.length > 0
+      ? withAnalysis.reduce((sum, c) => sum + (analyses[c.id]?.[activeProvider]?.scores.overall ?? 0), 0) /
+        withAnalysis.length
+      : null
+
+  // Sort: protagonists first, then by overall score desc
+  const sorted = [...characters].sort((a, b) => {
+    const aScore = analyses[a.id]?.[activeProvider]?.scores.overall ?? -1
+    const bScore = analyses[b.id]?.[activeProvider]?.scores.overall ?? -1
+    const roleOrder = {protagonist: 0, antagonist: 1, secondary: 2, minor: 3}
+    const rA = roleOrder[a.role as keyof typeof roleOrder] ?? 4
+    const rB = roleOrder[b.role as keyof typeof roleOrder] ?? 4
+    if (rA !== rB) return rA - rB
+    return bScore - aScore
+  })
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Top bar */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-base font-bold text-[var(--text-primary)]">Panoramica personaggi</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {characters.length} personaggi · {withAnalysis.length} analizzati
+            {avgOverall != null && (
+              <span className={cn('ml-2 font-semibold', scoreColor(avgOverall))}>
+                media {avgOverall.toFixed(1)}/10
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={activeProvider}
+            onChange={(e) => onProviderChange(e.target.value as AIProvider)}
+            className="rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-1.5 text-xs text-slate-300 outline-none focus:border-violet-500/40"
+          >
+            {Object.entries(AI_PROVIDER_CONFIG).map(([val, cfg]) => (
+              <option key={val} value={val}>{cfg.icon} {cfg.label}</option>
+            ))}
+          </select>
+          {characters.length > 0 && (
+            <button
+              onClick={onAnalyzeAll}
+              disabled={analyzingAll}
+              className="flex items-center gap-1.5 rounded-lg bg-violet-600/20 border border-violet-700/40 px-3 py-1.5 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-600/30 disabled:opacity-40"
+            >
+              {analyzingAll ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+              Analizza tutti
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Empty state */}
+      {characters.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[var(--overlay)]">
+            <Users className="h-10 w-10 text-slate-500" />
+          </div>
+          <div>
+            <p className="text-base font-medium text-slate-400">Nessun personaggio</p>
+            <p className="mt-1 text-sm text-slate-600">Crea il primo personaggio per iniziare</p>
+          </div>
+          <button
+            onClick={onCreateNew}
+            className="flex items-center gap-2 rounded-lg bg-violet-600/20 border border-violet-700/40 px-4 py-2 text-sm text-violet-300 transition-colors hover:bg-violet-600/30"
+          >
+            <Plus className="h-4 w-4" />
+            Crea personaggio
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {sorted.map((char) => {
+            const cfg = CHARACTER_ROLE_CONFIG[char.role]
+            const analysis = analyses[char.id]?.[activeProvider] ?? null
+            const chaptersCount = char.chaptersAppearing.length
+            const chaptersWithTitle = char.chaptersAppearing
+              .map((a) => allChapters.find((c) => c.id === a.chapterId))
+              .filter(Boolean)
+              .sort((a, b) => (a?.number ?? 0) - (b?.number ?? 0))
+              .slice(0, 3)
+
+            return (
+              <button
+                key={char.id}
+                onClick={() => onSelect(char)}
+                className="group rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4 text-left transition-all hover:border-violet-500/40 hover:bg-violet-900/10"
+              >
+                <div className="flex items-start gap-3">
+                  {/* Avatar */}
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold', cfg.bg, cfg.color)}>
+                    {char.name[0]?.toUpperCase() ?? '?'}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-semibold text-[var(--text-primary)]">{char.name}</span>
+                      <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium', cfg.bg, cfg.color)}>
+                        {cfg.label}
+                      </span>
+                    </div>
+
+                    {/* Traits */}
+                    {char.personalityTraits.length > 0 && (
+                      <p className="mt-0.5 truncate text-xs text-slate-500">
+                        {char.personalityTraits.slice(0, 3).join(' · ')}
+                      </p>
+                    )}
+
+                    {/* Chapters */}
+                    {chaptersCount > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {chaptersWithTitle.map((c) => (
+                          <span key={c!.id} className="rounded bg-[var(--overlay)] px-1.5 py-0.5 text-[10px] text-slate-500">
+                            Cap. {c!.number}
+                          </span>
+                        ))}
+                        {chaptersCount > 3 && (
+                          <span className="text-[10px] text-slate-600">+{chaptersCount - 3}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Score */}
+                  {analysis ? (
+                    <div className="shrink-0 text-right">
+                      <span className={cn('text-lg font-bold tabular-nums', scoreColor(analysis.scores.overall))}>
+                        {analysis.scores.overall.toFixed(1)}
+                      </span>
+                      <p className="text-[10px] text-slate-600">/10</p>
+                    </div>
+                  ) : (
+                    <div className="shrink-0 text-right">
+                      <span className="text-xs text-slate-600">—</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Mini score bars */}
+                {analysis && (
+                  <div className="mt-3 space-y-1">
+                    {(Object.keys(CHARACTER_SCORE_LABELS) as (keyof typeof CHARACTER_SCORE_LABELS)[])
+                      .filter((k) => k !== 'overall')
+                      .map((k) => (
+                        <div key={k} className="flex items-center gap-2">
+                          <span className="w-20 shrink-0 text-[10px] text-slate-600">{CHARACTER_SCORE_LABELS[k]}</span>
+                          <div className="flex-1 h-1 rounded-full bg-[var(--overlay)]">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-violet-600 to-cyan-500"
+                              style={{width: `${((analysis.scores[k] ?? 0) / 10) * 100}%`}}
+                            />
+                          </div>
+                          <span className={cn('w-5 text-right text-[10px] tabular-nums', scoreColor(analysis.scores[k] ?? 0))}>
+                            {(analysis.scores[k] ?? 0).toFixed(0)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

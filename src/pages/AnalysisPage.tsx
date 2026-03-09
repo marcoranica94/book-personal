@@ -365,6 +365,8 @@ export default function AnalysisPage() {
   const [withWordFrequency, setWithWordFrequency] = useState(false)
   // Show, don't tell
   const [withShowDontTell, setWithShowDontTell] = useState(false)
+  // Estrazione personaggi
+  const [withCharacters, setWithCharacters] = useState(false)
   const [pendingReformat, setPendingReformat] = useState<PendingReformat | null>(() => loadPendingReformat())
   const [reformatResult, setReformatResult] = useState<ParagraphReformat | null>(null)
   const [reformatElapsed, setReformatElapsed] = useState(0)
@@ -671,6 +673,7 @@ export default function AnalysisPage() {
         with_reader_reactions: withReaderReactions ? 'true' : 'false',
         with_word_frequency: withWordFrequency ? 'true' : 'false',
         with_show_dont_tell: withShowDontTell ? 'true' : 'false',
+        with_characters: withCharacters ? 'true' : 'false',
       }
       // Aggiungi il commento autore se presente (non vuoto)
       const effectiveComment = comment ?? (chapterId !== 'all' ? getAuthorComment(chapterId) : '')
@@ -2744,7 +2747,19 @@ export default function AnalysisPage() {
                       />
                       <span className="text-sm text-slate-300">
                         <span className="font-medium text-orange-400">👁 Show Don&apos;t Tell</span>
-                        <span className="ml-1 text-xs text-slate-500">— trova i &quot;telling&quot; e propose riscritture <span className="text-slate-600">(aggiunge tab)</span></span>
+                        <span className="ml-1 text-xs text-slate-500">— trova i &quot;telling&quot; e propone riscritture <span className="text-slate-600">(aggiunge tab)</span></span>
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
+                      <input
+                        type="checkbox"
+                        checked={withCharacters}
+                        onChange={(e) => setWithCharacters(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
+                      />
+                      <span className="text-sm text-slate-300">
+                        <span className="font-medium text-teal-400">👤 Estrai personaggi</span>
+                        <span className="ml-1 text-xs text-slate-500">— aggiorna la pagina Personaggi</span>
                       </span>
                     </label>
                   </div>
@@ -2927,6 +2942,18 @@ export default function AnalysisPage() {
                       <span className="text-sm text-slate-300">
                         <span className="font-medium text-orange-400">👁 Show Don&apos;t Tell</span>
                         <span className="ml-1 text-xs text-slate-500">— trova i &quot;telling&quot; e propone riscritture <span className="text-slate-600">(aggiunge tab)</span></span>
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
+                      <input
+                        type="checkbox"
+                        checked={withCharacters}
+                        onChange={(e) => setWithCharacters(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
+                      />
+                      <span className="text-sm text-slate-300">
+                        <span className="font-medium text-teal-400">👤 Estrai personaggi</span>
+                        <span className="ml-1 text-xs text-slate-500">— aggiorna la pagina Personaggi</span>
                       </span>
                     </label>
                   </div>
