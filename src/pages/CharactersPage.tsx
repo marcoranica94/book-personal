@@ -261,7 +261,7 @@ export default function CharactersPage() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full overflow-hidden -mx-6 -my-6">
+    <div className="flex h-full overflow-hidden">
       {/* LEFT — character list */}
       <div className="flex w-[360px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]">
         {/* Header */}
