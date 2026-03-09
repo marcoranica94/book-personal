@@ -332,6 +332,8 @@ export default function AnalysisPage() {
   const [acceptedCorrections, setAcceptedCorrections] = useState<Set<number>>(new Set())
   const [rejectedCorrections, setRejectedCorrections] = useState<Set<number>>(new Set())
   const [isApplying, setIsApplying] = useState(false)
+  // Correzioni applicate direttamente via popup inline (escluse dalle decorazioni)
+  const [appliedInlineCorrections, setAppliedInlineCorrections] = useState<Set<number>>(new Set())
   // Accordion gruppi correzioni (set dei tipi collassati)
   const [collapsedCorrGroups, setCollapsedCorrGroups] = useState<Set<string>>(new Set())
   // Correzione attiva (evidenziata nell'editor inline)
@@ -410,6 +412,7 @@ export default function AnalysisPage() {
     setAcceptedCorrections(new Set())
     setRejectedCorrections(new Set())
     setAppliedChanges([])
+    setAppliedInlineCorrections(new Set())
     const chapter = chapters.find((c) => c.id === selectedId)
     setEditorContent(chapter?.driveContent ?? '')
   }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -990,14 +993,20 @@ export default function AnalysisPage() {
     .sort((a, b) => a.title.localeCompare(b.title, 'it', {numeric: true, sensitivity: 'base'}))
 
 
-  // Inline corrections per l'editor
-  const inlineCorrections: InlineCorrection[] = (analysis?.corrections ?? []).map((c, i) => ({
-    index: i,
-    original: c.original,
-    suggested: c.suggested,
-    type: c.type,
-    note: c.note,
-  }))
+  // Inline corrections per l'editor (escluse quelle già applicate via popup)
+  const inlineCorrections: InlineCorrection[] = (analysis?.corrections ?? [])
+    .map((c, i) => ({index: i, original: c.original, suggested: c.suggested, type: c.type, note: c.note}))
+    .filter((c) => !appliedInlineCorrections.has(c.index))
+
+  // Applica una correzione direttamente dall'editor (popup inline) — sostituzione immediata
+  function handleAcceptInline(idx: number) {
+    const corr = analysis?.corrections[idx]
+    if (!corr) return
+    setEditorContent((prev) => prev.replace(corr.original, corr.suggested))
+    setAppliedInlineCorrections((prev) => new Set([...prev, idx]))
+    setAcceptedCorrections((prev) => { const s = new Set(prev); s.delete(idx); return s })
+    setRejectedCorrections((prev) => { const s = new Set(prev); s.delete(idx); return s })
+  }
 
   return (
     <div className="flex flex-col gap-4 p-6">
@@ -1915,7 +1924,7 @@ export default function AnalysisPage() {
                       acceptedCorrections={acceptedCorrections}
                       rejectedCorrections={rejectedCorrections}
                       focusedCorrection={activeInlineCorrection}
-                      onAcceptInline={toggleAccept}
+                      onAcceptInline={handleAcceptInline}
                       onRejectInline={toggleReject}
                     />
                   </div>

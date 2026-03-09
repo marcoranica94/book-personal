@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react'
+import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react'
 import {EditorContent, Extension, useEditor} from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -16,6 +16,8 @@ import {
   AlignRight,
   Bold,
   CheckCheck,
+  ChevronDown,
+  ChevronUp,
   Heading1,
   Heading2,
   Heading3,
@@ -29,6 +31,7 @@ import {
   Pilcrow,
   Quote,
   Redo2,
+  Search,
   Strikethrough,
   Underline as UnderlineIcon,
   Undo2,
@@ -116,6 +119,8 @@ function CorrectionTooltip({
   onAccept,
   onReject,
   onClose,
+  onMouseEnter,
+  onMouseLeave,
 }: {
   correction: InlineCorrection
   x: number
@@ -125,19 +130,33 @@ function CorrectionTooltip({
   onAccept: () => void
   onReject: () => void
   onClose: () => void
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
 }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [adjustedY, setAdjustedY] = useState<number | null>(null)
+
+  useLayoutEffect(() => {
+    if (!ref.current) return
+    const h = ref.current.offsetHeight
+    const spaceBelow = window.innerHeight - (y + 8)
+    setAdjustedY(spaceBelow < h ? Math.max(8, y - h - 8) : y + 8)
+  }, [y])
+
+  const safeX = Math.min(Math.max(8, x), window.innerWidth - 296)
   const typeColor = CORRECTION_TYPE_COLORS[correction.type] ?? 'text-slate-400 border-slate-700 bg-slate-800/20'
   const typeLabel = CORRECTION_TYPE_LABELS[correction.type] ?? correction.type
 
-  // Keep tooltip inside viewport
-  const safeX = Math.min(x, window.innerWidth - 300)
-  const safeY = y + 4
-
   return (
     <div
-      className="corr-tooltip fixed z-[100] w-72 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] shadow-2xl p-3 space-y-2.5"
-      style={{left: safeX, top: safeY}}
-      onMouseLeave={onClose}
+      ref={ref}
+      className={cn(
+        'corr-tooltip fixed z-[200] w-72 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] shadow-2xl p-3 space-y-2.5 transition-opacity duration-100',
+        adjustedY === null ? 'opacity-0' : 'opacity-100',
+      )}
+      style={{left: safeX, top: adjustedY ?? y + 8}}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <div className="flex items-center justify-between">
         <span className={cn('rounded-full border px-2 py-0.5 text-xs font-semibold', typeColor)}>
@@ -319,7 +338,46 @@ const CORRECTION_STYLES = `
   .corr-rejected { opacity: 0.45; text-decoration: line-through; cursor: pointer; }
   .corr-focused  { box-shadow: 0 0 0 2px rgba(139,92,246,0.6); border-radius: 2px; }
   .corr-pending:hover, .corr-accepted:hover { filter: brightness(1.2); }
+  .search-match { background: rgba(251,191,36,0.25); border-radius: 2px; }
+  .search-match-current { background: rgba(251,191,36,0.65); border-radius: 2px; outline: 2px solid rgba(251,191,36,0.8); }
 `
+
+// ─── Search plugin ─────────────────────────────────────────────────────────────
+
+const SEARCH_PLUGIN_KEY = new PluginKey<DecorationSet>('searchHighlights')
+
+function buildSearchDecorations(
+  doc: PMNode,
+  query: string,
+  currentIdx: number,
+): {decorations: DecorationSet; positions: [number, number][]} {
+  if (!query) return {decorations: DecorationSet.empty, positions: []}
+  const positions: [number, number][] = []
+  const decorations: Decoration[] = []
+  const lower = query.toLowerCase()
+
+  doc.descendants((node: PMNode, pos: number) => {
+    if (!node.isText || !node.text) return
+    const text = node.text.toLowerCase()
+    let from = 0
+    while (from < text.length) {
+      const idx = text.indexOf(lower, from)
+      if (idx === -1) break
+      positions.push([pos + idx, pos + idx + query.length])
+      from = idx + 1
+    }
+  })
+
+  positions.forEach(([start, end], i) => {
+    decorations.push(
+      Decoration.inline(start, end, {
+        class: i === currentIdx ? 'search-match search-match-current' : 'search-match',
+      }),
+    )
+  })
+
+  return {decorations: DecorationSet.create(doc, decorations), positions}
+}
 
 let stylesInjected = false
 function injectCorrectionStyles() {
@@ -356,8 +414,30 @@ export default function RichTextEditor({
   const rejectedRef = useRef<Set<number>>(new Set())
   const focusedRef = useRef<number | null>(null)
 
+  // Search state
+  const [searchVisible, setSearchVisible] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchCurrentIdx, setSearchCurrentIdx] = useState(0)
+  const [searchMatchCount, setSearchMatchCount] = useState(0)
+  const searchQueryRef = useRef('')
+  const searchCurrentIdxRef = useRef(0)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
   // Tooltip state
   const [tooltip, setTooltip] = useState<{corrIdx: number; x: number; y: number} | null>(null)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function scheduleClose() {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = setTimeout(() => setTooltip(null), 120)
+  }
+
+  function cancelClose() {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }
 
   // Escape fullscreen
   useEffect(() => {
@@ -381,6 +461,38 @@ export default function RichTextEditor({
       TextAlign.configure({types: ['heading', 'paragraph']}),
       Placeholder.configure({placeholder}),
       CharacterCount,
+      // Search highlight plugin
+      Extension.create({
+        name: 'searchHighlights',
+        addProseMirrorPlugins() {
+          return [
+            new Plugin({
+              key: SEARCH_PLUGIN_KEY,
+              state: {
+                init(_: EditorStateConfig, __: EditorState) {
+                  return DecorationSet.empty
+                },
+                apply(tr: Transaction, old: DecorationSet, _: EditorState, newState: EditorState) {
+                  if (tr.docChanged || tr.getMeta(SEARCH_PLUGIN_KEY)) {
+                    const {decorations} = buildSearchDecorations(
+                      newState.doc,
+                      searchQueryRef.current,
+                      searchCurrentIdxRef.current,
+                    )
+                    return decorations
+                  }
+                  return old.map(tr.mapping, newState.doc)
+                },
+              },
+              props: {
+                decorations(state) {
+                  return SEARCH_PLUGIN_KEY.getState(state)
+                },
+              },
+            }),
+          ]
+        },
+      }),
       // Correction highlight plugin
       Extension.create({
         name: 'correctionHighlights',
@@ -424,7 +536,10 @@ export default function RichTextEditor({
     content: textToHtml(content),
     editable: !readOnly,
     onUpdate: ({editor: ed}) => {
+      isLocalUpdateRef.current = true
       onChange(htmlToPlainText(ed.getHTML()))
+      // Reset il flag dopo che React ha processato l'update
+      setTimeout(() => { isLocalUpdateRef.current = false }, 0)
     },
     editorProps: {
       attributes: {class: 'rich-editor-content'},
@@ -445,15 +560,59 @@ export default function RichTextEditor({
   // Scroll editor to focused correction
   useEffect(() => {
     if (focusedCorrection == null || !editor?.view) return
-    // Find the decorated DOM element and scroll to it
     const el = editor.view.dom.querySelector(`[data-corr-idx="${focusedCorrection}"]`)
     el?.scrollIntoView({behavior: 'smooth', block: 'center'})
   }, [focusedCorrection, editor])
 
+  // Update search decorations when query or current index changes
+  useEffect(() => {
+    searchQueryRef.current = searchQuery
+    searchCurrentIdxRef.current = searchCurrentIdx
+    if (!editor?.view) return
+    const {positions} = buildSearchDecorations(editor.view.state.doc, searchQuery, searchCurrentIdx)
+    setSearchMatchCount(positions.length)
+    editor.view.dispatch(editor.view.state.tr.setMeta(SEARCH_PLUGIN_KEY, true))
+    // Scroll current match into view
+    if (positions.length > 0 && searchCurrentIdx < positions.length) {
+      const [from] = positions[searchCurrentIdx]
+      const domPos = editor.view.domAtPos(from)
+      domPos.node instanceof HTMLElement
+        ? domPos.node.scrollIntoView({behavior: 'smooth', block: 'center'})
+        : (domPos.node as Text).parentElement?.scrollIntoView({behavior: 'smooth', block: 'center'})
+    }
+  }, [searchQuery, searchCurrentIdx, editor])
+
+  // Ctrl+F / Cmd+F to toggle search
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+        setSearchVisible((v) => {
+          if (!v) setTimeout(() => searchInputRef.current?.focus(), 50)
+          return !v
+        })
+      }
+      if (e.key === 'Escape' && searchVisible) {
+        setSearchVisible(false)
+        setSearchQuery('')
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [searchVisible])
+
+  function navigateSearch(dir: 1 | -1) {
+    if (searchMatchCount === 0) return
+    setSearchCurrentIdx((prev) => (prev + dir + searchMatchCount) % searchMatchCount)
+  }
+
+  // Flag: ignora sync esterna se l'aggiornamento viene dall'editor stesso
+  const isLocalUpdateRef = useRef(false)
+
   // Sync external content changes (e.g. reload from Drive)
   const setContent = useCallback(
     (newContent: string) => {
-      if (!editor) return
+      if (!editor || isLocalUpdateRef.current) return
       const newHtml = textToHtml(newContent)
       const currentHtml = editor.getHTML()
       if (currentHtml !== newHtml) {
@@ -481,17 +640,24 @@ export default function RichTextEditor({
     if (!inlineCorrections?.length) return
     const target = e.target as HTMLElement
     const corrEl = target.closest('[data-corr-idx]') as HTMLElement | null
-    if (!corrEl) return
+    if (!corrEl) {
+      // Mouse moved to non-correction area — schedule close
+      scheduleClose()
+      return
+    }
+    cancelClose()
     const idx = Number(corrEl.getAttribute('data-corr-idx'))
     const rect = corrEl.getBoundingClientRect()
     setTooltip({corrIdx: idx, x: rect.left, y: rect.bottom})
   }
 
   function handleEditorMouseLeave(e: React.MouseEvent) {
-    // Keep tooltip if moving into it
     const related = e.relatedTarget as HTMLElement | null
-    if (related?.closest('.corr-tooltip')) return
-    setTooltip(null)
+    if (related?.closest('.corr-tooltip')) {
+      cancelClose()
+      return
+    }
+    scheduleClose()
   }
 
   // ─── Toolbar ───────────────────────────────────────────────────────────────
@@ -566,11 +732,56 @@ export default function RichTextEditor({
           {inlineCorrections.length} correzioni evidenziate
         </span>
       )}
+      <ToolbarButton
+        onClick={() => {
+          setSearchVisible((v) => {
+            if (!v) setTimeout(() => searchInputRef.current?.focus(), 50)
+            else { setSearchQuery(''); setSearchMatchCount(0) }
+            return !v
+          })
+        }}
+        isActive={searchVisible}
+        title="Cerca nel testo (Ctrl+F)"
+      >
+        <Search className={ic} />
+      </ToolbarButton>
       <ToolbarButton onClick={onToggleFullscreen} title={isFullscreen ? 'Riduci (Esc)' : 'Espandi a tutto schermo'}>
         {isFullscreen ? <Minimize2 className={ic} /> : <Maximize2 className={ic} />}
       </ToolbarButton>
     </div>
   )
+
+  const searchBar = searchVisible ? (
+    <div className="flex items-center gap-1.5 border-b border-[var(--border)] bg-[var(--bg-card)] px-3 py-1.5">
+      <Search className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+      <input
+        ref={searchInputRef}
+        type="text"
+        value={searchQuery}
+        onChange={(e) => { setSearchQuery(e.target.value); setSearchCurrentIdx(0) }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); navigateSearch(e.shiftKey ? -1 : 1) }
+          if (e.key === 'Escape') { setSearchVisible(false); setSearchQuery('') }
+        }}
+        placeholder="Cerca..."
+        className="flex-1 bg-transparent text-sm text-slate-300 outline-none placeholder:text-slate-600"
+      />
+      {searchQuery && (
+        <span className="text-xs text-slate-500 tabular-nums">
+          {searchMatchCount === 0 ? 'Nessun risultato' : `${searchCurrentIdx + 1}/${searchMatchCount}`}
+        </span>
+      )}
+      <button onClick={() => navigateSearch(-1)} disabled={searchMatchCount === 0} className="rounded p-0.5 text-slate-500 hover:text-slate-300 disabled:opacity-30">
+        <ChevronUp className="h-3.5 w-3.5" />
+      </button>
+      <button onClick={() => navigateSearch(1)} disabled={searchMatchCount === 0} className="rounded p-0.5 text-slate-500 hover:text-slate-300 disabled:opacity-30">
+        <ChevronDown className="h-3.5 w-3.5" />
+      </button>
+      <button onClick={() => { setSearchVisible(false); setSearchQuery('') }} className="rounded p-0.5 text-slate-500 hover:text-slate-300">
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  ) : null
 
   const editorArea = (
     <div
@@ -610,7 +821,9 @@ export default function RichTextEditor({
       isRejected={rejectedCorrections?.has(tooltipCorrection.index) ?? false}
       onAccept={() => onAcceptInline?.(tooltipCorrection.index)}
       onReject={() => onRejectInline?.(tooltipCorrection.index)}
-      onClose={() => setTooltip(null)}
+      onClose={() => { cancelClose(); setTooltip(null) }}
+      onMouseEnter={cancelClose}
+      onMouseLeave={scheduleClose}
     />
   ) : null
 
@@ -620,6 +833,7 @@ export default function RichTextEditor({
       <>
         <div className="fixed inset-0 z-50 flex flex-col bg-[var(--bg-base)]">
           {!readOnly && toolbarContent}
+          {searchBar}
           {editorArea}
           {statusBar}
         </div>
@@ -637,6 +851,7 @@ export default function RichTextEditor({
         )}
       >
         {!readOnly && toolbarContent}
+        {searchBar}
         {editorArea}
         {statusBar}
       </div>
