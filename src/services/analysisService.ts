@@ -1,6 +1,6 @@
 import {addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, updateDoc} from 'firebase/firestore'
 import {db} from './firebase'
-import type {AIProvider, ChapterAnalysis, ParagraphReformat} from '@/types'
+import type {AIProvider, ChapterAnalysis, CustomQuestion, ParagraphReformat} from '@/types'
 
 const COL = 'analyses'
 
@@ -289,4 +289,28 @@ export async function checkParagraphReformatErrorAfter(
 export async function deleteParagraphReformat(chapterId: string): Promise<void> {
   await deleteDoc(doc(db, 'paragraphReformats', chapterId)).catch(() => {})
   await deleteDoc(doc(db, 'paragraphReformatErrors', chapterId)).catch(() => {})
+}
+
+// ─── Custom Questions ─────────────────────────────────────────────────────────
+
+/** Legge tutte le domande personalizzate per un capitolo, ordinate dalla più recente */
+export async function getCustomQuestions(chapterId: string): Promise<CustomQuestion[]> {
+  const q = query(
+    collection(db, COL, chapterId, 'questions'),
+    orderBy('analyzedAt', 'desc'),
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => ({...(d.data() as CustomQuestion), id: d.id}))
+}
+
+/** Controlla se è arrivata una nuova domanda personalizzata dopo `since` */
+export async function checkCustomQuestionAfter(
+  chapterId: string,
+  since: string,
+): Promise<boolean> {
+  const snap = await getDocs(collection(db, COL, chapterId, 'questions'))
+  return snap.docs.some((d) => {
+    const data = d.data() as {analyzedAt?: string}
+    return data.analyzedAt && new Date(data.analyzedAt) > new Date(since)
+  })
 }

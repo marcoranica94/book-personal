@@ -28,6 +28,8 @@ const REPO_DIR = process.env.REPO_DIR ?? '.'
 const INCLUDE_PREVIOUS = (process.env.INCLUDE_PREVIOUS ?? 'false') === 'true'
 const AI_PROVIDER = process.env.AI_PROVIDER ?? 'claude'
 const AUTHOR_COMMENT = (process.env.AUTHOR_COMMENT ?? '').trim()
+/** Domanda precisa dell'autore — se impostata, esegue analisi mirata invece di quella standard */
+const CUSTOM_QUESTION = (process.env.CUSTOM_QUESTION ?? '').trim()
 /** Se true, l'IA includerà la soluzione proposta per ogni debolezza */
 const WITH_WEAKNESS_SOLUTIONS = (process.env.WITH_WEAKNESS_SOLUTIONS ?? 'true') === 'true'
 /** Se true, l'IA includerà la soluzione proposta per ogni suggerimento */
@@ -154,6 +156,12 @@ async function saveAnalysis(chapterId, analysis) {
   await ref.set(analysis)
   // Pulisci eventuali errori precedenti per questo provider
   await db.collection('analysisErrors').doc(`${chapterId}_${AI_PROVIDER}`).delete().catch(() => {})
+}
+
+/** Salva una risposta a domanda personalizzata su Firestore */
+async function saveCustomQuestion(chapterId, result) {
+  await db.collection('analyses').doc(chapterId)
+    .collection('questions').add(result)
 }
 
 /** Salva un record di errore su Firestore per rendere il fallimento visibile nella UI */
@@ -807,6 +815,136 @@ async function analyzeChapter(chapter, bookSettings) {
   }
 }
 
+// ─── Custom Question Mode ────────────────────────────────────────────────────
+
+function buildCustomQuestionPrompt(bookTitle, bookType, question, chapterText) {
+  return `
+Sei un editor letterario italiano di alto livello. Hai ricevuto una domanda precisa dall'autore sul suo capitolo.
+
+Libro: "${bookTitle}" (genere: ${bookType || 'generico'})
+
+DOMANDA DELL'AUTORE:
+"${question}"
+
+Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), con questa struttura:
+{
+  "answer": "<risposta dettagliata alla domanda, max 300 parole — sii specifico e operativo>",
+  "findings": [
+    {
+      "quote": "<citazione esatta dal testo (max 40 parole) a cui si riferisce l'osservazione — ometti se non pertinente>",
+      "observation": "<osservazione specifica e concreta in risposta alla domanda (max 80 parole)>",
+      "suggestion": "<suggerimento operativo: riscrittura, indicazione precisa, max 60 parole — ometti se non pertinente>"
+    }
+  ],
+  "corrections": [
+    {
+      "original": "<testo originale esatto>",
+      "suggested": "<testo corretto>",
+      "type": "grammar|style|clarity|continuity",
+      "note": "<spiegazione breve>"
+    }
+  ],
+  "_placeholder": null
+}
+
+ISTRUZIONI:
+- "answer" deve rispondere direttamente alla domanda dell'autore con osservazioni concrete
+- "findings" devono essere esempi specifici dal testo che supportano la risposta (max 8 elementi)
+- "corrections" sono opzionali: includile solo se la domanda riguarda errori o stile, max 10 correzioni
+- Se la domanda non riguarda correzioni grammaticali, lascia "corrections" come array vuoto
+- Cita SEMPRE parti specifiche del testo per ancorare le osservazioni
+
+--- CAPITOLO ---
+${chapterText}
+`.trim()
+}
+
+async function analyzeChapterCustomQuestion(chapter, bookSettings) {
+  const bookTitle = bookSettings?.title || chapter.title
+  const bookType = bookSettings?.bookType || 'generico'
+
+  let chapterText = ''
+  if (chapter.driveContent && chapter.driveContent.trim().length > 50) {
+    chapterText = chapter.driveContent
+  } else {
+    const mdPath = join(REPO_DIR, 'chapters-content', `${chapter.id}.md`)
+    try {
+      chapterText = await readFile(mdPath, 'utf-8')
+    } catch {
+      chapterText = chapter.synopsis || ''
+    }
+  }
+
+  if (!chapterText.trim()) {
+    console.warn(`  Nessun testo trovato per ${chapter.id}, skip.`)
+    return null
+  }
+
+  console.log(`  Domanda: "${CUSTOM_QUESTION.substring(0, 80)}${CUSTOM_QUESTION.length > 80 ? '…' : ''}"`)
+
+  const prompt = buildCustomQuestionPrompt(bookTitle, bookType, CUSTOM_QUESTION, chapterText)
+  const modelName = PROVIDER_MODELS[AI_PROVIDER] ?? PROVIDER_MODELS.claude
+  let responseText = ''
+
+  try {
+    if (AI_PROVIDER === 'gemini') {
+      responseText = await callGemini(prompt, false)
+    } else if (AI_PROVIDER === 'chatgpt') {
+      responseText = await callChatGPT(prompt, false)
+    } else {
+      responseText = await callClaude(prompt, false)
+    }
+  } catch (apiErr) {
+    const msg = `Errore chiamata ${AI_PROVIDER} (domanda): ${apiErr.message ?? apiErr}`
+    console.error(`  ${msg}`)
+    await saveAnalysisError(chapter.id, msg)
+    return null
+  }
+
+  if (!responseText) {
+    const msg = `Risposta vuota da ${AI_PROVIDER} (domanda)`
+    console.warn(`  ${msg}`)
+    await saveAnalysisError(chapter.id, msg)
+    return null
+  }
+
+  try {
+    const jsonMatch = responseText.match(/\{[\s\S]*/)
+    if (!jsonMatch) throw new Error('Nessun JSON nella risposta')
+
+    let jsonStr = jsonMatch[0]
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, '-')
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+
+    let parsed
+    try {
+      parsed = JSON.parse(jsonStr)
+    } catch {
+      const {jsonrepair: repair} = await import('jsonrepair')
+      parsed = JSON.parse(repair(jsonStr))
+    }
+
+    delete parsed._placeholder
+    return {
+      chapterId: chapter.id,
+      question: CUSTOM_QUESTION,
+      provider: AI_PROVIDER,
+      model: modelName,
+      analyzedAt: new Date().toISOString(),
+      answer: parsed.answer ?? '',
+      findings: parsed.findings ?? [],
+      corrections: parsed.corrections ?? [],
+    }
+  } catch (err) {
+    const msg = `Errore parsing JSON (domanda) per ${chapter.id}: ${err.message}`
+    console.error(`  ${msg}`)
+    await saveAnalysisError(chapter.id, msg)
+    return null
+  }
+}
+
 async function main() {
   const [chapters, bookSettings] = await Promise.all([getChapters(), getSettings()])
 
@@ -816,12 +954,6 @@ async function main() {
 
   console.log(`Impostazioni libro: tipo=${bookSettings?.bookType ?? 'generico'}, titolo=${bookSettings?.title ?? '?'}`)
   console.log(`Provider AI: ${AI_PROVIDER} (modello: ${PROVIDER_MODELS[AI_PROVIDER] ?? '?'})`)
-  console.log(`Modalità: ${INCLUDE_PREVIOUS ? 'con contesto analisi precedente' : 'analisi da zero'}`)
-  console.log(`Soluzioni proposte: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'}`)
-  console.log(`Analisi paragrafi: ${WITH_PARAGRAPH_ANALYSIS ? '✓ attiva' : '✗ disabilitata'}`)
-  console.log(`Frequenza parole: ${WITH_WORD_FREQUENCY ? '✓ attiva' : '✗ disabilitata'}`)
-  console.log(`Show Don't Tell: ${WITH_SHOW_DONT_TELL ? '✓ attiva' : '✗ disabilitata'}`)
-  console.log(`Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'} showDontTell=${WITH_SHOW_DONT_TELL?'✓':'✗'}`)
 
   const toAnalyze =
     CHAPTER_ID === 'all'
@@ -832,6 +964,29 @@ async function main() {
     console.log('Nessun capitolo trovato da analizzare.')
     return
   }
+
+  // ── Modalità domanda personalizzata ────────────────────────────────────────
+  if (CUSTOM_QUESTION) {
+    console.log(`Modalità: DOMANDA PERSONALIZZATA`)
+    console.log(`Domanda: "${CUSTOM_QUESTION}"`)
+    for (const chapter of toAnalyze) {
+      console.log(`Capitolo [${AI_PROVIDER}]: ${chapter.number} - ${chapter.title}`)
+      const result = await analyzeChapterCustomQuestion(chapter, bookSettings)
+      if (!result) continue
+      await saveCustomQuestion(chapter.id, result)
+      console.log(`  ✓ Risposta salvata su Firestore (analyses/${chapter.id}/questions)`)
+    }
+    console.log('Analisi domanda completata.')
+    return
+  }
+
+  // ── Modalità analisi standard ────────────────────────────────────────────
+  console.log(`Modalità: ${INCLUDE_PREVIOUS ? 'con contesto analisi precedente' : 'analisi da zero'}`)
+  console.log(`Soluzioni proposte: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'}`)
+  console.log(`Analisi paragrafi: ${WITH_PARAGRAPH_ANALYSIS ? '✓ attiva' : '✗ disabilitata'}`)
+  console.log(`Frequenza parole: ${WITH_WORD_FREQUENCY ? '✓ attiva' : '✗ disabilitata'}`)
+  console.log(`Show Don't Tell: ${WITH_SHOW_DONT_TELL ? '✓ attiva' : '✗ disabilitata'}`)
+  console.log(`Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'} showDontTell=${WITH_SHOW_DONT_TELL?'✓':'✗'}`)
 
   for (const chapter of toAnalyze) {
     const analysis = await analyzeChapter(chapter, bookSettings)

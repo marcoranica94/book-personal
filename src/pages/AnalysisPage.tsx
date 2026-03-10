@@ -28,16 +28,18 @@ import {useDriveStore} from '@/stores/driveStore'
 import {useAuthStore} from '@/stores/authStore'
 import {useSettingsStore} from '@/stores/settingsStore'
 import {toast} from '@/stores/toastStore'
-import type {AIProvider, ParagraphReformat} from '@/types'
+import type {AIProvider, CustomQuestion, ParagraphReformat} from '@/types'
 import {AI_PROVIDER_CONFIG, getScoreColor, SyncSource, SyncStatus} from '@/types'
 import type {WorkflowRunInfo} from '@/services/githubWorkflow'
 import {getLatestWorkflowRun, triggerWorkflow} from '@/services/githubWorkflow'
 import {
   checkAnalysisAfter,
+  checkCustomQuestionAfter,
   checkErrorAfter,
   checkParagraphReformatAfter,
   checkParagraphReformatErrorAfter,
   deleteParagraphReformat,
+  getCustomQuestions,
   getParagraphReformat,
   patchAnalysis,
 } from '@/services/analysisService'
@@ -80,7 +82,7 @@ const CORRECTION_TYPE_COLORS: Record<string, string> = {
 }
 
 type Tab = 'feedback' | 'corrections' | 'extra'
-type ExtraTab = 'storico' | 'reazioni' | 'acapo' | 'parole' | 'showdontell'
+type ExtraTab = 'storico' | 'reazioni' | 'acapo' | 'parole' | 'showdontell' | 'domande'
 
 // ─── Author comment (localStorage persistence per capitolo) ──────────────────
 
@@ -115,6 +117,7 @@ interface PendingAnalysis {
   chapterId: string
   chapterTitle: string
   triggeredAt: string
+  mode?: 'standard' | 'custom_question'
 }
 
 function loadPending(): PendingAnalysis | null {
@@ -371,6 +374,12 @@ export default function AnalysisPage() {
   const [withShowDontTell, setWithShowDontTell] = useState(false)
   // Estrazione personaggi
   const [withCharacters, setWithCharacters] = useState(false)
+  // Domanda personalizzata — campo nel dialog
+  const [customQuestion, setCustomQuestion] = useState('')
+  // Domande personalizzate già risposte per il capitolo selezionato
+  const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>([])
+  // ID domanda espansa nel tab Domande
+  const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null)
   const [pendingReformat, setPendingReformat] = useState<PendingReformat | null>(() => loadPendingReformat())
   const [reformatResult, setReformatResult] = useState<ParagraphReformat | null>(null)
   const [reformatElapsed, setReformatElapsed] = useState(0)
@@ -453,24 +462,40 @@ export default function AnalysisPage() {
 
         // ── Check silenzioso su Firestore — NESSUN re-render ──────────────
         // Legge direttamente il DB senza passare per lo store Zustand
+        const isCustomQuestion = pending.mode === 'custom_question'
+
         const [isDone, hasError] = await Promise.all([
-          checkAnalysisAfter(pending.chapterId, pending.triggeredAt),
+          isCustomQuestion
+            ? checkCustomQuestionAfter(pending.chapterId, pending.triggeredAt)
+            : checkAnalysisAfter(pending.chapterId, pending.triggeredAt),
           checkErrorAfter(pending.chapterId, pending.triggeredAt),
         ])
 
         if (isDone) {
           // Solo qui aggiorniamo lo store → un unico re-render al completamento
-          if (pending.chapterId === 'all') {
-            await loadAllAnalyses()
+          if (isCustomQuestion) {
+            const questions = await getCustomQuestions(pending.chapterId)
+            setCustomQuestions(questions)
+            toast.success(`Risposta alla domanda ricevuta per "${pending.chapterTitle}"!`)
+            if (pending.chapterId !== 'all') {
+              setSelectedId(pending.chapterId)
+              setActiveTab('extra')
+              setActiveExtraTab('domande')
+              window.scrollTo({top: 0, behavior: 'smooth'})
+            }
           } else {
-            await loadAnalysis(pending.chapterId)
-          }
-          await loadAnalysisErrors()
-          toast.success(`Analisi completata per "${pending.chapterTitle}"!`)
-          if (pending.chapterId !== 'all') {
-            setSelectedId(pending.chapterId)
-            setActiveTab('feedback')
-            window.scrollTo({top: 0, behavior: 'smooth'})
+            if (pending.chapterId === 'all') {
+              await loadAllAnalyses()
+            } else {
+              await loadAnalysis(pending.chapterId)
+            }
+            await loadAnalysisErrors()
+            toast.success(`Analisi completata per "${pending.chapterTitle}"!`)
+            if (pending.chapterId !== 'all') {
+              setSelectedId(pending.chapterId)
+              setActiveTab('feedback')
+              window.scrollTo({top: 0, behavior: 'smooth'})
+            }
           }
           savePending(null)
           setPendingAnalysis(null)
@@ -593,6 +618,12 @@ export default function AnalysisPage() {
     void getParagraphReformat(selectedId).then(setReformatResult)
   }, [selectedId])
 
+  // ─── Load custom questions when switching chapter ──────────────────────────
+  useEffect(() => {
+    if (!selectedId) { setCustomQuestions([]); return }
+    void getCustomQuestions(selectedId).then(setCustomQuestions)
+  }, [selectedId])
+
   const selectedChapter = chapters.find((c) => c.id === selectedId) ?? null
   const chapterAnalyses = selectedId ? (analyses[selectedId] ?? null) : null
   const analysis = chapterAnalyses?.[activeProvider] ?? null
@@ -601,46 +632,62 @@ export default function AnalysisPage() {
   const isPendingPush = isDirty || selectedChapter?.syncStatus === SyncStatus.PENDING_PUSH
   const isGoogleDoc = selectedChapter?.driveMimeType === 'application/vnd.google-apps.document'
 
-  async function triggerAnalysis(chapterId: string, includePrevious = false, provider: AIProvider = activeProvider, comment?: string) {
+  async function triggerAnalysis(chapterId: string, includePrevious = false, provider: AIProvider = activeProvider, comment?: string, question?: string) {
     // Blocca se c'è già un'analisi in corso
     if (pendingAnalysis) {
       toast.warning(`Analisi già in corso per "${pendingAnalysis.chapterTitle}" — attendi il completamento prima di avviarne un'altra`)
       return
     }
 
+    const isCustomQuestion = !!question?.trim()
+
     const hasExisting =
       chapterId === 'all'
         ? Object.keys(analyses).length > 0
         : !!analyses[chapterId]?.[provider]
 
-    // Se non è ancora passato dal dialog di primo avvio, mostralo
-    if (!hasExisting && !analyzeDialog && comment === undefined) {
+    // Le domande personalizzate non richiedono dialog di conferma rianalisi
+    if (!isCustomQuestion) {
+      // Se non è ancora passato dal dialog di primo avvio, mostralo
+      if (!hasExisting && !analyzeDialog && comment === undefined) {
+        const saved = chapterId !== 'all' ? getAuthorComment(chapterId) : ''
+        setAuthorComment(saved)
+        setCustomQuestion('')
+        setAnalyzeDialog({chapterId, provider})
+        return
+      }
+
+      if (hasExisting && !reanalysisDialog && comment === undefined) {
+        // Mostra il dialog per scegliere se includere il contesto precedente
+        const existingAnalysis = chapterId !== 'all' ? analyses[chapterId]?.[provider] : null
+        const label =
+          chapterId === 'all'
+            ? 'Alcuni capitoli hanno già un\'analisi salvata'
+            : `Il capitolo ha già un'analisi ${AI_PROVIDER_CONFIG[provider].label} del ${formatRelativeDate(existingAnalysis!.analyzedAt)}`
+        const saved = chapterId !== 'all' ? getAuthorComment(chapterId) : ''
+        setReanalysisComment(saved)
+        setReanalysisDialog({chapterId, label, provider})
+        return
+      }
+    }
+
+    // Se è una domanda personalizzata apri il dialog (se non ancora aperto)
+    if (isCustomQuestion && !analyzeDialog && comment === undefined) {
+      setCustomQuestion(question ?? '')
       const saved = chapterId !== 'all' ? getAuthorComment(chapterId) : ''
       setAuthorComment(saved)
       setAnalyzeDialog({chapterId, provider})
       return
     }
 
-    if (hasExisting && !reanalysisDialog && comment === undefined) {
-      // Mostra il dialog per scegliere se includere il contesto precedente
-      const existingAnalysis = chapterId !== 'all' ? analyses[chapterId]?.[provider] : null
-      const label =
-        chapterId === 'all'
-          ? 'Alcuni capitoli hanno già un\'analisi salvata'
-          : `Il capitolo ha già un'analisi ${AI_PROVIDER_CONFIG[provider].label} del ${formatRelativeDate(existingAnalysis!.analyzedAt)}`
-      const saved = chapterId !== 'all' ? getAuthorComment(chapterId) : ''
-      setReanalysisComment(saved)
-      setReanalysisDialog({chapterId, label, provider})
-      return
-    }
-
     // Salva il commento per questo capitolo (se fornito e non "all")
-    if (comment !== undefined && chapterId !== 'all') {
+    if (!isCustomQuestion && comment !== undefined && chapterId !== 'all') {
       saveAuthorComment(chapterId, comment)
     }
 
     setAnalyzeDialog(null)
     setReanalysisDialog(null)
+    setCustomQuestion('')
     setTriggering(true)
     try {
       // Prima di avviare l'analisi, sincronizza il testo aggiornato da Drive
@@ -686,10 +733,15 @@ export default function AnalysisPage() {
         with_show_dont_tell: withShowDontTell ? 'true' : 'false',
         with_characters: withCharacters ? 'true' : 'false',
       }
-      // Aggiungi il commento autore se presente (non vuoto)
-      const effectiveComment = comment ?? (chapterId !== 'all' ? getAuthorComment(chapterId) : '')
-      if (effectiveComment.trim()) {
-        workflowInputs.author_comment = effectiveComment.trim()
+
+      if (isCustomQuestion) {
+        workflowInputs.custom_question = question!.trim()
+      } else {
+        // Aggiungi il commento autore se presente (non vuoto)
+        const effectiveComment = comment ?? (chapterId !== 'all' ? getAuthorComment(chapterId) : '')
+        if (effectiveComment.trim()) {
+          workflowInputs.author_comment = effectiveComment.trim()
+        }
       }
 
       await triggerWorkflow(GITHUB_REPO_OWNER, GITHUB_REPO_NAME, 'ai-analysis.yml', workflowInputs)
@@ -697,11 +749,16 @@ export default function AnalysisPage() {
         chapterId === 'all'
           ? 'tutti i capitoli'
           : (chapters.find((c) => c.id === chapterId)?.title ?? chapterId)
-      const pending: PendingAnalysis = {chapterId, chapterTitle, triggeredAt: new Date().toISOString()}
+      const mode = isCustomQuestion ? 'custom_question' : 'standard'
+      const pending: PendingAnalysis = {chapterId, chapterTitle, triggeredAt: new Date().toISOString(), mode}
       savePending(pending)
       setPendingAnalysis(pending)
       setElapsedSeconds(0)
-      toast.success(`Analisi ${AI_PROVIDER_CONFIG[provider].label} avviata per "${chapterTitle}"${includePrevious ? ' (con contesto precedente)' : ''}! Monitoraggio attivato.`)
+      if (isCustomQuestion) {
+        toast.success(`Domanda inviata per "${chapterTitle}" — risposta in arrivo!`)
+      } else {
+        toast.success(`Analisi ${AI_PROVIDER_CONFIG[provider].label} avviata per "${chapterTitle}"${includePrevious ? ' (con contesto precedente)' : ''}! Monitoraggio attivato.`)
+      }
     } catch (err) {
       toast.error('Errore: ' + (err as Error).message)
     } finally {
@@ -1073,6 +1130,24 @@ export default function AnalysisPage() {
           Analizza
         </button>
 
+        {/* Domanda personalizzata */}
+        {selectedId && (
+          <button
+            onClick={() => {
+              if (!selectedId) return
+              setCustomQuestion('')
+              setAuthorComment(getAuthorComment(selectedId))
+              setAnalyzeDialog({chapterId: selectedId, provider: activeProvider})
+            }}
+            disabled={!selectedId || triggering || !!pendingAnalysis}
+            title="Fai una domanda precisa sull'IA per questo capitolo"
+            className="flex items-center gap-1.5 rounded-lg border border-violet-700/40 bg-violet-900/20 px-3 py-2 text-sm text-violet-400 transition-colors hover:bg-violet-900/40 hover:text-violet-300 disabled:opacity-40"
+          >
+            <Sparkles className="h-4 w-4" />
+            Chiedi
+          </button>
+        )}
+
         {/* Trigger all */}
         <button
           onClick={() => void triggerAnalysis('all')}
@@ -1080,7 +1155,6 @@ export default function AnalysisPage() {
           title="Analizza tutti i capitoli"
           className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200 disabled:opacity-40"
         >
-          <Sparkles className="h-4 w-4" />
           Tutti
         </button>
 
@@ -1653,6 +1727,7 @@ export default function AnalysisPage() {
                                 ...(analysis.paragraphBreaks || reformatResult ? [{id: 'acapo' as ExtraTab, label: '¶ A Capo'}] : []),
                                 ...(analysis.wordFrequency ? [{id: 'parole' as ExtraTab, label: 'Parole'}] : []),
                                 ...(analysis.showDontTell ? [{id: 'showdontell' as ExtraTab, label: 'Show vs Tell'}] : []),
+                                ...(customQuestions.length > 0 ? [{id: 'domande' as ExtraTab, label: `Domande (${customQuestions.length})`}] : []),
                               ]
                               if (subTabs.length === 0) return (
                                 <div className="rounded-xl border border-dashed border-[var(--border)] py-8 text-center">
@@ -1845,17 +1920,17 @@ export default function AnalysisPage() {
                                         <div><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Show vs Tell</p><p className="mt-0.5 text-sm text-slate-300">{analysis.showDontTell.summary}</p></div>
                                       </div>
                                       <div className="rounded-lg border border-orange-800/30 bg-orange-900/10 px-3 py-2 text-xs text-orange-300 leading-relaxed">
-                                        <strong>Show, don&apos;t tell:</strong> mostra emozioni attraverso azioni invece di descriverle direttamente. <span className="line-through opacity-50">\u00abEra triste\u00bb</span> \u2192 <span className="text-emerald-300">\u00abLe lacrime le rigarono le guance\u00bb</span>
+                                        <strong>Show, don&apos;t tell:</strong> mostra emozioni attraverso azioni invece di descriverle direttamente. <span className="line-through opacity-50">&laquo;Era triste&raquo;</span> &rarr; <span className="text-emerald-300">&laquo;Le lacrime le rigarono le guance&raquo;</span>
                                       </div>
                                       {analysis.showDontTell.issues.length > 0 ? (
                                         <div className="space-y-4">
                                           {analysis.showDontTell.issues.map((issue, i) => (
                                             <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-3">
-                                              <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-800/40 bg-orange-900/20 px-2.5 py-0.5 text-xs font-semibold text-orange-400">\ud83d\udce2 Telling</span>
+                                              <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-800/40 bg-orange-900/20 px-2.5 py-0.5 text-xs font-semibold text-orange-400">Telling</span>
                                               <blockquote className="border-l-2 border-orange-500/40 pl-3 text-sm italic leading-relaxed text-slate-300">&ldquo;{issue.quote}&rdquo;</blockquote>
                                               <p className="text-xs leading-relaxed text-slate-500">{issue.explanation}</p>
                                               <div className="rounded-lg border border-emerald-800/40 bg-emerald-900/10 p-3 space-y-1.5">
-                                                <p className="text-xs font-semibold text-emerald-400">\u2728 Riscrittura proposta (Show)</p>
+                                                <p className="text-xs font-semibold text-emerald-400">Riscrittura proposta (Show)</p>
                                                 <p className="text-sm leading-relaxed text-slate-200">{issue.rewrite}</p>
                                               </div>
                                             </div>
@@ -1863,6 +1938,83 @@ export default function AnalysisPage() {
                                         </div>
                                       ) : (
                                         <div className="flex items-center gap-3 rounded-xl border border-emerald-700/30 bg-emerald-900/10 px-4 py-3"><CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" /><p className="text-sm text-emerald-300">Eccellente uso dello showing.</p></div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* domande personalizzate */}
+                                  {activeExtraTab === 'domande' && (
+                                    <div className="space-y-3">
+                                      {customQuestions.length === 0 ? (
+                                        <div className="rounded-xl border border-dashed border-[var(--border)] py-8 text-center">
+                                          <p className="text-sm text-slate-500">Nessuna domanda personalizzata ancora.</p>
+                                          <p className="mt-1 text-xs text-slate-600">Usa il dialog di analisi per inviarne una.</p>
+                                        </div>
+                                      ) : (
+                                        customQuestions.map((q) => (
+                                          <div key={q.id} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] overflow-hidden">
+                                            {/* Header domanda — clicca per espandere */}
+                                            <button
+                                              onClick={() => setExpandedQuestionId(expandedQuestionId === q.id ? null : (q.id ?? null))}
+                                              className="w-full flex items-start gap-3 p-4 text-left hover:bg-white/5 transition-colors"
+                                            >
+                                              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-violet-500/40 bg-violet-900/30 text-xs font-bold text-violet-400">?</span>
+                                              <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-slate-200 leading-snug">{q.question}</p>
+                                                <p className="mt-0.5 text-xs text-slate-600">{formatRelativeDate(q.analyzedAt)} &middot; {q.provider} &middot; {q.model}</p>
+                                              </div>
+                                              <ChevronDown className={cn('h-4 w-4 shrink-0 text-slate-500 transition-transform mt-0.5', expandedQuestionId === q.id && 'rotate-180')} />
+                                            </button>
+
+                                            {expandedQuestionId === q.id && (
+                                              <div className="border-t border-[var(--border)] p-4 space-y-4">
+                                                {/* Risposta principale */}
+                                                <div className="rounded-lg border border-violet-800/30 bg-violet-900/10 p-4">
+                                                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-violet-400">Risposta</p>
+                                                  <p className="text-sm leading-relaxed text-slate-200 whitespace-pre-wrap">{q.answer}</p>
+                                                </div>
+
+                                                {/* Osservazioni */}
+                                                {q.findings.length > 0 && (
+                                                  <div className="space-y-2.5">
+                                                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Osservazioni ({q.findings.length})</p>
+                                                    {q.findings.map((f, i) => (
+                                                      <div key={i} className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-3 space-y-2">
+                                                        {f.quote && (
+                                                          <blockquote className="border-l-2 border-slate-600 pl-3 text-xs italic leading-relaxed text-slate-400">&ldquo;{f.quote}&rdquo;</blockquote>
+                                                        )}
+                                                        <p className="text-sm text-slate-300">{f.observation}</p>
+                                                        {f.suggestion && (
+                                                          <div className="rounded-md border border-emerald-800/30 bg-emerald-900/10 px-3 py-2">
+                                                            <p className="text-xs font-medium text-emerald-400 mb-0.5">Suggerimento</p>
+                                                            <p className="text-xs leading-relaxed text-slate-300">{f.suggestion}</p>
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                )}
+
+                                                {/* Correzioni */}
+                                                {q.corrections.length > 0 && (
+                                                  <div className="space-y-2">
+                                                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Correzioni ({q.corrections.length})</p>
+                                                    {q.corrections.map((c, i) => (
+                                                      <div key={i} className={cn('rounded-lg border p-3 space-y-1.5 text-xs', CORRECTION_TYPE_COLORS[c.type] ?? 'border-slate-700/30 bg-slate-800/30 text-slate-400')}>
+                                                        <div className="flex items-center gap-2">
+                                                          <span className="font-semibold">{CORRECTION_TYPE_LABELS[c.type] ?? c.type}</span>
+                                                        </div>
+                                                        <p className="line-through text-slate-500">{c.original}</p>
+                                                        <p className="font-medium text-slate-200">{c.suggested}</p>
+                                                        <p className="text-slate-500">{c.note}</p>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))
                                       )}
                                     </div>
                                   )}
@@ -2847,7 +2999,34 @@ export default function AnalysisPage() {
                 </div>
               </div>
 
-              {/* Commento autore */}
+              {/* Domanda personalizzata */}
+              <div className="mb-4">
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-violet-400">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Domanda precisa
+                  <span className="text-slate-600">(opzionale)</span>
+                </label>
+                <textarea
+                  value={customQuestion}
+                  onChange={(e) => setCustomQuestion(e.target.value)}
+                  placeholder="Es: il dialogo tra Marco e Sofia è credibile? Come migliorare il ritmo nella scena del bosco?"
+                  rows={3}
+                  autoFocus
+                  className="w-full resize-none rounded-lg border border-violet-700/40 bg-[var(--overlay)] px-3 py-2.5 text-sm text-slate-300 placeholder:text-slate-600 outline-none focus:border-violet-500/60"
+                />
+                {customQuestion.trim() ? (
+                  <p className="mt-1.5 text-xs text-violet-500">
+                    Modalità domanda: l&apos;IA risponderà solo a questa domanda con osservazioni mirate e correzioni. Le sezioni standard vengono ignorate.
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-xs text-slate-600">
+                    Se compili questo campo, l&apos;analisi sarà mirata alla tua domanda specifica invece che standard.
+                  </p>
+                )}
+              </div>
+
+              {/* Commento autore (solo in modalità standard) */}
+              {!customQuestion.trim() && (
               <div className="mb-5">
                 <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-400">
                   <FileEdit className="h-3.5 w-3.5" />
@@ -2858,19 +3037,24 @@ export default function AnalysisPage() {
                   value={authorComment}
                   onChange={(e) => setAuthorComment(e.target.value)}
                   placeholder="Es: ho cambiato il finale, controlla la coerenza con il personaggio di Marco…"
-                  rows={4}
-                  autoFocus
+                  rows={3}
                   className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2.5 text-sm text-slate-300 placeholder:text-slate-600 outline-none focus:border-violet-500/40"
                 />
                 <p className="mt-1.5 text-xs text-slate-600">
                   {authorComment.trim()
                     ? 'Questo testo sarà salvato e riutilizzato alla prossima analisi di questo capitolo.'
-                    : 'Puoi lasciare vuoto per un\'analisi standard. Il testo viene salvato per capitolo.'}
+                    : 'Contestualizza l\'analisi. Il testo viene salvato per capitolo.'}
                 </p>
               </div>
+              )}
 
-              {/* Sezioni da analizzare */}
-              <div className="mb-5 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5">
+              {/* Sezioni da analizzare (solo in modalità standard) */}
+              {customQuestion.trim() && (
+                <div className="mb-5 rounded-xl border border-violet-800/30 bg-violet-900/10 p-4">
+                  <p className="text-sm text-violet-300">L&apos;IA si concentrerà esclusivamente sulla tua domanda e restituirà: risposta dettagliata, osservazioni citate dal testo, e correzioni specifiche.</p>
+                </div>
+              )}
+              {!customQuestion.trim() && (<div className="mb-5 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5">
                 <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400">📋 Sezioni da analizzare</p>
                 <div className="space-y-1.5">
                   <label className="flex cursor-pointer items-center gap-2.5">
@@ -2991,7 +3175,7 @@ export default function AnalysisPage() {
                     </label>
                   </div>
                 </div>
-              </div>
+              </div>)}
 
               <div className="flex gap-3">
                 <button
@@ -3001,12 +3185,12 @@ export default function AnalysisPage() {
                   Annulla
                 </button>
                 <button
-                  onClick={() => void triggerAnalysis(analyzeDialog.chapterId, false, analyzeDialog.provider, authorComment)}
+                  onClick={() => void triggerAnalysis(analyzeDialog.chapterId, false, analyzeDialog.provider, authorComment, customQuestion.trim() || undefined)}
                   disabled={triggering}
                   className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
                 >
-                  {triggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  Avvia analisi
+                  {triggering ? <Loader2 className="h-4 w-4 animate-spin" /> : customQuestion.trim() ? <Sparkles className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  {customQuestion.trim() ? 'Invia domanda' : 'Avvia analisi'}
                 </button>
               </div>
               </div>

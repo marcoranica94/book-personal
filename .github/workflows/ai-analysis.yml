@@ -62,6 +62,10 @@ on:
         description: 'Estrai personaggi dal capitolo e aggiorna la collection /characters (true/false)'
         required: false
         default: 'false'
+      custom_question:
+        description: "Domanda precisa per l'IA (se impostata, esegue analisi mirata invece di quella standard)"
+        required: false
+        default: ''
 jobs:
   analyze:
     runs-on: ubuntu-latest
@@ -94,6 +98,7 @@ jobs:
           WITH_WORD_FREQUENCY: ${{ inputs.with_word_frequency }}
           WITH_SHOW_DONT_TELL: ${{ inputs.with_show_dont_tell }}
           WITH_CHARACTERS: ${{ inputs.with_characters }}
+          CUSTOM_QUESTION: ${{ inputs.custom_question }}
           REPO_DIR: ${{ github.workspace }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

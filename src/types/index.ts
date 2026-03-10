@@ -204,6 +204,35 @@ export interface WordFrequencyAnalysis {
   analyzedAt: string
 }
 
+// ─── Custom Question Analysis ────────────────────────────────────────────────
+
+export interface CustomQuestionFinding {
+  /** Citazione esatta dal testo (opzionale) */
+  quote?: string
+  /** Osservazione specifica in risposta alla domanda */
+  observation: string
+  /** Suggerimento operativo (opzionale) */
+  suggestion?: string
+}
+
+/** Analisi mirata a una domanda precisa dell'autore.
+ *  Firestore: /analyses/{chapterId}/questions/{autoId} */
+export interface CustomQuestion {
+  /** Set on read from Firestore */
+  id?: string
+  chapterId: string
+  question: string
+  provider: AIProvider
+  model: string
+  analyzedAt: string
+  /** Risposta principale alla domanda (max 300 parole) */
+  answer: string
+  /** Osservazioni specifiche con citazioni dal testo */
+  findings: CustomQuestionFinding[]
+  /** Correzioni puntali (stessa struttura dell'analisi standard) */
+  corrections: AnalysisCorrection[]
+}
+
 /** Risultato della riformattazione paragrafi (Firestore: /paragraphReformats/{chapterId}) */
 export interface ParagraphReformat {
   chapterId: string
