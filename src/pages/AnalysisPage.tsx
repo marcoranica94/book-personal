@@ -742,7 +742,7 @@ export default function AnalysisPage() {
     const hasExisting =
       chapterId === 'all'
         ? Object.keys(analyses).length > 0
-        : !!analyses[chapterId]?.[provider]
+        : !!analyses[chapterId] && Object.keys(analyses[chapterId]).length > 0
 
     // Le domande personalizzate non richiedono dialog di conferma rianalisi
     if (!isCustomQuestion) {
@@ -757,11 +757,16 @@ export default function AnalysisPage() {
 
       if (hasExisting && !reanalysisDialog && comment === undefined) {
         // Mostra il dialog per scegliere se includere il contesto precedente
-        const existingAnalysis = chapterId !== 'all' ? analyses[chapterId]?.[provider] : null
+        const chapterAnalysesMap = chapterId !== 'all' ? analyses[chapterId] : null
+        const existingAnalysis = chapterAnalysesMap?.[provider]
+          ?? (chapterAnalysesMap ? Object.values(chapterAnalysesMap)[0] : null)
+        const existingProvider = chapterAnalysesMap?.[provider]
+          ? provider
+          : (chapterAnalysesMap ? Object.keys(chapterAnalysesMap)[0] as AIProvider : provider)
         const label =
           chapterId === 'all'
             ? 'Alcuni capitoli hanno già un\'analisi salvata'
-            : `Il capitolo ha già un'analisi ${AI_PROVIDER_CONFIG[provider].label} del ${formatRelativeDate(existingAnalysis!.analyzedAt)}`
+            : `Il capitolo ha già un'analisi ${AI_PROVIDER_CONFIG[existingProvider].label} del ${formatRelativeDate(existingAnalysis!.analyzedAt)}`
         const saved = chapterId !== 'all' ? getAuthorComment(chapterId) : ''
         setReanalysisComment(saved)
         setReanalysisDialog({chapterId, label, provider})
