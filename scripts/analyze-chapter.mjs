@@ -489,6 +489,7 @@ ${withSuggestions && withSuggestionSolutions ? '- Per ogni suggerimento, il camp
     !withReaderReactions && 'readerReactions',
     !withShowDontTell && 'showDontTell',
     !withVerbTense && 'verbTense',
+    !opts.withCharacters && 'characters',
   ].filter(Boolean)
   const excludedNote = excludedSections.length > 0
     ? `\nNOTA: le sezioni ${excludedSections.map(s => `"${s}"`).join(', ')} NON devono essere presenti nel JSON — sono state disabilitate dall'autore.`
@@ -514,10 +515,16 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
 ${strengthsSchema}
 ${weaknessSchema}
 ${suggestionSchema}
-${correctionsSchema}${historicalSection}${paragraphSection}${showDontTellSection}${verbTenseSection}${charactersSchema}
+${charactersSchema}
+${correctionsSchema}${historicalSection}${paragraphSection}${showDontTellSection}${verbTenseSection}
   "_placeholder": null
 }
 ${excludedNote}
+${opts.withCharacters ? `IMPORTANTE sui personaggi:
+- Elenca TUTTI i personaggi che appaiono nel capitolo, anche quelli con ruoli brevi.
+- "role" deve essere: protagonist, antagonist, secondary, o minor.
+- "description" descrive cosa fa il personaggio IN QUESTO CAPITOLO (non la sua storia generale).
+- Se non ci sono personaggi nel capitolo, restituisci "characters": [].` : ''}
 ${withCorrections ? `IMPORTANTE sulle correzioni:
 - Sii ESAUSTIVO: elenca le correzioni che trovi (grammatica, stile, chiarezza, continuità), con limite di 20.
 - Non fermarti alle prime 5-10: analizza ogni paragrafo del capitolo e segnala ogni problema.

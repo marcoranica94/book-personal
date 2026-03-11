@@ -24,6 +24,7 @@ import {
 import {Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts'
 import {useChaptersStore} from '@/stores/chaptersStore'
 import {useAnalysisStore} from '@/stores/analysisStore'
+import {useCharactersStore} from '@/stores/charactersStore'
 import {useDriveStore} from '@/stores/driveStore'
 import {useAuthStore} from '@/stores/authStore'
 import {useSettingsStore} from '@/stores/settingsStore'
@@ -577,6 +578,18 @@ export default function AnalysisPage() {
               setSelectedId(pending.chapterId)
               setActiveTab('feedback')
               window.scrollTo({top: 0, behavior: 'smooth'})
+            }
+            // Reload characters after a delay — upsertCharacters runs after saveAnalysis in the script
+            if (withCharacters) {
+              setTimeout(() => {
+                const prevCount = useCharactersStore.getState().characters.length
+                void useCharactersStore.getState().load().then(() => {
+                  const newCount = useCharactersStore.getState().characters.length
+                  const diff = newCount - prevCount
+                  if (diff > 0) toast.info(`${diff} nuov${diff === 1 ? 'o' : 'i'} personagg${diff === 1 ? 'io' : 'i'} aggiunt${diff === 1 ? 'o' : 'i'} nella pagina Personaggi`)
+                  else toast.info('Personaggi aggiornati nella pagina Personaggi')
+                })
+              }, 3000)
             }
           }
           savePending(null)
