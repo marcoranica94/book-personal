@@ -1863,22 +1863,22 @@ export default function AnalysisPage() {
                                             </div>
                                             <p className="flex-1 text-sm leading-relaxed text-slate-300">{analysis.historicalAccuracy.summary}</p>
                                           </div>
-                                          {analysis.historicalAccuracy.correct.length > 0 && (
+                                          {(analysis.historicalAccuracy.correct?.length ?? 0) > 0 && (
                                             <div>
                                               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-emerald-500">Accurato ({analysis.historicalAccuracy.correct.length})</p>
-                                              <ul className="space-y-1.5">{analysis.historicalAccuracy.correct.map((item, i) => (<li key={i} className="flex items-start gap-2.5 text-sm"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" /><span className="text-slate-300">{item}</span></li>))}</ul>
+                                              <ul className="space-y-1.5">{(analysis.historicalAccuracy.correct ?? []).map((item, i) => (<li key={i} className="flex items-start gap-2.5 text-sm"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" /><span className="text-slate-300">{item}</span></li>))}</ul>
                                             </div>
                                           )}
-                                          {analysis.historicalAccuracy.anachronisms.length > 0 && (
+                                          {(analysis.historicalAccuracy.anachronisms?.length ?? 0) > 0 && (
                                             <div>
                                               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-amber-500">Anacronismi ({analysis.historicalAccuracy.anachronisms.length})</p>
-                                              <ul className="space-y-1.5">{analysis.historicalAccuracy.anachronisms.map((item, i) => (<li key={i} className="flex items-start gap-2.5 text-sm"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" /><span className="text-slate-300">{item}</span></li>))}</ul>
+                                              <ul className="space-y-1.5">{(analysis.historicalAccuracy.anachronisms ?? []).map((item, i) => (<li key={i} className="flex items-start gap-2.5 text-sm"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" /><span className="text-slate-300">{item}</span></li>))}</ul>
                                             </div>
                                           )}
-                                          {analysis.historicalAccuracy.issues.length > 0 && (
+                                          {(analysis.historicalAccuracy.issues?.length ?? 0) > 0 && (
                                             <div>
                                               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-400">Problemi ({analysis.historicalAccuracy.issues.length})</p>
-                                              <div className="space-y-3">{analysis.historicalAccuracy.issues.map((issue, i) => (<div key={i} className="rounded-xl border border-red-800/30 bg-red-900/10 p-4 space-y-2"><p className="rounded-lg bg-[var(--overlay)] px-3 py-2 text-xs text-slate-400 italic">"{issue.quote}"</p><p className="text-sm text-red-300">{issue.issue}</p><p className="flex items-start gap-1.5 text-xs text-slate-500"><span className="shrink-0 font-medium text-blue-400">Suggerimento:</span>{issue.suggestion}</p></div>))}</div>
+                                              <div className="space-y-3">{(analysis.historicalAccuracy.issues ?? []).map((issue, i) => (<div key={i} className="rounded-xl border border-red-800/30 bg-red-900/10 p-4 space-y-2"><p className="rounded-lg bg-[var(--overlay)] px-3 py-2 text-xs text-slate-400 italic">"{issue.quote}"</p><p className="text-sm text-red-300">{issue.issue}</p><p className="flex items-start gap-1.5 text-xs text-slate-500"><span className="shrink-0 font-medium text-blue-400">Suggerimento:</span>{issue.suggestion}</p></div>))}</div>
                                             </div>
                                           )}
                                         </>
@@ -1899,10 +1899,10 @@ export default function AnalysisPage() {
                                           </div>
                                           <p className="text-sm italic text-slate-300">"{r.reaction}"</p>
                                           <p className="text-sm leading-relaxed text-slate-400">{r.comment}</p>
-                                          {r.questions.length > 0 && (
+                                          {(r.questions?.length ?? 0) > 0 && (
                                             <div className="rounded-lg border border-blue-800/30 bg-blue-900/10 p-3">
                                               <p className="mb-2 text-xs font-semibold text-blue-400">Domande:</p>
-                                              <ul className="space-y-1">{r.questions.map((q, qi) => (<li key={qi} className="flex items-start gap-2 text-xs text-slate-400"><span className="shrink-0 text-blue-600">?</span>{q}</li>))}</ul>
+                                              <ul className="space-y-1">{(r.questions ?? []).map((q, qi) => (<li key={qi} className="flex items-start gap-2 text-xs text-slate-400"><span className="shrink-0 text-blue-600">?</span>{q}</li>))}</ul>
                                             </div>
                                           )}
                                         </div>
@@ -1919,9 +1919,9 @@ export default function AnalysisPage() {
                                             <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold', analysis.paragraphBreaks.score >= 8 ? 'bg-emerald-900/30 text-emerald-400' : analysis.paragraphBreaks.score >= 6 ? 'bg-blue-900/30 text-blue-400' : analysis.paragraphBreaks.score >= 4 ? 'bg-amber-900/30 text-amber-400' : 'bg-red-900/30 text-red-400')}>{analysis.paragraphBreaks.score.toFixed(1)}</span>
                                             <div><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Paragrafi</p><p className="mt-0.5 text-sm text-slate-300">{analysis.paragraphBreaks.summary}</p></div>
                                           </div>
-                                          {analysis.paragraphBreaks.issues.length > 0 && (
+                                          {(analysis.paragraphBreaks.issues?.length ?? 0) > 0 && (
                                             <div className="space-y-3">
-                                              {analysis.paragraphBreaks.issues.map((issue, i) => {
+                                              {(analysis.paragraphBreaks.issues ?? []).map((issue, i) => {
                                                 const typeColors: Record<string, string> = {blocco_troppo_lungo:'border-orange-800/40 bg-orange-900/10 text-orange-400',assenza_pausa:'border-red-800/40 bg-red-900/10 text-red-400',pausa_prematura:'border-blue-800/40 bg-blue-900/10 text-blue-400',flusso_coscienza:'border-violet-800/40 bg-violet-900/10 text-violet-400',altro:'border-slate-700/40 bg-slate-800/20 text-slate-400'}
                                                 const typeLabels: Record<string, string> = {blocco_troppo_lungo:'Blocco lungo',assenza_pausa:'Manca pausa',pausa_prematura:'Pausa prematura',flusso_coscienza:'Flusso di coscienza',altro:'Altro'}
                                                 return (
@@ -1934,7 +1934,7 @@ export default function AnalysisPage() {
                                               })}
                                             </div>
                                           )}
-                                          {analysis.paragraphBreaks.issues.length === 0 && (
+                                          {(analysis.paragraphBreaks.issues?.length ?? 0) === 0 && (
                                             <div className="flex items-center gap-3 rounded-xl border border-emerald-700/30 bg-emerald-900/10 px-4 py-3"><CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" /><p className="text-sm text-emerald-300">Uso dei paragrafi ottimale.</p></div>
                                           )}
                                         </div>
@@ -2019,9 +2019,9 @@ export default function AnalysisPage() {
                                       <div className="rounded-lg border border-orange-800/30 bg-orange-900/10 px-3 py-2 text-xs text-orange-300 leading-relaxed">
                                         <strong>Show, don&apos;t tell:</strong> mostra emozioni attraverso azioni invece di descriverle direttamente. <span className="line-through opacity-50">&laquo;Era triste&raquo;</span> &rarr; <span className="text-emerald-300">&laquo;Le lacrime le rigarono le guance&raquo;</span>
                                       </div>
-                                      {analysis.showDontTell.issues.length > 0 ? (
+                                      {(analysis.showDontTell.issues?.length ?? 0) > 0 ? (
                                         <div className="space-y-4">
-                                          {analysis.showDontTell.issues.map((issue, i) => (
+                                          {(analysis.showDontTell.issues ?? []).map((issue, i) => (
                                             <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-3">
                                               <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-800/40 bg-orange-900/20 px-2.5 py-0.5 text-xs font-semibold text-orange-400">Telling</span>
                                               <blockquote className="border-l-2 border-orange-500/40 pl-3 text-sm italic leading-relaxed text-slate-300">&ldquo;{issue.quote}&rdquo;</blockquote>
