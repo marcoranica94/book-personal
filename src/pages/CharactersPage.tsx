@@ -1,21 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {AnimatePresence, motion} from 'framer-motion'
-import {
-  BookUser,
-  ChevronRight,
-  Edit2,
-  Loader2,
-  Play,
-  Plus,
-  RefreshCw,
-  Save,
-  Search,
-  Sparkles,
-  Tag,
-  Trash2,
-  Users,
-  X,
-} from 'lucide-react'
+import {BookUser, ChevronRight, Edit2, Loader2, Play, Plus, RefreshCw, Save, Search, Sparkles, Tag, Trash2, Users, X,} from 'lucide-react'
 import {useCharactersStore} from '@/stores/charactersStore'
 import {useCharacterAnalysisStore} from '@/stores/characterAnalysisStore'
 import {useChaptersStore} from '@/stores/chaptersStore'
@@ -24,16 +9,8 @@ import {getCharacterAnalysisError} from '@/services/characterAnalysisService'
 import {toast} from '@/stores/toastStore'
 import {cn} from '@/utils/cn'
 import {formatRelativeDate} from '@/utils/formatters'
-import {GITHUB_REPO_OWNER, GITHUB_REPO_NAME} from '@/utils/constants'
-import {
-  AI_PROVIDER_CONFIG,
-  AIProvider,
-  CHARACTER_ROLE_CONFIG,
-  CHARACTER_SCORE_LABELS,
-  CharacterRole,
-  type Character,
-  type CharacterAnalysis,
-} from '@/types'
+import {GITHUB_REPO_NAME, GITHUB_REPO_OWNER} from '@/utils/constants'
+import {AI_PROVIDER_CONFIG, AIProvider, type Character, CHARACTER_ROLE_CONFIG, CHARACTER_SCORE_LABELS, type CharacterAnalysis, CharacterRole,} from '@/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -82,7 +59,7 @@ const EMPTY_CHAR: Omit<Character, 'id'> = {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function CharactersPage() {
-  const {characters, isLoading: charsLoading, load, create, update, remove} = useCharactersStore()
+  const {characters, isLoading: charsLoading, load, create, update, remove, removeAll} = useCharactersStore()
   const {analyses, load: loadAnalysis, poll} = useCharacterAnalysisStore()
   const {chapters} = useChaptersStore()
 
@@ -105,6 +82,9 @@ export default function CharactersPage() {
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [analyzingAll, setAnalyzingAll] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
+  // overview: 'characters' | 'bychapter'
+  const [overviewView, setOverviewView] = useState<'characters' | 'bychapter'>('characters')
 
   // Load characters on mount
   useEffect(() => {
@@ -229,6 +209,13 @@ export default function CharactersPage() {
     toast.success('Personaggio eliminato.')
   }
 
+  const handleResetAll = async () => {
+    await removeAll()
+    setSelected(null)
+    setConfirmReset(false)
+    toast.success('Tutti i personaggi eliminati.')
+  }
+
   const handleAnalyzeAll = async () => {
     if (characters.length === 0) return
     setAnalyzingAll(true)
@@ -263,116 +250,117 @@ export default function CharactersPage() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* LEFT — character list */}
-      <div className="flex w-[360px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]">
+      <div className="flex w-[300px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]">
         {/* Header */}
-        <div className="border-b border-[var(--border)] p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-violet-400" />
-              <h1 className="text-base font-bold text-[var(--text-primary)]">Personaggi</h1>
-              <span className="rounded-full bg-[var(--overlay)] px-2 py-0.5 text-xs text-slate-500">{characters.length}</span>
-            </div>
+        <div className="border-b border-[var(--border)] px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 shrink-0 text-violet-400" />
+            <span className="flex-1 text-sm font-bold text-[var(--text-primary)]">Personaggi</span>
+            <span className="rounded-full bg-[var(--overlay)] px-1.5 py-0.5 text-[10px] text-slate-500">{characters.length}</span>
             <button
               onClick={() => setIsCreating(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-violet-500"
+              title="Nuovo personaggio"
+              className="rounded-md p-1 text-violet-400 transition-colors hover:bg-violet-900/30 hover:text-violet-300"
             >
-              <Plus className="h-3.5 w-3.5" />
-              Nuovo
+              <Plus className="h-4 w-4" />
             </button>
+            {characters.length > 0 && (
+              confirmReset ? (
+                <div className="flex items-center gap-1">
+                  <button onClick={() => void handleResetAll()} className="rounded px-1.5 py-0.5 text-[10px] font-medium text-rose-400 bg-rose-900/20 hover:bg-rose-900/40">Sì, svuota</button>
+                  <button onClick={() => setConfirmReset(false)} className="text-[10px] text-slate-500 hover:text-slate-300">No</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmReset(true)}
+                  title="Svuota tutti i personaggi"
+                  className="rounded-md p-1 text-slate-600 transition-colors hover:bg-rose-900/20 hover:text-rose-400"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )
+            )}
           </div>
 
           {/* Search */}
-          <div className="relative mb-2">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+          <div className="relative mt-2">
+            <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-500" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cerca personaggio…"
-              className="w-full rounded-lg border border-[var(--border)] bg-[var(--overlay)] py-1.5 pl-8 pr-3 text-sm text-slate-300 placeholder:text-slate-600 outline-none focus:border-violet-500/40"
+              placeholder="Cerca…"
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--overlay)] py-1 pl-6 pr-2 text-xs text-slate-300 placeholder:text-slate-600 outline-none focus:border-violet-500/40"
             />
           </div>
 
           {/* Role filter */}
-          <div className="flex flex-wrap gap-1">
-            <button
-              onClick={() => setRoleFilter('all')}
-              className={cn(
-                'rounded-full px-2.5 py-0.5 text-xs transition-colors',
-                roleFilter === 'all' ? 'bg-violet-600/30 text-violet-300' : 'text-slate-500 hover:text-slate-300',
-              )}
-            >
-              Tutti
-            </button>
-            {Object.entries(CHARACTER_ROLE_CONFIG).map(([role, cfg]) => (
-              <button
-                key={role}
-                onClick={() => setRoleFilter(role as CharacterRole)}
-                className={cn(
-                  'rounded-full px-2.5 py-0.5 text-xs transition-colors',
-                  roleFilter === role ? cn(cfg.bg, cfg.color) : 'text-slate-500 hover:text-slate-300',
-                )}
-              >
-                {cfg.label}
-              </button>
-            ))}
+          <div className="mt-2 flex flex-wrap gap-1">
+            {([['all', 'Tutti'], ...Object.entries(CHARACTER_ROLE_CONFIG).map(([r, c]) => [r, c.label])] as [string, string][]).map(([role, label]) => {
+              const active = roleFilter === role
+              const cfg = role !== 'all' ? CHARACTER_ROLE_CONFIG[role as CharacterRole] : null
+              return (
+                <button
+                  key={role}
+                  onClick={() => setRoleFilter(role as CharacterRole | 'all')}
+                  className={cn(
+                    'rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors',
+                    active && cfg ? cn(cfg.bg, cfg.color, cfg.border) : active ? 'bg-violet-900/30 text-violet-300 border-violet-700/40' : 'border-transparent text-slate-500 hover:text-slate-300',
+                  )}
+                >
+                  {label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        {/* List */}
+        {/* List — compact rows */}
         <div className="flex-1 overflow-y-auto">
           {charsLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
             </div>
           ) : filtered.length === 0 ? (
-            <div className="py-12 text-center">
-              <BookUser className="mx-auto mb-3 h-10 w-10 text-slate-600" />
-              <p className="text-sm text-slate-500">
-                {search || roleFilter !== 'all' ? 'Nessun personaggio trovato' : 'Nessun personaggio ancora'}
+            <div className="py-10 text-center">
+              <BookUser className="mx-auto mb-2 h-8 w-8 text-slate-600" />
+              <p className="text-xs text-slate-500">
+                {search || roleFilter !== 'all' ? 'Nessun risultato' : 'Nessun personaggio ancora'}
               </p>
               {!search && roleFilter === 'all' && (
-                <button
-                  onClick={() => setIsCreating(true)}
-                  className="mt-3 text-xs text-violet-400 hover:text-violet-300"
-                >
+                <button onClick={() => setIsCreating(true)} className="mt-2 text-xs text-violet-400 hover:text-violet-300">
                   + Crea il primo
                 </button>
               )}
             </div>
           ) : (
-            filtered.map((char) => {
-              const cfg = CHARACTER_ROLE_CONFIG[char.role]
-              const isSelected = selected?.id === char.id
-              return (
-                <button
-                  key={char.id}
-                  onClick={() => handleSelect(char)}
-                  className={cn(
-                    'w-full flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 text-left transition-colors hover:bg-[var(--overlay)]',
-                    isSelected && 'bg-violet-900/20 border-l-2 border-l-violet-500',
-                  )}
-                >
-                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold', cfg.bg, cfg.color)}>
-                    {char.name[0]?.toUpperCase() ?? '?'}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-[var(--text-primary)]">{char.name}</span>
-                      <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium', cfg.bg, cfg.color)}>
-                        {cfg.label}
+            <div className="py-1">
+              {filtered.map((char) => {
+                const cfg = CHARACTER_ROLE_CONFIG[char.role]
+                const isSelected = selected?.id === char.id
+                return (
+                  <button
+                    key={char.id}
+                    onClick={() => handleSelect(char)}
+                    className={cn(
+                      'w-full flex items-center gap-2.5 px-3 py-1.5 text-left transition-colors hover:bg-[var(--overlay)]',
+                      isSelected && 'bg-violet-900/15 border-l-2 border-l-violet-500 pl-2.5',
+                    )}
+                  >
+                    {/* Role dot */}
+                    <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold border', cfg.bg, cfg.color, cfg.border)}>
+                      {char.name[0]?.toUpperCase() ?? '?'}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--text-primary)]">{char.name}</span>
+                    {char.chaptersAppearing.length > 0 && (
+                      <span className="shrink-0 rounded bg-[var(--overlay)] px-1 py-0.5 text-[10px] tabular-nums text-slate-500">
+                        {char.chaptersAppearing.length}
                       </span>
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">
-                      {char.chaptersAppearing.length > 0
-                        ? `${char.chaptersAppearing.length} cap.`
-                        : 'Nessun capitolo'}{' '}
-                      {char.personalityTraits.slice(0, 2).join(', ')}
-                    </p>
-                  </div>
-                  {isSelected && <ChevronRight className="h-4 w-4 shrink-0 text-violet-400" />}
-                </button>
-              )
-            })
+                    )}
+                    {isSelected && <ChevronRight className="h-3 w-3 shrink-0 text-violet-400" />}
+                  </button>
+                )
+              })}
+            </div>
           )}
         </div>
       </div>
@@ -468,6 +456,8 @@ export default function CharactersPage() {
                 analyses={analyses}
                 activeProvider={activeProvider}
                 analyzingAll={analyzingAll}
+                view={overviewView}
+                onViewChange={setOverviewView}
                 onProviderChange={setActiveProvider}
                 onAnalyzeAll={() => void handleAnalyzeAll()}
                 onSelect={handleSelect}
@@ -827,16 +817,20 @@ function OverviewPanel({
   analyses,
   activeProvider,
   analyzingAll,
+  view,
+  onViewChange,
   onProviderChange,
   onAnalyzeAll,
   onSelect,
   onCreateNew,
 }: {
   characters: Character[]
-  allChapters: {id: string; title: string; number: number}[]
+  allChapters: {id: string; title: string; number: number; status?: string}[]
   analyses: AnalysisMap
   activeProvider: AIProvider
   analyzingAll: boolean
+  view: 'characters' | 'bychapter'
+  onViewChange: (v: 'characters' | 'bychapter') => void
   onProviderChange: (p: AIProvider) => void
   onAnalyzeAll: () => void
   onSelect: (char: Character) => void
@@ -849,171 +843,202 @@ function OverviewPanel({
         withAnalysis.length
       : null
 
-  // Sort: protagonists first, then by overall score desc
   const sorted = [...characters].sort((a, b) => {
-    const aScore = analyses[a.id]?.[activeProvider]?.scores.overall ?? -1
-    const bScore = analyses[b.id]?.[activeProvider]?.scores.overall ?? -1
     const roleOrder = {protagonist: 0, antagonist: 1, secondary: 2, minor: 3}
     const rA = roleOrder[a.role as keyof typeof roleOrder] ?? 4
     const rB = roleOrder[b.role as keyof typeof roleOrder] ?? 4
     if (rA !== rB) return rA - rB
+    const aScore = analyses[a.id]?.[activeProvider]?.scores.overall ?? -1
+    const bScore = analyses[b.id]?.[activeProvider]?.scores.overall ?? -1
     return bScore - aScore
   })
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex h-full flex-col overflow-hidden">
       {/* Top bar */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-base font-bold text-[var(--text-primary)]">Panoramica personaggi</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {characters.length} personaggi · {withAnalysis.length} analizzati
-            {avgOverall != null && (
-              <span className={cn('ml-2 font-semibold', scoreColor(avgOverall))}>
-                media {avgOverall.toFixed(1)}/10
-              </span>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          {/* View toggle */}
+          <div className="flex rounded-lg border border-[var(--border)] bg-[var(--overlay)] p-0.5">
+            <button
+              onClick={() => onViewChange('characters')}
+              className={cn('rounded-md px-3 py-1 text-xs font-medium transition-colors', view === 'characters' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-slate-200')}
+            >
+              Personaggi
+            </button>
+            <button
+              onClick={() => onViewChange('bychapter')}
+              className={cn('rounded-md px-3 py-1 text-xs font-medium transition-colors', view === 'bychapter' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-slate-200')}
+            >
+              Per capitolo
+            </button>
+          </div>
+          <p className="text-xs text-slate-500">
+            {characters.length} personaggi
+            {avgOverall != null && view === 'characters' && (
+              <span className={cn('ml-1.5 font-semibold', scoreColor(avgOverall))}>· media {avgOverall.toFixed(1)}/10</span>
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <select
-            value={activeProvider}
-            onChange={(e) => onProviderChange(e.target.value as AIProvider)}
-            className="rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-1.5 text-xs text-slate-300 outline-none focus:border-violet-500/40"
-          >
-            {Object.entries(AI_PROVIDER_CONFIG).map(([val, cfg]) => (
-              <option key={val} value={val}>{cfg.icon} {cfg.label}</option>
-            ))}
-          </select>
-          {characters.length > 0 && (
+        {view === 'characters' && characters.length > 0 && (
+          <div className="flex items-center gap-2">
+            <select
+              value={activeProvider}
+              onChange={(e) => onProviderChange(e.target.value as AIProvider)}
+              className="rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-2.5 py-1 text-xs text-slate-300 outline-none focus:border-violet-500/40"
+            >
+              {Object.entries(AI_PROVIDER_CONFIG).map(([val, cfg]) => (
+                <option key={val} value={val}>{cfg.icon} {cfg.label}</option>
+              ))}
+            </select>
             <button
               onClick={onAnalyzeAll}
               disabled={analyzingAll}
-              className="flex items-center gap-1.5 rounded-lg bg-violet-600/20 border border-violet-700/40 px-3 py-1.5 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-600/30 disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-lg border border-violet-700/40 bg-violet-600/20 px-3 py-1 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-600/30 disabled:opacity-40"
             >
-              {analyzingAll ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
+              {analyzingAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               Analizza tutti
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Empty state */}
-      {characters.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[var(--overlay)]">
-            <Users className="h-10 w-10 text-slate-500" />
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-5">
+        {characters.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--overlay)]">
+              <Users className="h-8 w-8 text-slate-500" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-400">Nessun personaggio</p>
+              <p className="mt-1 text-xs text-slate-600">Crea il primo o esegui un'analisi capitolo con estrazione personaggi</p>
+            </div>
+            <button
+              onClick={onCreateNew}
+              className="flex items-center gap-2 rounded-lg border border-violet-700/40 bg-violet-600/20 px-4 py-2 text-sm text-violet-300 transition-colors hover:bg-violet-600/30"
+            >
+              <Plus className="h-4 w-4" />
+              Crea personaggio
+            </button>
           </div>
-          <div>
-            <p className="text-base font-medium text-slate-400">Nessun personaggio</p>
-            <p className="mt-1 text-sm text-slate-600">Crea il primo personaggio per iniziare</p>
-          </div>
-          <button
-            onClick={onCreateNew}
-            className="flex items-center gap-2 rounded-lg bg-violet-600/20 border border-violet-700/40 px-4 py-2 text-sm text-violet-300 transition-colors hover:bg-violet-600/30"
-          >
-            <Plus className="h-4 w-4" />
-            Crea personaggio
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {sorted.map((char) => {
-            const cfg = CHARACTER_ROLE_CONFIG[char.role]
-            const analysis = analyses[char.id]?.[activeProvider] ?? null
-            const chaptersCount = char.chaptersAppearing.length
-            const chaptersWithTitle = char.chaptersAppearing
-              .map((a) => allChapters.find((c) => c.id === a.chapterId))
-              .filter(Boolean)
-              .sort((a, b) => (a?.number ?? 0) - (b?.number ?? 0))
-              .slice(0, 3)
-
-            return (
-              <button
-                key={char.id}
-                onClick={() => onSelect(char)}
-                className="group rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4 text-left transition-all hover:border-violet-500/40 hover:bg-violet-900/10"
-              >
-                <div className="flex items-start gap-3">
-                  {/* Avatar */}
-                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold', cfg.bg, cfg.color)}>
-                    {char.name[0]?.toUpperCase() ?? '?'}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-semibold text-[var(--text-primary)]">{char.name}</span>
-                      <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium', cfg.bg, cfg.color)}>
-                        {cfg.label}
-                      </span>
+        ) : view === 'characters' ? (
+          /* ── GRIGLIA PERSONAGGI ── */
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {sorted.map((char) => {
+              const cfg = CHARACTER_ROLE_CONFIG[char.role]
+              const analysis = analyses[char.id]?.[activeProvider] ?? null
+              return (
+                <button
+                  key={char.id}
+                  onClick={() => onSelect(char)}
+                  className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3.5 text-left transition-all hover:border-violet-500/30 hover:bg-violet-900/10"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-sm font-bold', cfg.bg, cfg.color, cfg.border)}>
+                      {char.name[0]?.toUpperCase() ?? '?'}
                     </div>
-
-                    {/* Traits */}
-                    {char.personalityTraits.length > 0 && (
-                      <p className="mt-0.5 truncate text-xs text-slate-500">
-                        {char.personalityTraits.slice(0, 3).join(' · ')}
-                      </p>
-                    )}
-
-                    {/* Chapters */}
-                    {chaptersCount > 0 && (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {chaptersWithTitle.map((c) => (
-                          <span key={c!.id} className="rounded bg-[var(--overlay)] px-1.5 py-0.5 text-[10px] text-slate-500">
-                            Cap. {c!.number}
-                          </span>
-                        ))}
-                        {chaptersCount > 3 && (
-                          <span className="text-[10px] text-slate-600">+{chaptersCount - 3}</span>
-                        )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-semibold text-[var(--text-primary)]">{char.name}</span>
+                        <span className={cn('shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium', cfg.bg, cfg.color, cfg.border)}>
+                          {cfg.label}
+                        </span>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Score */}
-                  {analysis ? (
-                    <div className="shrink-0 text-right">
-                      <span className={cn('text-lg font-bold tabular-nums', scoreColor(analysis.scores.overall))}>
+                      {char.personalityTraits.length > 0 && (
+                        <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                          {char.personalityTraits.slice(0, 3).join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                    {analysis ? (
+                      <span className={cn('shrink-0 text-base font-bold tabular-nums', scoreColor(analysis.scores.overall))}>
                         {analysis.scores.overall.toFixed(1)}
                       </span>
-                      <p className="text-[10px] text-slate-600">/10</p>
-                    </div>
-                  ) : (
-                    <div className="shrink-0 text-right">
-                      <span className="text-xs text-slate-600">—</span>
+                    ) : (
+                      <span className="shrink-0 text-xs text-slate-600">—</span>
+                    )}
+                  </div>
+                  {/* Capitoli come pill */}
+                  {char.chaptersAppearing.length > 0 && (
+                    <div className="mt-2.5 flex flex-wrap gap-1">
+                      {char.chaptersAppearing
+                        .map((a) => allChapters.find((c) => c.id === a.chapterId))
+                        .filter(Boolean)
+                        .sort((a, b) => (a?.number ?? 0) - (b?.number ?? 0))
+                        .slice(0, 5)
+                        .map((c) => (
+                          <span key={c!.id} className="rounded bg-[var(--overlay)] px-1.5 py-0.5 text-[10px] text-slate-500">
+                            {c!.number}
+                          </span>
+                        ))}
+                      {char.chaptersAppearing.length > 5 && (
+                        <span className="text-[10px] text-slate-600">+{char.chaptersAppearing.length - 5}</span>
+                      )}
                     </div>
                   )}
-                </div>
-
-                {/* Mini score bars */}
-                {analysis && (
-                  <div className="mt-3 space-y-1">
-                    {(Object.keys(CHARACTER_SCORE_LABELS) as (keyof typeof CHARACTER_SCORE_LABELS)[])
-                      .filter((k) => k !== 'overall')
-                      .map((k) => (
-                        <div key={k} className="flex items-center gap-2">
-                          <span className="w-20 shrink-0 text-[10px] text-slate-600">{CHARACTER_SCORE_LABELS[k]}</span>
-                          <div className="flex-1 h-1 rounded-full bg-[var(--overlay)]">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-violet-600 to-cyan-500"
-                              style={{width: `${((analysis.scores[k] ?? 0) / 10) * 100}%`}}
-                            />
-                          </div>
-                          <span className={cn('w-5 text-right text-[10px] tabular-nums', scoreColor(analysis.scores[k] ?? 0))}>
-                            {(analysis.scores[k] ?? 0).toFixed(0)}
-                          </span>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          /* ── VISTA PER CAPITOLO ── */
+          <div className="space-y-2">
+            {allChapters.length === 0 ? (
+              <div className="py-12 text-center">
+                <BookUser className="mx-auto mb-2 h-8 w-8 text-slate-600" />
+                <p className="text-sm text-slate-500">Nessun capitolo disponibile</p>
+              </div>
+            ) : (
+              allChapters
+                .slice()
+                .sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
+                .map((chapter) => {
+                  const chapterChars = characters.filter((c) =>
+                    c.chaptersAppearing.some((a) => a.chapterId === chapter.id)
+                  )
+                  return (
+                    <div key={chapter.id} className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] overflow-hidden">
+                      {/* Chapter header */}
+                      <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--overlay)] px-4 py-2.5">
+                        <span className="shrink-0 rounded bg-violet-900/40 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300">
+                          Cap. {chapter.number}
+                        </span>
+                        <span className="flex-1 truncate text-sm font-medium text-[var(--text-primary)]">{chapter.title}</span>
+                        <span className="shrink-0 text-[10px] text-slate-600">{chapterChars.length} pers.</span>
+                      </div>
+                      {/* Characters in chapter */}
+                      {chapterChars.length === 0 ? (
+                        <p className="px-4 py-3 text-xs italic text-slate-600">Nessun personaggio estratto per questo capitolo</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2 px-4 py-3">
+                          {chapterChars.map((char) => {
+                            const cfg = CHARACTER_ROLE_CONFIG[char.role]
+                            const app = char.chaptersAppearing.find((a) => a.chapterId === chapter.id)
+                            return (
+                              <button
+                                key={char.id}
+                                onClick={() => onSelect(char)}
+                                title={app?.description || char.name}
+                                className={cn(
+                                  'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors hover:brightness-110',
+                                  cfg.bg, cfg.color, cfg.border,
+                                )}
+                              >
+                                <span className="font-bold">{char.name[0]?.toUpperCase()}</span>
+                                {char.name}
+                              </button>
+                            )
+                          })}
                         </div>
-                      ))}
-                  </div>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      )}
+                      )}
+                    </div>
+                  )
+                })
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

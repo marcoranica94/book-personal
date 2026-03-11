@@ -21,6 +21,11 @@ export async function deleteCharacter(id: string): Promise<void> {
   await deleteDoc(doc(db, 'characters', id))
 }
 
+export async function deleteAllCharacters(): Promise<void> {
+  const snap = await getDocs(collection(db, 'characters'))
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)))
+}
+
 /**
  * Upsert characters extracted from chapter analysis.
  * Matches by name (case-insensitive). Updates chapter appearance if already present.

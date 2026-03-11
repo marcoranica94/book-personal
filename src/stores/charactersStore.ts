@@ -1,5 +1,5 @@
 import {create} from 'zustand'
-import {getAllCharacters, saveCharacter, updateCharacter, deleteCharacter} from '@/services/charactersService'
+import {deleteAllCharacters, deleteCharacter, getAllCharacters, saveCharacter, updateCharacter} from '@/services/charactersService'
 import type {Character} from '@/types'
 
 interface CharactersState {
@@ -10,6 +10,7 @@ interface CharactersState {
   create: (char: Omit<Character, 'id'>) => Promise<string>
   update: (id: string, updates: Partial<Omit<Character, 'id'>>) => Promise<void>
   remove: (id: string) => Promise<void>
+  removeAll: () => Promise<void>
 }
 
 export const useCharactersStore = create<CharactersState>((set, get) => ({
@@ -45,5 +46,10 @@ export const useCharactersStore = create<CharactersState>((set, get) => ({
   remove: async (id) => {
     await deleteCharacter(id)
     set((state) => ({characters: state.characters.filter((c) => c.id !== id)}))
+  },
+
+  removeAll: async () => {
+    await deleteAllCharacters()
+    set({characters: []})
   },
 }))

@@ -297,10 +297,10 @@ export const CharacterRole = {
 export type CharacterRole = (typeof CharacterRole)[keyof typeof CharacterRole]
 
 export const CHARACTER_ROLE_CONFIG: Record<CharacterRole, {label: string; color: string; bg: string; border: string}> = {
-  protagonist: {label: 'Protagonista', color: 'text-violet-300', bg: 'bg-violet-900/30', border: 'border-violet-700/40'},
-  antagonist:  {label: 'Antagonista',  color: 'text-rose-300',   bg: 'bg-rose-900/30',   border: 'border-rose-700/40'},
-  secondary:   {label: 'Secondario',   color: 'text-amber-300',  bg: 'bg-amber-900/30',  border: 'border-amber-700/40'},
-  minor:       {label: 'Minore',       color: 'text-slate-400',  bg: 'bg-slate-800/50',  border: 'border-slate-700/40'},
+  protagonist: {label: 'Protagonista', color: 'text-violet-100', bg: 'bg-violet-800/50', border: 'border-violet-500/40'},
+  antagonist:  {label: 'Antagonista',  color: 'text-rose-100',   bg: 'bg-rose-800/50',   border: 'border-rose-500/40'},
+  secondary:   {label: 'Secondario',   color: 'text-amber-100',  bg: 'bg-amber-800/45',  border: 'border-amber-500/40'},
+  minor:       {label: 'Minore',       color: 'text-slate-200',  bg: 'bg-slate-700/50',  border: 'border-slate-500/40'},
 }
 
 export interface CharacterChapterAppearance {
