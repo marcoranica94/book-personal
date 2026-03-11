@@ -121,6 +121,7 @@ interface PendingAnalysis {
   chapterTitle: string
   triggeredAt: string
   mode?: 'standard' | 'custom_question'
+  provider?: AIProvider
 }
 
 function loadPending(): PendingAnalysis | null {
@@ -576,7 +577,9 @@ export default function AnalysisPage() {
             toast.success(`Analisi completata per "${pending.chapterTitle}"!`)
             if (pending.chapterId !== 'all') {
               setSelectedId(pending.chapterId)
+              if (pending.provider) setActiveProvider(pending.provider)
               setActiveTab('feedback')
+              setActiveExtraTab('storico')
               window.scrollTo({top: 0, behavior: 'smooth'})
             }
             // Reload characters after a delay — upsertCharacters runs after saveAnalysis in the script
@@ -846,7 +849,7 @@ export default function AnalysisPage() {
           ? 'tutti i capitoli'
           : (chapters.find((c) => c.id === chapterId)?.title ?? chapterId)
       const mode = isCustomQuestion ? 'custom_question' : 'standard'
-      const pending: PendingAnalysis = {chapterId, chapterTitle, triggeredAt: new Date().toISOString(), mode}
+      const pending: PendingAnalysis = {chapterId, chapterTitle, triggeredAt: new Date().toISOString(), mode, provider}
       savePending(pending)
       setPendingAnalysis(pending)
       setElapsedSeconds(0)
@@ -1832,6 +1835,13 @@ export default function AnalysisPage() {
                                   <p className="mt-1 text-xs text-slate-600">Attiva le opzioni nel dialog di analisi.</p>
                                 </div>
                               )
+                              // Auto-seleziona il primo sub-tab se quello corrente non è disponibile
+                              const effectiveExtraTab = subTabs.find(t => t.id === activeExtraTab)
+                                ? activeExtraTab
+                                : subTabs[0].id
+                              if (effectiveExtraTab !== activeExtraTab) {
+                                setTimeout(() => setActiveExtraTab(effectiveExtraTab), 0)
+                              }
                               return (
                                 <>
                                   <div className="flex flex-wrap gap-1.5">
@@ -1841,7 +1851,7 @@ export default function AnalysisPage() {
                                         onClick={() => setActiveExtraTab(id)}
                                         className={cn(
                                           'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                                          activeExtraTab === id
+                                          effectiveExtraTab === id
                                             ? 'border-violet-500/40 bg-violet-900/30 text-violet-300'
                                             : 'border-[var(--border)] text-slate-500 hover:text-slate-300'
                                         )}
@@ -1852,7 +1862,7 @@ export default function AnalysisPage() {
                                   </div>
 
                                   {/* storico */}
-                                  {activeExtraTab === 'storico' && (
+                                  {effectiveExtraTab === 'storico' && (
                                     <div className="space-y-4">
                                       {analysis.historicalAccuracy ? (
                                         <>
@@ -1889,7 +1899,7 @@ export default function AnalysisPage() {
                                   )}
 
                                   {/* reazioni */}
-                                  {activeExtraTab === 'reazioni' && (
+                                  {effectiveExtraTab === 'reazioni' && (
                                     <div className="space-y-3">
                                       {analysis.readerReactions?.map((r, i) => (
                                         <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-4 space-y-3">
@@ -1911,7 +1921,7 @@ export default function AnalysisPage() {
                                   )}
 
                                   {/* acapo */}
-                                  {activeExtraTab === 'acapo' && (
+                                  {effectiveExtraTab === 'acapo' && (
                                     <div className="space-y-5">
                                       {analysis?.paragraphBreaks ? (
                                         <div className="space-y-4">
@@ -1974,7 +1984,7 @@ export default function AnalysisPage() {
                                   )}
 
                                   {/* parole */}
-                                  {activeExtraTab === 'parole' && analysis?.wordFrequency && (() => {
+                                  {effectiveExtraTab === 'parole' && analysis?.wordFrequency && (() => {
                                     const wf = analysis.wordFrequency
                                     const total = wf.totalWords || 1
                                     const chartWords = wf.topWords.slice(0, 20)
@@ -2010,7 +2020,7 @@ export default function AnalysisPage() {
                                   })()}
 
                                   {/* showdontell */}
-                                  {activeExtraTab === 'showdontell' && analysis?.showDontTell && (
+                                  {effectiveExtraTab === 'showdontell' && analysis?.showDontTell && (
                                     <div className="space-y-4">
                                       <div className="flex items-center gap-3">
                                         <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold', analysis.showDontTell.score >= 8 ? 'bg-emerald-900/30 text-emerald-400' : analysis.showDontTell.score >= 6 ? 'bg-blue-900/30 text-blue-400' : analysis.showDontTell.score >= 4 ? 'bg-amber-900/30 text-amber-400' : 'bg-red-900/30 text-red-400')}>{analysis.showDontTell.score.toFixed(1)}</span>
@@ -2040,7 +2050,7 @@ export default function AnalysisPage() {
                                   )}
 
                                   {/* verbtense */}
-                                  {activeExtraTab === 'verbtense' && analysis?.verbTense && (
+                                  {effectiveExtraTab === 'verbtense' && analysis?.verbTense && (
                                     <div className="space-y-4">
                                       <div className="flex items-center gap-3">
                                         <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold', analysis.verbTense.score >= 8 ? 'bg-emerald-900/30 text-emerald-400' : analysis.verbTense.score >= 6 ? 'bg-blue-900/30 text-blue-400' : analysis.verbTense.score >= 4 ? 'bg-amber-900/30 text-amber-400' : 'bg-red-900/30 text-red-400')}>{analysis.verbTense.score.toFixed(1)}</span>
@@ -2070,7 +2080,7 @@ export default function AnalysisPage() {
                                   )}
 
                                   {/* domande personalizzate */}
-                                  {activeExtraTab === 'domande' && (
+                                  {effectiveExtraTab === 'domande' && (
                                     <div className="space-y-3">
                                       {customQuestions.length === 0 ? (
                                         <div className="rounded-xl border border-dashed border-[var(--border)] py-8 text-center">
