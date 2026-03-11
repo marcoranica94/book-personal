@@ -148,14 +148,37 @@ async function upsertCharacters(chapterId, chapterTitle, characters) {
   }
 }
 
+/**
+ * Sanitizza ricorsivamente un oggetto per Firestore:
+ * - Rimuove chiavi vuote ('')
+ * - Converte undefined → null
+ * - Rimuove valori non serializzabili
+ */
+function sanitizeForFirestore(obj) {
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeForFirestore).filter((v) => v !== undefined)
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const out = {}
+    for (const [k, v] of Object.entries(obj)) {
+      if (k === '') continue // chiave vuota → skip
+      const sanitized = sanitizeForFirestore(v)
+      out[k] = sanitized === undefined ? null : sanitized
+    }
+    return out
+  }
+  return obj
+}
+
 async function saveAnalysis(chapterId, analysis) {
+  const safe = sanitizeForFirestore(analysis)
   const ref = db.collection('analyses').doc(chapterId)
   // Salva nella subcollection byProvider
   const providerRef = ref.collection('byProvider').doc(AI_PROVIDER)
-  await providerRef.set(analysis)
-  await providerRef.collection('history').add(analysis)
+  await providerRef.set(safe)
+  await providerRef.collection('history').add(safe)
   // Aggiorna anche il doc root come cache dell'ultima analisi
-  await ref.set(analysis)
+  await ref.set(safe)
   // Pulisci eventuali errori precedenti per questo provider
   await db.collection('analysisErrors').doc(`${chapterId}_${AI_PROVIDER}`).delete().catch(() => {})
 }
@@ -163,7 +186,7 @@ async function saveAnalysis(chapterId, analysis) {
 /** Salva una risposta a domanda personalizzata su Firestore */
 async function saveCustomQuestion(chapterId, result) {
   await db.collection('analyses').doc(chapterId)
-    .collection('questions').add(result)
+    .collection('questions').add(sanitizeForFirestore(result))
 }
 
 /** Salva un record di errore su Firestore per rendere il fallimento visibile nella UI */
