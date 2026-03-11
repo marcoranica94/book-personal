@@ -6,36 +6,36 @@ import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import Highlight from '@tiptap/extension-highlight'
-import {Plugin, PluginKey, type EditorState, type EditorStateConfig, type Transaction} from '@tiptap/pm/state'
+import {type EditorState, type EditorStateConfig, Plugin, PluginKey, type Transaction} from '@tiptap/pm/state'
 import {Decoration, DecorationSet} from '@tiptap/pm/view'
 import type {Node as PMNode} from '@tiptap/pm/model'
 import {
-  AlignCenter,
-  AlignJustify,
-  AlignLeft,
-  AlignRight,
-  Bold,
-  CheckCheck,
-  ChevronDown,
-  ChevronUp,
-  Heading1,
-  Heading2,
-  Heading3,
-  Highlighter,
-  Italic,
-  List,
-  ListOrdered,
-  Maximize2,
-  Minimize2,
-  Minus,
-  Pilcrow,
-  Quote,
-  Redo2,
-  Search,
-  Strikethrough,
-  Underline as UnderlineIcon,
-  Undo2,
-  X,
+    AlignCenter,
+    AlignJustify,
+    AlignLeft,
+    AlignRight,
+    Bold,
+    CheckCheck,
+    ChevronDown,
+    ChevronUp,
+    Heading1,
+    Heading2,
+    Heading3,
+    Highlighter,
+    Italic,
+    List,
+    ListOrdered,
+    Maximize2,
+    Minimize2,
+    Minus,
+    Pilcrow,
+    Quote,
+    Redo2,
+    Search,
+    Strikethrough,
+    Underline as UnderlineIcon,
+    Undo2,
+    X,
 } from 'lucide-react'
 import {cn} from '@/utils/cn'
 
@@ -594,8 +594,12 @@ export default function RichTextEditor({
   // Scroll editor to focused correction
   useEffect(() => {
     if (focusedCorrection == null || !editor?.view) return
-    const el = editor.view.dom.querySelector(`[data-corr-idx="${focusedCorrection}"]`)
-    el?.scrollIntoView({behavior: 'smooth', block: 'center'})
+    // Small delay to allow decorations to render first
+    const t = setTimeout(() => {
+      const el = editor.view.dom.querySelector(`[data-corr-idx="${focusedCorrection}"]`)
+      if (el) scrollEditorToEl(el)
+    }, 50)
+    return () => clearTimeout(t)
   }, [focusedCorrection, editor])
 
   // Update search decorations when query or current index changes
@@ -610,9 +614,11 @@ export default function RichTextEditor({
     if (positions.length > 0 && searchCurrentIdx < positions.length) {
       const [from] = positions[searchCurrentIdx]
       const domPos = editor.view.domAtPos(from)
-      domPos.node instanceof HTMLElement
-        ? domPos.node.scrollIntoView({behavior: 'smooth', block: 'center'})
-        : (domPos.node as Text).parentElement?.scrollIntoView({behavior: 'smooth', block: 'center'})
+      const el =
+        domPos.node instanceof HTMLElement
+          ? domPos.node
+          : (domPos.node as Text).parentElement
+      if (el) scrollEditorToEl(el)
     }
   }, [searchQuery, searchCurrentIdx, editor])
 
@@ -826,8 +832,22 @@ export default function RichTextEditor({
     </div>
   ) : null
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // Precise scroll: centers the target element inside the editor's scroll container
+  function scrollEditorToEl(el: Element) {
+    const container = scrollContainerRef.current
+    if (!container) { el.scrollIntoView({behavior: 'smooth', block: 'center'}); return }
+    const containerRect = container.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    const targetScrollTop =
+      container.scrollTop + elRect.top - containerRect.top - containerRect.height / 2 + elRect.height / 2
+    container.scrollTo({top: Math.max(0, targetScrollTop), behavior: 'smooth'})
+  }
+
   const editorArea = (
     <div
+      ref={scrollContainerRef}
       className="rich-editor-doc-bg flex-1 overflow-y-auto bg-[#1a1a2e]"
       onMouseOver={handleEditorMouseOver}
       onMouseLeave={handleEditorMouseLeave}

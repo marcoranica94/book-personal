@@ -1,4 +1,4 @@
-import {addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, updateDoc} from 'firebase/firestore'
+import {addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, updateDoc, where} from 'firebase/firestore'
 import {db} from './firebase'
 import type {AIProvider, ChapterAnalysis, CustomQuestion, ParagraphReformat} from '@/types'
 
@@ -251,6 +251,17 @@ export async function getAnalysisError(
 export async function getAllAnalysisErrors(): Promise<AnalysisError[]> {
   const snap = await getDocs(collection(db, 'analysisErrors'))
   return snap.docs.map((d) => d.data() as AnalysisError)
+}
+
+/** Elimina un errore di analisi per capitolo/provider */
+export async function deleteAnalysisError(chapterId: string, provider: string): Promise<void> {
+  const q = query(
+    collection(db, 'analysisErrors'),
+    where('chapterId', '==', chapterId),
+    where('provider', '==', provider),
+  )
+  const snap = await getDocs(q)
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)))
 }
 
 // ─── Paragraph Reformat ───────────────────────────────────────────────────────

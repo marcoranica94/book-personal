@@ -32,6 +32,8 @@ interface AnalysisStore {
   deleteAnalysis: (chapterId: string, provider: AIProvider) => Promise<void>
   /** Elimina una singola entry dello storico */
   deleteHistoryEntry: (chapterId: string, provider: AIProvider, docId: string) => Promise<void>
+  /** Rimuove un errore di analisi (da Firestore e dallo stato locale) */
+  removeError: (chapterId: string, provider: string) => Promise<void>
 }
 
 export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
@@ -125,6 +127,15 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
       }
       return {analyses}
     })
+  },
+
+  removeError: async (chapterId, provider) => {
+    await analysisService.deleteAnalysisError(chapterId, provider)
+    set((s) => ({
+      analysisErrors: s.analysisErrors.filter(
+        (e) => !(e.chapterId === chapterId && e.provider === provider),
+      ),
+    }))
   },
 
   deleteHistoryEntry: async (chapterId, provider, docId) => {

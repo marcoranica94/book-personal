@@ -1,25 +1,25 @@
 import React, {useEffect, useRef, useState} from 'react'
 import {AnimatePresence, motion} from 'framer-motion'
 import {
-    AlertTriangle,
-    AlignLeft,
-    CheckCheck,
-    CheckCircle2,
-    ChevronDown,
-    Eye,
-    FileEdit,
-    History,
-    Loader2,
-    Play,
-    RadarIcon,
-    RefreshCw,
-    RotateCcw,
-    Sparkles,
-    Square,
-    Trash2,
-    TrendingUp,
-    Upload,
-    X
+  AlertTriangle,
+  AlignLeft,
+  CheckCheck,
+  CheckCircle2,
+  ChevronDown,
+  Eye,
+  FileEdit,
+  History,
+  Loader2,
+  Play,
+  RadarIcon,
+  RefreshCw,
+  RotateCcw,
+  Sparkles,
+  Square,
+  Trash2,
+  TrendingUp,
+  Upload,
+  X
 } from 'lucide-react'
 import {Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts'
 import {useChaptersStore} from '@/stores/chaptersStore'
@@ -324,7 +324,7 @@ function ScoreBar({label, value}: {label: string; value: number}) {
 
 export default function AnalysisPage() {
   const {chapters, loadChapters} = useChaptersStore()
-  const {analyses, loadAnalysis, loadAllAnalyses, analysisErrors, loadAnalysisErrors, history: analysisHistory, loadChapterHistory, deleteAnalysis, deleteHistoryEntry, isLoading} = useAnalysisStore()
+  const {analyses, loadAnalysis, loadAllAnalyses, analysisErrors, loadAnalysisErrors, history: analysisHistory, loadChapterHistory, deleteAnalysis, deleteHistoryEntry, removeError, isLoading} = useAnalysisStore()
   const {config: driveConfig, patchTokens, load: loadDrive} = useDriveStore()
   const {user} = useAuthStore()
   const {settings, loadSettings} = useSettingsStore()
@@ -404,6 +404,84 @@ export default function AnalysisPage() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const isApplyingRef = useRef(false)
   const analysisSectionRef = useRef<HTMLDivElement>(null)
+
+  // ── Compact sezioni picker — shared between both analysis dialogs ──────────
+  const chipCls = (checked: boolean, on: string) =>
+    cn(
+      'flex w-full cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all select-none',
+      checked ? on : 'border-[var(--border)] text-slate-500 hover:border-slate-500 hover:text-slate-400',
+    )
+  const subChipCls = (checked: boolean, on: string) =>
+    cn(
+      'flex cursor-pointer items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-all select-none ml-2',
+      checked ? on : 'border-[var(--border)] text-slate-600 hover:border-slate-500',
+    )
+  const renderSezioniPicker = () => (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3">
+      <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Sezioni da analizzare</p>
+      <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+        {/* ── Standard ── */}
+        <div className="flex flex-col gap-1.5">
+          <label className={chipCls(withStrengths, 'border-emerald-500/50 bg-emerald-900/20 text-emerald-400')}>
+            <input type="checkbox" className="sr-only" checked={withStrengths} onChange={(e) => setWithStrengths(e.target.checked)} />
+            ✓ Punti di forza
+          </label>
+          <label className={chipCls(withWeaknesses, 'border-amber-500/50 bg-amber-900/20 text-amber-400')}>
+            <input type="checkbox" className="sr-only" checked={withWeaknesses} onChange={(e) => setWithWeaknesses(e.target.checked)} />
+            ⚠ Debolezze
+          </label>
+          {withWeaknesses && (
+            <label className={subChipCls(withWeaknessSolutions, 'border-amber-600/40 bg-amber-900/15 text-amber-500')}>
+              <input type="checkbox" className="sr-only" checked={withWeaknessSolutions} onChange={(e) => setWithWeaknessSolutions(e.target.checked)} />
+              + con soluzioni
+            </label>
+          )}
+          <label className={chipCls(withSuggestions, 'border-violet-500/50 bg-violet-900/20 text-violet-400')}>
+            <input type="checkbox" className="sr-only" checked={withSuggestions} onChange={(e) => setWithSuggestions(e.target.checked)} />
+            💡 Suggerimenti
+          </label>
+          {withSuggestions && (
+            <label className={subChipCls(withSuggestionSolutions, 'border-violet-600/40 bg-violet-900/15 text-violet-500')}>
+              <input type="checkbox" className="sr-only" checked={withSuggestionSolutions} onChange={(e) => setWithSuggestionSolutions(e.target.checked)} />
+              + con soluzioni
+            </label>
+          )}
+          <label className={chipCls(withCorrections, 'border-rose-500/50 bg-rose-900/20 text-rose-400')}>
+            <input type="checkbox" className="sr-only" checked={withCorrections} onChange={(e) => setWithCorrections(e.target.checked)} />
+            ✏ Correzioni
+          </label>
+          <label className={chipCls(withReaderReactions, 'border-sky-500/50 bg-sky-900/20 text-sky-400')}>
+            <input type="checkbox" className="sr-only" checked={withReaderReactions} onChange={(e) => setWithReaderReactions(e.target.checked)} />
+            👁 Reazioni lettori
+          </label>
+        </div>
+        {/* ── Extra ── */}
+        <div className="flex flex-col gap-1.5">
+          <p className="mb-0.5 text-xs text-slate-600">Extra (aggiungono tab)</p>
+          <label className={chipCls(withParagraphAnalysis, 'border-teal-500/50 bg-teal-900/20 text-teal-400')}>
+            <input type="checkbox" className="sr-only" checked={withParagraphAnalysis} onChange={(e) => setWithParagraphAnalysis(e.target.checked)} />
+            ¶ Analizza a capo
+          </label>
+          <label className={chipCls(withWordFrequency, 'border-indigo-500/50 bg-indigo-900/20 text-indigo-400')}>
+            <input type="checkbox" className="sr-only" checked={withWordFrequency} onChange={(e) => setWithWordFrequency(e.target.checked)} />
+            📊 Ripetizioni
+          </label>
+          <label className={chipCls(withShowDontTell, 'border-orange-500/50 bg-orange-900/20 text-orange-400')}>
+            <input type="checkbox" className="sr-only" checked={withShowDontTell} onChange={(e) => setWithShowDontTell(e.target.checked)} />
+            👁 Show Don&apos;t Tell
+          </label>
+          <label className={chipCls(withVerbTense, 'border-purple-500/50 bg-purple-900/20 text-purple-400')}>
+            <input type="checkbox" className="sr-only" checked={withVerbTense} onChange={(e) => setWithVerbTense(e.target.checked)} />
+            ⏱ Tempi verbali
+          </label>
+          <label className={chipCls(withCharacters, 'border-cyan-500/50 bg-cyan-900/20 text-cyan-400')}>
+            <input type="checkbox" className="sr-only" checked={withCharacters} onChange={(e) => setWithCharacters(e.target.checked)} />
+            👤 Estrai personaggi
+          </label>
+        </div>
+      </div>
+    </div>
+  )
 
   useEffect(() => {
     void loadChapters()
@@ -2210,7 +2288,7 @@ export default function AnalysisPage() {
         >
           <div className="border-b border-red-800/20 px-5 py-3 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-red-400" />
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-red-400">
+            <h2 className="flex-1 text-xs font-semibold uppercase tracking-wider text-red-400">
               Analisi fallite — {analysisErrors.length} errori recenti
             </h2>
           </div>
@@ -2233,6 +2311,13 @@ export default function AnalysisPage() {
                       {new Date(err.failedAt).toLocaleString('it-IT')} · {err.model}
                     </p>
                   </div>
+                  <button
+                    onClick={() => void removeError(err.chapterId, err.provider)}
+                    className="ml-auto shrink-0 rounded p-0.5 text-slate-600 transition-colors hover:bg-red-900/40 hover:text-red-400"
+                    title="Rimuovi errore"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               )
             })}
@@ -2788,216 +2873,77 @@ export default function AnalysisPage() {
               animate={{opacity: 1, scale: 1, y: 0}}
               exit={{opacity: 0, scale: 0.92}}
               transition={{duration: 0.18}}
-              className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-6 shadow-2xl"
+              className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] shadow-2xl max-h-[90vh] flex flex-col"
             >
-              <div className="mb-4 flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-900/40 text-violet-400">
-                  <Sparkles className="h-5 w-5" />
-                </span>
-                <div>
-                  <h3 className="text-base font-semibold text-[var(--text-primary)]">Rieseguire l&apos;analisi?</h3>
-                  <p className="mt-1 text-sm text-slate-400">{reanalysisDialog.label}</p>
-                </div>
-              </div>
-
-              <p className="mb-4 text-sm text-slate-500">
-                L&apos;analisi sovrascriverà i risultati {AI_PROVIDER_CONFIG[reanalysisDialog.provider].label} esistenti e consumerà token. Scegli come procedere:
-              </p>
-
-              {/* Commento autore */}
-              <div className="mb-4">
-                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-400">
-                  <FileEdit className="h-3.5 w-3.5" />
-                  Nota per l&apos;IA
-                  <span className="text-slate-600">(opzionale)</span>
-                </label>
-                <textarea
-                  value={reanalysisComment}
-                  onChange={(e) => setReanalysisComment(e.target.value)}
-                  placeholder="Es: ho riscritto il dialogo del terzo atto, concentrati sulla coerenza dei personaggi…"
-                  rows={3}
-                  className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm text-slate-300 placeholder:text-slate-600 outline-none focus:border-violet-500/40"
-                />
-                {reanalysisComment.trim() && (
-                  <p className="mt-1 text-xs text-slate-600">Questo testo sarà salvato e riutilizzato alla prossima analisi.</p>
-                )}
-              </div>
-
-              <div className="space-y-2.5">
-                {/* Opzione 1: Con contesto precedente */}
-                <button
-                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, true, reanalysisDialog.provider, reanalysisComment)}
-                  disabled={triggering}
-                  className="flex w-full items-start gap-3 rounded-xl border border-violet-700/40 bg-violet-900/15 p-3.5 text-left transition-colors hover:border-violet-600/60 hover:bg-violet-900/25"
-                >
-                  <History className="mt-0.5 h-5 w-5 shrink-0 text-violet-400" />
+              <div className="overflow-y-auto flex-1 p-6">
+                <div className="mb-4 flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-900/40 text-violet-400">
+                    <Sparkles className="h-5 w-5" />
+                  </span>
                   <div>
-                    <p className="text-sm font-medium text-violet-300">Con contesto precedente</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Invia l&apos;analisi passata (punteggi, correzioni accettate/rifiutate) per valutare il progresso e non ripetere correzioni già applicate.
-                    </p>
-                  </div>
-                </button>
-
-                {/* Opzione 2: Da zero */}
-                <button
-                  onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, false, reanalysisDialog.provider, reanalysisComment)}
-                  disabled={triggering}
-                  className="flex w-full items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5 text-left transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]"
-                >
-                  <RotateCcw className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
-                  <div>
-                    <p className="text-sm font-medium text-slate-300">Analisi da zero</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Analisi completamente fresca, senza contesto precedente. Utile se il capitolo è stato riscritto in modo significativo.
-                    </p>
-                  </div>
-                </button>
-              </div>
-
-              {/* Sezioni da analizzare */}
-              <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5">
-                <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400">📋 Sezioni da analizzare</p>
-                <div className="space-y-1.5">
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={withStrengths}
-                      onChange={(e) => setWithStrengths(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-emerald-500"
-                    />
-                    <span className="text-sm font-medium text-emerald-400">Punti di forza</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={withWeaknesses}
-                      onChange={(e) => setWithWeaknesses(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-amber-500"
-                    />
-                    <span className="text-sm font-medium text-amber-400">Debolezze</span>
-                  </label>
-                  {withWeaknesses && (
-                    <label className="ml-6 flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={withWeaknessSolutions}
-                        onChange={(e) => setWithWeaknessSolutions(e.target.checked)}
-                        className="h-3.5 w-3.5 rounded border-slate-600 bg-[var(--bg-card)] accent-amber-400"
-                      />
-                      <span className="text-xs text-slate-500">Con soluzioni proposte <span className="text-slate-600">— riscrittura del passaggio</span></span>
-                    </label>
-                  )}
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={withSuggestions}
-                      onChange={(e) => setWithSuggestions(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-violet-500"
-                    />
-                    <span className="text-sm font-medium text-violet-400">Suggerimenti</span>
-                  </label>
-                  {withSuggestions && (
-                    <label className="ml-6 flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={withSuggestionSolutions}
-                        onChange={(e) => setWithSuggestionSolutions(e.target.checked)}
-                        className="h-3.5 w-3.5 rounded border-slate-600 bg-[var(--bg-card)] accent-violet-400"
-                      />
-                      <span className="text-xs text-slate-500">Con soluzioni proposte <span className="text-slate-600">— esempio pratico di applicazione</span></span>
-                    </label>
-                  )}
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={withCorrections}
-                      onChange={(e) => setWithCorrections(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-rose-500"
-                    />
-                    <span className="text-sm font-medium text-rose-400">Correzioni</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={withReaderReactions}
-                      onChange={(e) => setWithReaderReactions(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-sky-500"
-                    />
-                    <span className="text-sm font-medium text-sky-400">Reazioni Lettori</span>
-                  </label>
-                  <div className="mt-1 border-t border-[var(--border)] pt-1.5">
-                    <label className="flex cursor-pointer items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        checked={withParagraphAnalysis}
-                        onChange={(e) => setWithParagraphAnalysis(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        <span className="font-medium text-teal-400">¶ Analizza a capo</span>
-                        <span className="ml-1 text-xs text-slate-500">— valuta uso dei paragrafi (aggiunge tab)</span>
-                      </span>
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
-                      <input
-                        type="checkbox"
-                        checked={withWordFrequency}
-                        onChange={(e) => setWithWordFrequency(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-indigo-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        <span className="font-medium text-indigo-400">📊 Analisi ripetizioni</span>
-                        <span className="ml-1 text-xs text-slate-500">— conta parole più usate (aggiunge tab)</span>
-                      </span>
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
-                      <input
-                        type="checkbox"
-                        checked={withShowDontTell}
-                        onChange={(e) => setWithShowDontTell(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-orange-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        <span className="font-medium text-orange-400">👁 Show Don&apos;t Tell</span>
-                        <span className="ml-1 text-xs text-slate-500">— trova i &quot;telling&quot; e propone riscritture <span className="text-slate-600">(aggiunge tab)</span></span>
-                      </span>
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
-                      <input
-                        type="checkbox"
-                        checked={withVerbTense}
-                        onChange={(e) => setWithVerbTense(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-purple-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        <span className="font-medium text-purple-400">⏱ Tempi verbali</span>
-                        <span className="ml-1 text-xs text-slate-500">— controlla coerenza dei tempi, corregge gli errori <span className="text-slate-600">(aggiunge tab + correzioni)</span></span>
-                      </span>
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
-                      <input
-                        type="checkbox"
-                        checked={withCharacters}
-                        onChange={(e) => setWithCharacters(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        <span className="font-medium text-teal-400">👤 Estrai personaggi</span>
-                        <span className="ml-1 text-xs text-slate-500">— aggiorna la pagina Personaggi</span>
-                      </span>
-                    </label>
+                    <h3 className="text-base font-semibold text-[var(--text-primary)]">Rieseguire l&apos;analisi?</h3>
+                    <p className="mt-1 text-sm text-slate-400">{reanalysisDialog.label}</p>
                   </div>
                 </div>
-              </div>
 
-              <div className="mt-5 flex justify-end">
-                <button
-                  onClick={() => setReanalysisDialog(null)}
-                  className="rounded-lg px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
-                >
-                  Annulla
-                </button>
+                <p className="mb-3 text-sm text-slate-500">
+                  Sovrascriverà i risultati {AI_PROVIDER_CONFIG[reanalysisDialog.provider].label} esistenti e consumerà token.
+                </p>
+
+                {/* Nota per l'IA */}
+                <div className="mb-3">
+                  <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-400">
+                    <FileEdit className="h-3.5 w-3.5" />
+                    Nota per l&apos;IA
+                    <span className="text-slate-600">(opzionale)</span>
+                  </label>
+                  <textarea
+                    value={reanalysisComment}
+                    onChange={(e) => setReanalysisComment(e.target.value)}
+                    placeholder="Es: ho riscritto il dialogo del terzo atto, concentrati sulla coerenza dei personaggi…"
+                    rows={2}
+                    className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm text-slate-300 placeholder:text-slate-600 outline-none focus:border-violet-500/40"
+                  />
+                  {reanalysisComment.trim() && (
+                    <p className="mt-1 text-xs text-slate-600">Verrà salvato e riutilizzato alla prossima analisi.</p>
+                  )}
+                </div>
+
+                {renderSezioniPicker()}
+
+                <div className="mt-4 space-y-2">
+                  <button
+                    onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, true, reanalysisDialog.provider, reanalysisComment)}
+                    disabled={triggering}
+                    className="flex w-full items-start gap-3 rounded-xl border border-violet-700/40 bg-violet-900/15 p-3 text-left transition-colors hover:border-violet-600/60 hover:bg-violet-900/25"
+                  >
+                    <History className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                    <div>
+                      <p className="text-sm font-medium text-violet-300">Con contesto precedente</p>
+                      <p className="mt-0.5 text-xs text-slate-500">Invia l&apos;analisi passata per valutare il progresso e non ripetere correzioni già applicate.</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => void triggerAnalysis(reanalysisDialog.chapterId, false, reanalysisDialog.provider, reanalysisComment)}
+                    disabled={triggering}
+                    className="flex w-full items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3 text-left transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]"
+                  >
+                    <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                    <div>
+                      <p className="text-sm font-medium text-slate-300">Analisi da zero</p>
+                      <p className="mt-0.5 text-xs text-slate-500">Analisi fresca, senza contesto precedente. Utile se il capitolo è stato riscritto.</p>
+                    </div>
+                  </button>
+                </div>
+
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={() => setReanalysisDialog(null)}
+                    className="rounded-lg px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-[var(--overlay)] hover:text-slate-200"
+                  >
+                    Annulla
+                  </button>
+                </div>
               </div>
             </motion.div>
           </>
@@ -3094,140 +3040,7 @@ export default function AnalysisPage() {
                   <p className="text-sm text-violet-300">L&apos;IA si concentrerà esclusivamente sulla tua domanda e restituirà: risposta dettagliata, osservazioni citate dal testo, e correzioni specifiche.</p>
                 </div>
               )}
-              {!customQuestion.trim() && (<div className="mb-5 rounded-xl border border-[var(--border)] bg-[var(--overlay)] p-3.5">
-                <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400">📋 Sezioni da analizzare</p>
-                <div className="space-y-1.5">
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={withStrengths}
-                      onChange={(e) => setWithStrengths(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-emerald-500"
-                    />
-                    <span className="text-sm font-medium text-emerald-400">Punti di forza</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={withWeaknesses}
-                      onChange={(e) => setWithWeaknesses(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-amber-500"
-                    />
-                    <span className="text-sm font-medium text-amber-400">Debolezze</span>
-                  </label>
-                  {withWeaknesses && (
-                    <label className="ml-6 flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={withWeaknessSolutions}
-                        onChange={(e) => setWithWeaknessSolutions(e.target.checked)}
-                        className="h-3.5 w-3.5 rounded border-slate-600 bg-[var(--bg-card)] accent-amber-400"
-                      />
-                      <span className="text-xs text-slate-500">Con soluzioni proposte <span className="text-slate-600">— riscrittura del passaggio</span></span>
-                    </label>
-                  )}
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={withSuggestions}
-                      onChange={(e) => setWithSuggestions(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-violet-500"
-                    />
-                    <span className="text-sm font-medium text-violet-400">Suggerimenti</span>
-                  </label>
-                  {withSuggestions && (
-                    <label className="ml-6 flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={withSuggestionSolutions}
-                        onChange={(e) => setWithSuggestionSolutions(e.target.checked)}
-                        className="h-3.5 w-3.5 rounded border-slate-600 bg-[var(--bg-card)] accent-violet-400"
-                      />
-                      <span className="text-xs text-slate-500">Con soluzioni proposte <span className="text-slate-600">— esempio pratico di applicazione</span></span>
-                    </label>
-                  )}
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={withCorrections}
-                      onChange={(e) => setWithCorrections(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-rose-500"
-                    />
-                    <span className="text-sm font-medium text-rose-400">Correzioni</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={withReaderReactions}
-                      onChange={(e) => setWithReaderReactions(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-sky-500"
-                    />
-                    <span className="text-sm font-medium text-sky-400">Reazioni Lettori</span>
-                  </label>
-                  <div className="mt-1 border-t border-[var(--border)] pt-1.5">
-                    <label className="flex cursor-pointer items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        checked={withParagraphAnalysis}
-                        onChange={(e) => setWithParagraphAnalysis(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        <span className="font-medium text-teal-400">¶ Analizza a capo</span>
-                        <span className="ml-1 text-xs text-slate-500">— valuta uso dei paragrafi (aggiunge tab)</span>
-                      </span>
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
-                      <input
-                        type="checkbox"
-                        checked={withWordFrequency}
-                        onChange={(e) => setWithWordFrequency(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-indigo-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        <span className="font-medium text-indigo-400">📊 Analisi ripetizioni</span>
-                        <span className="ml-1 text-xs text-slate-500">— conta parole più usate (aggiunge tab)</span>
-                      </span>
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
-                      <input
-                        type="checkbox"
-                        checked={withShowDontTell}
-                        onChange={(e) => setWithShowDontTell(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-orange-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        <span className="font-medium text-orange-400">👁 Show Don&apos;t Tell</span>
-                        <span className="ml-1 text-xs text-slate-500">— trova i &quot;telling&quot; e propone riscritture <span className="text-slate-600">(aggiunge tab)</span></span>
-                      </span>
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
-                      <input
-                        type="checkbox"
-                        checked={withVerbTense}
-                        onChange={(e) => setWithVerbTense(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-purple-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        <span className="font-medium text-purple-400">⏱ Tempi verbali</span>
-                        <span className="ml-1 text-xs text-slate-500">— controlla coerenza dei tempi, corregge gli errori <span className="text-slate-600">(aggiunge tab + correzioni)</span></span>
-                      </span>
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
-                      <input
-                        type="checkbox"
-                        checked={withCharacters}
-                        onChange={(e) => setWithCharacters(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        <span className="font-medium text-teal-400">👤 Estrai personaggi</span>
-                        <span className="ml-1 text-xs text-slate-500">— aggiorna la pagina Personaggi</span>
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              </div>)}
+              {!customQuestion.trim() && <div className="mb-4">{renderSezioniPicker()}</div>}
 
               <div className="flex gap-3">
                 <button
