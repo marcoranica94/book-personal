@@ -619,7 +619,7 @@ async function callClaude(prompt, previousContext) {
   })
   const message = await client.messages.create({
     model: PROVIDER_MODELS.claude,
-    max_tokens: previousContext ? 12000 : 8000,
+    max_tokens: previousContext ? 24000 : 16000,
     messages: [{role: 'user', content: prompt}],
   })
   const block = message.content[0]
@@ -641,7 +641,7 @@ async function callGemini(prompt, previousContext, retryCount = 0) {
       body: JSON.stringify({
         contents: [{parts: [{text: prompt}]}],
         generationConfig: {
-          maxOutputTokens: previousContext ? 12000 : 10000,
+          maxOutputTokens: previousContext ? 24000 : 16000,
           temperature: 0.7,
           responseMimeType: 'application/json',
         },
@@ -690,7 +690,7 @@ async function callChatGPT(prompt, previousContext) {
   })
   const response = await client.chat.completions.create({
     model: PROVIDER_MODELS.chatgpt,
-    max_tokens: previousContext ? 12000 : 8000,
+    max_tokens: previousContext ? 24000 : 16000,
     temperature: 0.7,
     response_format: {type: 'json_object'},
     messages: [
@@ -895,6 +895,22 @@ async function analyzeChapter(chapter, bookSettings) {
     if (WITH_WORD_FREQUENCY) {
       result.wordFrequency = computeWordFrequency(chapterText)
       console.log(`  Frequenza parole: ${result.wordFrequency.totalWords} parole, ${result.wordFrequency.uniqueWords} uniche, score ripetitività=${result.wordFrequency.repetitionScore}`)
+    }
+
+    // ── Warn if expected sections are missing (likely truncated output) ────
+    const expectedSections = [
+      ['strengths', WITH_STRENGTHS],
+      ['weaknesses', WITH_WEAKNESSES],
+      ['suggestions', WITH_SUGGESTIONS],
+      ['corrections', WITH_CORRECTIONS],
+      ['readerReactions', WITH_READER_REACTIONS],
+      ['showDontTell', WITH_SHOW_DONT_TELL],
+      ['verbTense', WITH_VERB_TENSE],
+      ['characters', WITH_CHARACTERS],
+    ]
+    const missing = expectedSections.filter(([key, enabled]) => enabled && !result[key]).map(([key]) => key)
+    if (missing.length > 0) {
+      console.warn(`  ⚠ SEZIONI MANCANTI (output probabilmente troncato): ${missing.join(', ')}`)
     }
 
     // ── DEBUG: stampa il JSON parsato nei log ──────────────────────────────
