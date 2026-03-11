@@ -533,12 +533,12 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
     "trama": <1-10>,
     "originalita": <1-10>,
     "overall": <media pesata 1-10>
-  },${reactionsSection}
+  },
   "summary": "<sintesi dell'analisi, max 200 parole>",
+${charactersSchema}${reactionsSection}
 ${strengthsSchema}
 ${weaknessSchema}
 ${suggestionSchema}
-${charactersSchema}
 ${correctionsSchema}${historicalSection}${paragraphSection}${showDontTellSection}${verbTenseSection}
   "_placeholder": null
 }
@@ -856,6 +856,32 @@ async function analyzeChapter(chapter, bookSettings) {
 
     // Rimuovi il placeholder
     delete parsed._placeholder
+
+    // ── Rescue characters: jsonrepair può averli spostati dentro weaknesses/suggestions ──
+    if (!parsed.characters || parsed.characters.length === 0) {
+      const rescued = []
+      for (const arr of ['weaknesses', 'suggestions', 'corrections', 'strengths']) {
+        if (!Array.isArray(parsed[arr])) continue
+        const kept = []
+        let foundInThisArr = 0
+        for (const item of parsed[arr]) {
+          // Un character object ha sempre "name" e "role", non "text"/"original"
+          if (item && typeof item === 'object' && item.name && item.role && !item.text && !item.original) {
+            rescued.push(item)
+            foundInThisArr++
+          } else {
+            kept.push(item)
+          }
+        }
+        // Aggiorna l'array SOLO se abbiamo trovato caratteri in questo specifico array
+        if (foundInThisArr > 0) parsed[arr] = kept
+      }
+      if (rescued.length > 0) {
+        parsed.characters = rescued
+        console.warn(`  ⚠ Recuperati ${rescued.length} personaggi spostati da array errati`)
+      }
+    }
+
     const result = {
       chapterId: chapter.id,
       provider: AI_PROVIDER,
