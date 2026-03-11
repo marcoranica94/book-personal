@@ -870,14 +870,23 @@ export default function AnalysisPage() {
     setIsApplying(true)
     isApplyingRef.current = true
     try {
-      const baseContent = selectedChapter.driveContent ?? ''
+      // Usa editorContent come base (più affidabile di driveContent dopo apply ripetuti)
+      const baseContent = editorContent || selectedChapter.driveContent || ''
       const { content, applied, notFound } = applyCorrectionsToContent(
         baseContent,
         analysis.corrections,
         acceptedCorrections,
       )
       const accepted = Array.from(acceptedCorrections)
-      const rejected = Array.from(rejectedCorrections)
+
+      // Merge con le correzioni già accettate/rifiutate dall'analisi
+      const prevAccepted = analysis.acceptedCorrections ?? []
+      const prevRejected = analysis.rejectedCorrections ?? []
+      const mergedAccepted = Array.from(new Set([...prevAccepted, ...accepted]))
+      const mergedRejected = [
+        ...prevRejected.filter((i) => !accepted.includes(i)),
+        ...Array.from(rejectedCorrections).filter((i) => !prevRejected.includes(i)),
+      ]
 
       // Scritture in parallelo per ridurre la latenza
       await Promise.all([
@@ -887,8 +896,8 @@ export default function AnalysisPage() {
           syncSource: SyncSource.AI,
         }),
         patchAnalysis(selectedChapter.id, {
-          acceptedCorrections: accepted,
-          rejectedCorrections: rejected,
+          acceptedCorrections: mergedAccepted,
+          rejectedCorrections: mergedRejected,
           appliedAt: new Date().toISOString(),
         }, activeProvider),
       ])
@@ -899,7 +908,7 @@ export default function AnalysisPage() {
         .map((i) => analysis.corrections[i])
         .filter((c) => !!c && baseContent.includes(c.original))
         .map((c) => ({original: c!.original, suggested: c!.suggested}))
-      setAppliedChanges(changes)
+      setAppliedChanges((prev) => [...prev, ...changes])
       setEditorContent(content)
       setAcceptedCorrections(new Set())
       setRejectedCorrections(new Set())
@@ -1672,7 +1681,7 @@ export default function AnalysisPage() {
                                     </span>
                                   </div>
                                 )}
-                                {!selectedChapter?.driveContent && (
+                                {!editorContent && !selectedChapter?.driveContent && (
                                   <p className="text-xs text-amber-400 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2">
                                     Sincronizza da Drive per applicare le correzioni
                                   </p>
@@ -1694,7 +1703,7 @@ export default function AnalysisPage() {
                                   <div className="flex-1" />
                                   <button
                                     onClick={() => void handleApplyCorrections()}
-                                    disabled={acceptedCorrections.size === 0 || isApplying || !selectedChapter?.driveContent}
+                                    disabled={acceptedCorrections.size === 0 || isApplying || (!editorContent && !selectedChapter?.driveContent)}
                                     className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
                                   >
                                     {isApplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
@@ -1759,7 +1768,17 @@ export default function AnalysisPage() {
                                         </button>
                                         {!collapsedCorrGroups.has(type) && (
                                           <div className="divide-y divide-[var(--border)]">
-                                            {items.map(({c, i}) => {
+                                            {[...items].sort(({i: a}, {i: b}) => {
+                                              const rankOf = (idx: number) => {
+                                                if (acceptedCorrections.has(idx) || rejectedCorrections.has(idx)) return 1
+                                                const wa = analysis.acceptedCorrections?.includes(idx)
+                                                const wr = analysis.rejectedCorrections?.includes(idx)
+                                                if (wa) return 2
+                                                if (wr) return 3
+                                                return 0
+                                              }
+                                              return rankOf(a) - rankOf(b)
+                                            }).map(({c, i}) => {
                                               const isAccepted = acceptedCorrections.has(i)
                                               const isRejected = rejectedCorrections.has(i)
                                               const wasAccepted = analysis.acceptedCorrections?.includes(i)
