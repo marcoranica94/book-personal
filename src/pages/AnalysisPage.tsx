@@ -1,25 +1,25 @@
 import React, {useEffect, useRef, useState} from 'react'
 import {AnimatePresence, motion} from 'framer-motion'
 import {
-  AlertTriangle,
-  AlignLeft,
-  CheckCheck,
-  CheckCircle2,
-  ChevronDown,
-  Eye,
-  FileEdit,
-  History,
-  Loader2,
-  Play,
-  RadarIcon,
-  RefreshCw,
-  RotateCcw,
-  Sparkles,
-  Square,
-  Trash2,
-  TrendingUp,
-  Upload,
-  X
+    AlertTriangle,
+    AlignLeft,
+    CheckCheck,
+    CheckCircle2,
+    ChevronDown,
+    Eye,
+    FileEdit,
+    History,
+    Loader2,
+    Play,
+    RadarIcon,
+    RefreshCw,
+    RotateCcw,
+    Sparkles,
+    Square,
+    Trash2,
+    TrendingUp,
+    Upload,
+    X
 } from 'lucide-react'
 import {Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts'
 import {useChaptersStore} from '@/stores/chaptersStore'
@@ -72,6 +72,7 @@ const CORRECTION_TYPE_LABELS: Record<string, string> = {
   style: 'Stile',
   clarity: 'Chiarezza',
   continuity: 'Continuità',
+  verb_tense: 'Tempo verbale',
 }
 
 const CORRECTION_TYPE_COLORS: Record<string, string> = {
@@ -79,10 +80,11 @@ const CORRECTION_TYPE_COLORS: Record<string, string> = {
   style: 'border-violet-800/30 bg-violet-900/30 text-violet-400',
   clarity: 'border-blue-800/30 bg-blue-900/30 text-blue-400',
   continuity: 'border-amber-800/30 bg-amber-900/30 text-amber-400',
+  verb_tense: 'border-purple-800/30 bg-purple-900/30 text-purple-400',
 }
 
 type Tab = 'feedback' | 'corrections' | 'extra'
-type ExtraTab = 'storico' | 'reazioni' | 'acapo' | 'parole' | 'showdontell' | 'domande'
+type ExtraTab = 'storico' | 'reazioni' | 'acapo' | 'parole' | 'showdontell' | 'verbtense' | 'domande'
 
 // ─── Author comment (localStorage persistence per capitolo) ──────────────────
 
@@ -372,6 +374,8 @@ export default function AnalysisPage() {
   const [withWordFrequency, setWithWordFrequency] = useState(false)
   // Show, don't tell
   const [withShowDontTell, setWithShowDontTell] = useState(false)
+  // Controllo tempi verbali
+  const [withVerbTense, setWithVerbTense] = useState(false)
   // Estrazione personaggi
   const [withCharacters, setWithCharacters] = useState(false)
   // Domanda personalizzata — campo nel dialog
@@ -731,6 +735,7 @@ export default function AnalysisPage() {
         with_reader_reactions: withReaderReactions ? 'true' : 'false',
         with_word_frequency: withWordFrequency ? 'true' : 'false',
         with_show_dont_tell: withShowDontTell ? 'true' : 'false',
+        with_verb_tense: withVerbTense ? 'true' : 'false',
         with_characters: withCharacters ? 'true' : 'false',
       }
 
@@ -1727,6 +1732,7 @@ export default function AnalysisPage() {
                                 ...(analysis.paragraphBreaks || reformatResult ? [{id: 'acapo' as ExtraTab, label: '¶ A Capo'}] : []),
                                 ...(analysis.wordFrequency ? [{id: 'parole' as ExtraTab, label: 'Parole'}] : []),
                                 ...(analysis.showDontTell ? [{id: 'showdontell' as ExtraTab, label: 'Show vs Tell'}] : []),
+                                ...(analysis.verbTense ? [{id: 'verbtense' as ExtraTab, label: '⏱ Tempi'}] : []),
                                 ...(customQuestions.length > 0 ? [{id: 'domande' as ExtraTab, label: `Domande (${customQuestions.length})`}] : []),
                               ]
                               if (subTabs.length === 0) return (
@@ -1942,6 +1948,36 @@ export default function AnalysisPage() {
                                     </div>
                                   )}
 
+                                  {/* verbtense */}
+                                  {activeExtraTab === 'verbtense' && analysis?.verbTense && (
+                                    <div className="space-y-4">
+                                      <div className="flex items-center gap-3">
+                                        <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold', analysis.verbTense.score >= 8 ? 'bg-emerald-900/30 text-emerald-400' : analysis.verbTense.score >= 6 ? 'bg-blue-900/30 text-blue-400' : analysis.verbTense.score >= 4 ? 'bg-amber-900/30 text-amber-400' : 'bg-red-900/30 text-red-400')}>{analysis.verbTense.score.toFixed(1)}</span>
+                                        <div>
+                                          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Coerenza tempi verbali</p>
+                                          <p className="mt-0.5 text-sm text-slate-300">{analysis.verbTense.summary}</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2 rounded-lg border border-purple-800/30 bg-purple-900/10 px-3 py-2">
+                                        <span className="text-xs font-semibold text-purple-400">Tempo dominante:</span>
+                                        <span className="rounded-full border border-purple-700/40 bg-purple-900/20 px-2.5 py-0.5 text-xs font-medium text-purple-300">{analysis.verbTense.dominantTense}</span>
+                                      </div>
+                                      {(() => {
+                                        const vtCorrections = (analysis.corrections ?? []).filter((c) => c.type === 'verb_tense')
+                                        return vtCorrections.length > 0 ? (
+                                          <div className="rounded-lg border border-purple-800/30 bg-purple-900/10 px-3 py-2 text-xs text-purple-300 leading-relaxed">
+                                            <strong>{vtCorrections.length} {vtCorrections.length === 1 ? 'problema' : 'problemi'} trovati</strong> — vedi la tab <strong>Correzioni</strong> per accettarli e applicarli direttamente al testo.
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center gap-3 rounded-xl border border-emerald-700/30 bg-emerald-900/10 px-4 py-3">
+                                            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+                                            <p className="text-sm text-emerald-300">Tempi verbali coerenti. Nessun problema rilevato.</p>
+                                          </div>
+                                        )
+                                      })()}
+                                    </div>
+                                  )}
+
                                   {/* domande personalizzate */}
                                   {activeExtraTab === 'domande' && (
                                     <div className="space-y-3">
@@ -1953,7 +1989,6 @@ export default function AnalysisPage() {
                                       ) : (
                                         customQuestions.map((q) => (
                                           <div key={q.id} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] overflow-hidden">
-                                            {/* Header domanda — clicca per espandere */}
                                             <button
                                               onClick={() => setExpandedQuestionId(expandedQuestionId === q.id ? null : (q.id ?? null))}
                                               className="w-full flex items-start gap-3 p-4 text-left hover:bg-white/5 transition-colors"
@@ -1968,13 +2003,10 @@ export default function AnalysisPage() {
 
                                             {expandedQuestionId === q.id && (
                                               <div className="border-t border-[var(--border)] p-4 space-y-4">
-                                                {/* Risposta principale */}
                                                 <div className="rounded-lg border border-violet-800/30 bg-violet-900/10 p-4">
                                                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-violet-400">Risposta</p>
                                                   <p className="text-sm leading-relaxed text-slate-200 whitespace-pre-wrap">{q.answer}</p>
                                                 </div>
-
-                                                {/* Osservazioni */}
                                                 {q.findings.length > 0 && (
                                                   <div className="space-y-2.5">
                                                     <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Osservazioni ({q.findings.length})</p>
@@ -1994,16 +2026,12 @@ export default function AnalysisPage() {
                                                     ))}
                                                   </div>
                                                 )}
-
-                                                {/* Correzioni */}
                                                 {q.corrections.length > 0 && (
                                                   <div className="space-y-2">
                                                     <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Correzioni ({q.corrections.length})</p>
                                                     {q.corrections.map((c, i) => (
                                                       <div key={i} className={cn('rounded-lg border p-3 space-y-1.5 text-xs', CORRECTION_TYPE_COLORS[c.type] ?? 'border-slate-700/30 bg-slate-800/30 text-slate-400')}>
-                                                        <div className="flex items-center gap-2">
-                                                          <span className="font-semibold">{CORRECTION_TYPE_LABELS[c.type] ?? c.type}</span>
-                                                        </div>
+                                                        <span className="font-semibold">{CORRECTION_TYPE_LABELS[c.type] ?? c.type}</span>
                                                         <p className="line-through text-slate-500">{c.original}</p>
                                                         <p className="font-medium text-slate-200">{c.suggested}</p>
                                                         <p className="text-slate-500">{c.note}</p>
@@ -2938,6 +2966,18 @@ export default function AnalysisPage() {
                     <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
                       <input
                         type="checkbox"
+                        checked={withVerbTense}
+                        onChange={(e) => setWithVerbTense(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-purple-500"
+                      />
+                      <span className="text-sm text-slate-300">
+                        <span className="font-medium text-purple-400">⏱ Tempi verbali</span>
+                        <span className="ml-1 text-xs text-slate-500">— controlla coerenza dei tempi, corregge gli errori <span className="text-slate-600">(aggiunge tab + correzioni)</span></span>
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
+                      <input
+                        type="checkbox"
                         checked={withCharacters}
                         onChange={(e) => setWithCharacters(e.target.checked)}
                         className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-teal-500"
@@ -3159,6 +3199,18 @@ export default function AnalysisPage() {
                       <span className="text-sm text-slate-300">
                         <span className="font-medium text-orange-400">👁 Show Don&apos;t Tell</span>
                         <span className="ml-1 text-xs text-slate-500">— trova i &quot;telling&quot; e propone riscritture <span className="text-slate-600">(aggiunge tab)</span></span>
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">
+                      <input
+                        type="checkbox"
+                        checked={withVerbTense}
+                        onChange={(e) => setWithVerbTense(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-[var(--bg-card)] accent-purple-500"
+                      />
+                      <span className="text-sm text-slate-300">
+                        <span className="font-medium text-purple-400">⏱ Tempi verbali</span>
+                        <span className="ml-1 text-xs text-slate-500">— controlla coerenza dei tempi, corregge gli errori <span className="text-slate-600">(aggiunge tab + correzioni)</span></span>
                       </span>
                     </label>
                     <label className="flex cursor-pointer items-center gap-2.5 mt-1.5">

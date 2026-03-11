@@ -48,6 +48,8 @@ const WITH_WORD_FREQUENCY = (process.env.WITH_WORD_FREQUENCY ?? 'false') === 'tr
 const WITH_SHOW_DONT_TELL = (process.env.WITH_SHOW_DONT_TELL ?? 'false') === 'true'
 /** Se true, estrae i personaggi presenti nel capitolo e aggiorna /characters su Firestore */
 const WITH_CHARACTERS = (process.env.WITH_CHARACTERS ?? 'false') === 'true'
+/** Se true, analizza la coerenza dei tempi verbali e aggiunge correzioni di tipo verb_tense */
+const WITH_VERB_TENSE = (process.env.WITH_VERB_TENSE ?? 'false') === 'true'
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
 initializeApp({credential: cert(serviceAccount)})
@@ -332,6 +334,15 @@ function buildParagraphSection() {
   },`
 }
 
+function buildVerbTenseSection() {
+  return `
+  "verbTense": {
+    "score": <1-10, coerenza complessiva dei tempi verbali (10=perfetta, 1=caos)>,
+    "dominantTense": "<tempo principale del capitolo: passato_remoto|imperfetto|presente|passato_prossimo|futuro|misto>",
+    "summary": "<sintesi max 100 parole sulla coerenza dei tempi, casi particolari gestiti bene e problemi principali>"
+  },`
+}
+
 function buildReaderReactionsSection(personas) {
   const personaList = personas.map(p => `    {"persona": "${p}", "emoji": "<emoji appropriata>", "rating": <1-5>, "reaction": "<frase breve in prima persona>", "questions": ["<domanda 1>", "<domanda 2>"], "comment": "<commento esteso max 80 parole>"}`).join(',\n')
   return `
@@ -385,6 +396,7 @@ function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorCo
     withCorrections = true,
     withReaderReactions = true,
     withShowDontTell = false,
+    withVerbTense = false,
     withCharacters = false,
   } = opts
   const isHistorical = bookType === 'storico'
@@ -394,6 +406,7 @@ function buildPrompt(bookTitle, bookType, chapterText, previousContext, authorCo
   const reactionsSection = withReaderReactions ? buildReaderReactionsSection(personas) : ''
   const paragraphSection = withParagraphAnalysis ? buildParagraphSection() : ''
   const showDontTellSection = withShowDontTell ? buildShowDontTellSection() : ''
+  const verbTenseSection = withVerbTense ? buildVerbTenseSection() : ''
 
   const previousBlock = previousContext ? `
 
@@ -475,6 +488,7 @@ ${withSuggestions && withSuggestionSolutions ? '- Per ogni suggerimento, il camp
     !withCorrections && 'corrections',
     !withReaderReactions && 'readerReactions',
     !withShowDontTell && 'showDontTell',
+    !withVerbTense && 'verbTense',
   ].filter(Boolean)
   const excludedNote = excludedSections.length > 0
     ? `\nNOTA: le sezioni ${excludedSections.map(s => `"${s}"`).join(', ')} NON devono essere presenti nel JSON — sono state disabilitate dall'autore.`
@@ -500,7 +514,7 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
 ${strengthsSchema}
 ${weaknessSchema}
 ${suggestionSchema}
-${correctionsSchema}${historicalSection}${paragraphSection}${showDontTellSection}${charactersSchema}
+${correctionsSchema}${historicalSection}${paragraphSection}${showDontTellSection}${verbTenseSection}${charactersSchema}
   "_placeholder": null
 }
 ${excludedNote}
@@ -539,6 +553,25 @@ Criteri Show Don't Tell (showDontTell) — PRINCIPIO FONDAMENTALE della narrativ
 - Per ogni caso trovato proponi una riscrittura CONCRETA: usa dettagli fisici, comportamenti osservabili, dialoghi rivelatori
 - Il voto 10 indica un eccellente uso dello showing; voto 1 indica un testo quasi interamente basato sul telling
 - Segnala SOLO i casi più significativi e correggibili (max 8-10 issues)
+` : ''}${withVerbTense ? `
+Criteri controllo tempi verbali (verbTense) — COERENZA NARRATIVA:
+- Identifica il TEMPO DOMINANTE del capitolo (es. passato remoto, imperfetto, presente)
+- Segnala SOLO i cambi di tempo INCOERENTI e non intenzionali — non quelli stilisticamente giustificati
+- CASI LECITI da NON segnalare come errori:
+  · Imperfetto all'interno di una narrazione al passato remoto (azioni abituali/stati di sfondo: "ogni giorno andava", "la stanza era buia")
+  · Flashback con cambio di piano narrativo esplicito (può usare tempi diversi)
+  · Dialoghi diretti (possono usare qualsiasi tempo)
+  · Discorso indiretto libero (il pensiero del personaggio può rispecchiare il suo "presente")
+  · Frasi proverbiali o massime universali (tipicamente al presente)
+  · Cambio intenzionale per enfasi stilistica o effetto cinematografico
+- SEGNALA COME verb_tense nelle corrections:
+  · Uso del presente indicativo al posto del passato remoto/imperfetto in contesti narrativi puri (non dialogo, non flashback)
+  · Miscelazione caotica di passato prossimo e passato remoto nella stessa scena descrittiva
+  · Futuro o condizionale usato dove non è né il pensiero del personaggio né un'azione futura logica
+  · Congiuntivi al posto di indicativi in contesti chiari (o viceversa se crea ambiguità)
+- Per ogni correzione verb_tense: "original" = testo ESATTO dal capitolo, "suggested" = testo corretto, "note" = spiegazione breve del perché è sbagliato
+- Max 15 correzioni verb_tense; segnala PRIMA gli errori più gravi
+- Popola "verbTense.dominantTense" con una delle opzioni: passato_remoto | imperfetto | presente | passato_prossimo | futuro | misto
 ` : ''}
 --- CAPITOLO ---
 ${chapterText}
@@ -693,12 +726,13 @@ async function analyzeChapter(chapter, bookSettings) {
     withCorrections: WITH_CORRECTIONS,
     withReaderReactions: WITH_READER_REACTIONS,
     withShowDontTell: WITH_SHOW_DONT_TELL,
+    withVerbTense: WITH_VERB_TENSE,
     withCharacters: WITH_CHARACTERS,
   })
   if (AUTHOR_COMMENT) {
     console.log(`  Nota autore inclusa nel prompt (${AUTHOR_COMMENT.length} chars)`)
   }
-  console.log(`  Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'} showDontTell=${WITH_SHOW_DONT_TELL?'✓':'✗'}`)
+  console.log(`  Sezioni: forza=${WITH_STRENGTHS?'✓':'✗'} debol=${WITH_WEAKNESSES?'✓':'✗'} sugg=${WITH_SUGGESTIONS?'✓':'✗'} corr=${WITH_CORRECTIONS?'✓':'✗'} reaz=${WITH_READER_REACTIONS?'✓':'✗'} showDontTell=${WITH_SHOW_DONT_TELL?'✓':'✗'} verbTense=${WITH_VERB_TENSE?'✓':'✗'}`)
   console.log(`  Soluzioni: debolezze=${WITH_WEAKNESS_SOLUTIONS ? '✓' : '✗'} | suggerimenti=${WITH_SUGGESTION_SOLUTIONS ? '✓' : '✗'} | paragrafi=${WITH_PARAGRAPH_ANALYSIS ? '✓' : '✗'}`)
 
   const modelName = PROVIDER_MODELS[AI_PROVIDER] ?? PROVIDER_MODELS.claude

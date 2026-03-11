@@ -58,6 +58,10 @@ on:
         description: "Analizza casi di 'telling' invece di 'showing' con riscritture proposte (true/false)"
         required: false
         default: 'false'
+      with_verb_tense:
+        description: 'Analizza coerenza tempi verbali e aggiungi correzioni di tipo verb_tense (true/false)'
+        required: false
+        default: 'false'
       with_characters:
         description: 'Estrai personaggi dal capitolo e aggiorna la collection /characters (true/false)'
         required: false
@@ -97,6 +101,7 @@ jobs:
           WITH_READER_REACTIONS: ${{ inputs.with_reader_reactions }}
           WITH_WORD_FREQUENCY: ${{ inputs.with_word_frequency }}
           WITH_SHOW_DONT_TELL: ${{ inputs.with_show_dont_tell }}
+          WITH_VERB_TENSE: ${{ inputs.with_verb_tense }}
           WITH_CHARACTERS: ${{ inputs.with_characters }}
           CUSTOM_QUESTION: ${{ inputs.custom_question }}
           REPO_DIR: ${{ github.workspace }}

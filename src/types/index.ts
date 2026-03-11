@@ -23,6 +23,7 @@ export const CorrectionType = {
   STYLE: 'style',
   CLARITY: 'clarity',
   CONTINUITY: 'continuity',
+  VERB_TENSE: 'verb_tense',
 } as const
 export type CorrectionType = (typeof CorrectionType)[keyof typeof CorrectionType]
 
@@ -165,6 +166,17 @@ export interface ParagraphBreaksAnalysis {
   issues: ParagraphBreakIssue[]
 }
 
+// ─── Verb Tense Analysis ──────────────────────────────────────────────────────
+
+export interface VerbTenseAnalysis {
+  /** Voto 1-10 (10 = coerenza perfetta, 1 = caos di tempi) */
+  score: number
+  /** Tempo verbale dominante del capitolo (es. "passato_remoto", "presente", "imperfetto") */
+  dominantTense: string
+  /** Sintesi breve (max 100 parole) */
+  summary: string
+}
+
 // ─── Show Don't Tell Analysis ─────────────────────────────────────────────────
 
 export interface ShowDontTellIssue {
@@ -269,6 +281,7 @@ export interface ChapterAnalysis {
   paragraphBreaks?: ParagraphBreaksAnalysis
   wordFrequency?: WordFrequencyAnalysis
   showDontTell?: ShowDontTellAnalysis
+  verbTense?: VerbTenseAnalysis
   // Characters extracted from this chapter during analysis
   characters?: CharacterChapterAppearance[]
 }
