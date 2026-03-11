@@ -1,5 +1,18 @@
 import {useEffect, useState} from 'react'
-import {closestCorners, DndContext, type DragEndEvent, type DragOverEvent, DragOverlay, type DragStartEvent, PointerSensor, useSensor, useSensors,} from '@dnd-kit/core'
+import {
+    closestCenter,
+    type CollisionDetection,
+    DndContext,
+    type DragEndEvent,
+    type DragOverEvent,
+    DragOverlay,
+    type DragStartEvent,
+    PointerSensor,
+    pointerWithin,
+    rectIntersection,
+    useSensor,
+    useSensors,
+} from '@dnd-kit/core'
 import {arrayMove} from '@dnd-kit/sortable'
 import {motion} from 'framer-motion'
 import {LayoutGrid, List, Plus, Search, X} from 'lucide-react'
@@ -85,6 +98,16 @@ export default function KanbanPage() {
 
   function getColumnChapters(status: ChapterStatus) {
     return filtered.filter((c) => c.status === status)
+  }
+
+  // ── Collision detection: pointerWithin prima (gestisce colonne vuote), poi fallback ──
+  const collisionDetection: CollisionDetection = (args) => {
+    // Se il puntatore è direttamente dentro un droppable (es. colonna vuota), usa quello
+    const pointerCollisions = pointerWithin(args)
+    if (pointerCollisions.length > 0) return pointerCollisions
+    // Fallback: intersezione rettangolo → closestCenter
+    const rectCollisions = rectIntersection(args)
+    return rectCollisions.length > 0 ? rectCollisions : closestCenter(args)
   }
 
   // ── Drag handlers ─────────────────────────────────────────────────────────
@@ -279,7 +302,7 @@ export default function KanbanPage() {
         ) : viewMode === 'kanban' ? (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCorners}
+            collisionDetection={collisionDetection}
             onDragStart={onDragStart}
             onDragOver={onDragOver}
             onDragEnd={onDragEnd}
