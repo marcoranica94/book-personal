@@ -870,6 +870,12 @@ async function analyzeChapter(chapter, bookSettings) {
       result.wordFrequency = computeWordFrequency(chapterText)
       console.log(`  Frequenza parole: ${result.wordFrequency.totalWords} parole, ${result.wordFrequency.uniqueWords} uniche, score ripetitività=${result.wordFrequency.repetitionScore}`)
     }
+
+    // ── DEBUG: stampa il JSON parsato nei log ──────────────────────────────
+    console.log('\n══════════ PARSED ANALYSIS JSON ══════════')
+    console.log(JSON.stringify(result, null, 2))
+    console.log('══════════ END PARSED ANALYSIS JSON ══════════\n')
+
     return result
   } catch (err) {
     const msg = `Errore parsing JSON per ${chapter.id}: ${err.message}. Response (500 chars): ${responseText.substring(0, 500)}`
