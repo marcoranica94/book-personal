@@ -338,7 +338,7 @@ export default function AnalysisPage() {
   // Correzioni — 3 stati: accettata / rifiutata / da rivedere (default)
   const [acceptedCorrections, setAcceptedCorrections] = useState<Set<number>>(new Set())
   const [rejectedCorrections, setRejectedCorrections] = useState<Set<number>>(new Set())
-  const [isApplying, setIsApplying] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   // Correzioni applicate direttamente via popup inline (escluse dalle decorazioni)
   const [appliedInlineCorrections, setAppliedInlineCorrections] = useState<Set<number>>(new Set())
   // Accordion gruppi correzioni (set dei tipi collassati)
@@ -349,10 +349,7 @@ export default function AnalysisPage() {
   const [editorContent, setEditorContent] = useState('')
   // externalSearchQuery: stringa + timestamp per ritriggerare anche se stesso testo
   const [editorSearchQuery, setEditorSearchQuery] = useState('')
-  const [isSavingContent, setIsSavingContent] = useState(false)
   const [isForceSyncingDrive, setIsForceSyncingDrive] = useState(false)
-  const [isPushingToDrive, setIsPushingToDrive] = useState(false)
-  const [appliedChanges, setAppliedChanges] = useState<Array<{original: string; suggested: string}>>([])
   const [itemDetailModal, setItemDetailModal] = useState<{type: 'weaknesses' | 'suggestions'; item: string | {text: string; quotes?: string[]; solution?: string}} | null>(null)
   // Re-analysis dialog — scegli se includere contesto precedente
   const [reanalysisDialog, setReanalysisDialog] = useState<{chapterId: string; label: string; provider: AIProvider} | null>(null)
@@ -512,7 +509,6 @@ export default function AnalysisPage() {
     if (selectedId) void loadAnalysis(selectedId)
     setAcceptedCorrections(new Set())
     setRejectedCorrections(new Set())
-    setAppliedChanges([])
     setAppliedInlineCorrections(new Set())
     const chapter = chapters.find((c) => c.id === selectedId)
     setEditorContent(chapter?.driveContent ?? '')
@@ -727,7 +723,6 @@ export default function AnalysisPage() {
   const analysis = chapterAnalyses?.[activeProvider] ?? null
   const availableProviders = chapterAnalyses ? (Object.keys(chapterAnalyses) as AIProvider[]) : []
   const isDirty = editorContent !== (selectedChapter?.driveContent ?? '')
-  const isPendingPush = isDirty || selectedChapter?.syncStatus === SyncStatus.PENDING_PUSH
   const isGoogleDoc = selectedChapter?.driveMimeType === 'application/vnd.google-apps.document'
 
   async function triggerAnalysis(chapterId: string, includePrevious = false, provider: AIProvider = activeProvider, comment?: string, question?: string) {
@@ -870,182 +865,78 @@ export default function AnalysisPage() {
     }
   }
 
-  async function handleApplyCorrections() {
-    if (!selectedChapter || !analysis || acceptedCorrections.size === 0) return
-    setIsApplying(true)
+  async function handleSave() {
+    if (!selectedChapter) return
+    setIsSaving(true)
     isApplyingRef.current = true
     try {
-      // Usa editorContent come base (più affidabile di driveContent dopo apply ripetuti)
-      const baseContent = editorContent || selectedChapter.driveContent || ''
-      const { content, applied, notFound } = applyCorrectionsToContent(
-        baseContent,
-        analysis.corrections,
-        acceptedCorrections,
-      )
-      const accepted = Array.from(acceptedCorrections)
+      const content = editorContent
+      const chapterUpdate: Parameters<typeof chaptersService.updateChapter>[1] = {
+        driveContent: content,
+        currentChars: content.length,
+        wordCount: content.split(/\s+/).filter(Boolean).length,
+      }
 
-      // Merge con le correzioni già accettate/rifiutate dall'analisi
-      const prevAccepted = analysis.acceptedCorrections ?? []
-      const prevRejected = analysis.rejectedCorrections ?? []
-      const mergedAccepted = Array.from(new Set([...prevAccepted, ...accepted]))
-      const mergedRejected = [
-        ...prevRejected.filter((i) => !accepted.includes(i)),
-        ...Array.from(rejectedCorrections).filter((i) => !prevRejected.includes(i)),
-      ]
-
-      // Scritture in parallelo per ridurre la latenza
-      await Promise.all([
-        chaptersService.updateChapter(selectedChapter.id, {
-          driveContent: content,
-          syncStatus: SyncStatus.PENDING_PUSH,
-          syncSource: SyncSource.AI,
-        }),
-        patchAnalysis(selectedChapter.id, {
+      // Salva stato correzioni accettate/rifiutate nell'analisi
+      if (analysis && (acceptedCorrections.size > 0 || rejectedCorrections.size > 0)) {
+        const prevAccepted = analysis.acceptedCorrections ?? []
+        const prevRejected = analysis.rejectedCorrections ?? []
+        const mergedAccepted = Array.from(new Set([...prevAccepted, ...Array.from(acceptedCorrections)]))
+        const mergedRejected = Array.from(new Set([
+          ...prevRejected.filter((i) => !acceptedCorrections.has(i)),
+          ...Array.from(rejectedCorrections),
+        ]))
+        await patchAnalysis(selectedChapter.id, {
           acceptedCorrections: mergedAccepted,
           rejectedCorrections: mergedRejected,
           appliedAt: new Date().toISOString(),
-        }, activeProvider),
-      ])
-      await Promise.all([loadChapters(), loadAnalysis(selectedId)])
-
-      // Salva le modifiche per mostrarle nell'editor
-      const changes = accepted
-        .map((i) => analysis.corrections[i])
-        .filter((c) => !!c && baseContent.includes(c.original))
-        .map((c) => ({original: c!.original, suggested: c!.suggested}))
-      setAppliedChanges((prev) => [...prev, ...changes])
-      setEditorContent(content)
-      setAcceptedCorrections(new Set())
-      setRejectedCorrections(new Set())
-
-      if (notFound.length) {
-        toast.success(`${applied} correzioni applicate — ${notFound.length} non trovate nel testo`)
-      } else {
-        toast.success(`${applied} correzioni applicate al testo`)
+        }, activeProvider)
       }
-    } catch (err) {
-      toast.error('Errore applicazione: ' + (err as Error).message)
-    } finally {
-      setIsApplying(false)
-      isApplyingRef.current = false
-    }
-  }
 
-  async function handleSaveEditorContent() {
-    if (!selectedChapter) return
-    setIsSavingContent(true)
-    try {
-      await chaptersService.updateChapter(selectedChapter.id, {
-        driveContent: editorContent,
-        currentChars: editorContent.length,
-        wordCount: editorContent.split(/\s+/).filter(Boolean).length,
-        syncStatus: SyncStatus.PENDING_PUSH,
-        syncSource: SyncSource.MANUAL,
-      })
+      if (driveConfig?.folderId && user) {
+        // Salva su Firebase + Drive
+        const {accessToken, updatedTokens} = await getValidAccessToken(driveConfig, user.uid)
+        if (updatedTokens) await patchTokens(user.uid, updatedTokens)
+
+        if (isGoogleDoc && selectedChapter.driveFileId) {
+          // Google Doc: replace contenuto intero per preservare formattazione
+          const replacements = [{original: selectedChapter.driveContent ?? '', suggested: content}]
+          const filtered = replacements.filter(({original, suggested}) => original && original !== suggested)
+          if (filtered.length > 0) {
+            await applyTextReplacements(accessToken, selectedChapter.driveFileId, filtered)
+          }
+          chapterUpdate.syncStatus = SyncStatus.SYNCED
+          chapterUpdate.syncSource = SyncSource.DASHBOARD
+          chapterUpdate.lastSyncAt = new Date().toISOString()
+        } else {
+          // Markdown: upload completo su Drive
+          chapterUpdate.syncStatus = SyncStatus.PENDING_PUSH
+          chapterUpdate.syncSource = SyncSource.MANUAL
+          await chaptersService.updateChapter(selectedChapter.id, chapterUpdate)
+          const updated = {...selectedChapter, driveContent: content}
+          await pushToDrive(updated, driveConfig, user.uid, (tokens) => patchTokens(user.uid, tokens))
+          await loadChapters()
+          toast.success('Salvato su Firebase e Drive')
+          return
+        }
+      } else {
+        chapterUpdate.syncStatus = SyncStatus.PENDING_PUSH
+        chapterUpdate.syncSource = SyncSource.MANUAL
+      }
+
+      await chaptersService.updateChapter(selectedChapter.id, chapterUpdate)
       await loadChapters()
-      toast.success('Testo salvato — usa "Sincronizza ora" per inviarlo su Drive')
-    } catch (err) {
-      toast.error('Errore salvataggio: ' + (err as Error).message)
-    } finally {
-      setIsSavingContent(false)
-    }
-  }
-
-  async function handlePushToDrive() {
-    if (!selectedChapter || !driveConfig || !user) return
-    setIsPushingToDrive(true)
-    try {
-      const {accessToken, updatedTokens} = await getValidAccessToken(driveConfig, user.uid)
-      if (updatedTokens) await patchTokens(user.uid, updatedTokens)
-
-      if (isGoogleDoc && selectedChapter.driveFileId) {
-        // Google Doc: usa Google Docs API replaceAllText per preservare font/grassetti/spaziatura
-        let replacements: Array<{original: string; suggested: string}>
-        let analysisUpdate: Parameters<typeof patchAnalysis>[1] | null = null
-
-        if (appliedChanges.length > 0) {
-          // Flusso 2-step: l'utente ha già cliccato "Applica N correzioni"
-          replacements = appliedChanges
-        } else if (acceptedCorrections.size > 0 && analysis?.corrections) {
-          // Flusso diretto: l'utente ha accettato correzioni e salva senza passare per "Applica"
-          replacements = Array.from(acceptedCorrections)
-            .map((i) => analysis!.corrections[i])
-            .filter(Boolean)
-            .map((c) => ({original: c.original, suggested: c.suggested}))
-          // Salviamo anche lo stato delle correzioni sull'analisi
-          analysisUpdate = {
-            acceptedCorrections: Array.from(acceptedCorrections),
-            rejectedCorrections: Array.from(rejectedCorrections),
-            appliedAt: new Date().toISOString(),
-          }
-        } else {
-          // Nessuna correzione selezionata: salva il contenuto dell'editor così com'è
-          replacements = [{original: selectedChapter.driveContent ?? '', suggested: editorContent}]
-        }
-
-        const filtered = replacements.filter(
-          ({original, suggested}) => original && original !== suggested,
-        )
-        const {applied} = await applyTextReplacements(accessToken, selectedChapter.driveFileId, filtered)
-
-        const newContent = (() => {
-          if (appliedChanges.length > 0) return editorContent
-          if (acceptedCorrections.size > 0 && analysis?.corrections) {
-            // Applica le stesse sostituzioni al driveContent locale per tenerlo in sync
-            let content = selectedChapter.driveContent ?? ''
-            for (const {original, suggested} of filtered) {
-              content = content.replace(original, suggested)
-            }
-            return content
-          }
-          return editorContent
-        })()
-
-        await Promise.all([
-          chaptersService.updateChapter(selectedChapter.id, {
-            driveContent: newContent,
-            currentChars: newContent.length,
-            wordCount: newContent.split(/\s+/).filter(Boolean).length,
-            syncStatus: SyncStatus.SYNCED,
-            syncSource: SyncSource.DASHBOARD,
-            lastSyncAt: new Date().toISOString(),
-          }),
-          ...(analysisUpdate ? [patchAnalysis(selectedChapter.id, analysisUpdate, activeProvider)] : []),
-        ])
-        await loadChapters()
-        if (applied === 0 && filtered.length === 0 && acceptedCorrections.size === 0) {
-          toast.info('Nessuna modifica da inviare al Doc')
-        } else if (applied === 0 && filtered.length > 0) {
-          toast.warning(`Testo non trovato nel Doc per ${filtered.length} correzioni — verifica che il contenuto sia sincronizzato`)
-        } else {
-          toast.success(`${applied} sostituzion${applied === 1 ? 'e' : 'i'} applicat${applied === 1 ? 'a' : 'e'} nel Doc — font e formattazione preservati`)
-        }
-        setAcceptedCorrections(new Set())
-        setRejectedCorrections(new Set())
-        setAppliedChanges([])
-      } else {
-        // File markdown: upload completo
-        await chaptersService.updateChapter(selectedChapter.id, {
-          driveContent: editorContent,
-          currentChars: editorContent.length,
-          wordCount: editorContent.split(/\s+/).filter(Boolean).length,
-          syncStatus: SyncStatus.PENDING_PUSH,
-          syncSource: SyncSource.MANUAL,
-        })
-        const updated = {...selectedChapter, driveContent: editorContent}
-        await pushToDrive(updated, driveConfig, user.uid, (tokens) => patchTokens(user.uid, tokens))
-        await loadChapters()
-        toast.success('Testo salvato su Drive')
-      }
+      toast.success(driveConfig?.folderId ? 'Salvato su Firebase e Drive' : 'Salvato su Firebase')
     } catch (err) {
       const msg = (err as Error).message
       if (msg.includes('403') || msg.includes('insufficient')) {
         toast.error('Permesso negato — disconnetti e riconnetti Drive per aggiornare le autorizzazioni')
       } else {
-        toast.error('Errore salvataggio Drive: ' + msg)
+        toast.error('Errore salvataggio: ' + msg)
       }
     } finally {
-      setIsPushingToDrive(false)
+      setIsSaving(false)
+      isApplyingRef.current = false
     }
   }
 
@@ -1125,6 +1016,7 @@ export default function AnalysisPage() {
   }
 
   function toggleAccept(idx: number) {
+    const wasAccepted = acceptedCorrections.has(idx)
     setAcceptedCorrections((prev) => {
       const next = new Set(prev)
       if (next.has(idx)) next.delete(idx)
@@ -1137,6 +1029,14 @@ export default function AnalysisPage() {
       next.delete(idx)
       return next
     })
+    // Se accetto (non sto togliendo), applica subito la correzione nell'editor
+    if (!wasAccepted) {
+      const corr = analysis?.corrections[idx]
+      if (corr) {
+        setEditorContent((prev) => prev.replace(corr.original, corr.suggested))
+        setAppliedInlineCorrections((prev) => new Set([...prev, idx]))
+      }
+    }
   }
 
   function toggleReject(idx: number) {
@@ -1156,7 +1056,16 @@ export default function AnalysisPage() {
 
   function selectAllCorrections() {
     if (!analysis) return
-    setAcceptedCorrections(new Set((analysis.corrections ?? []).map((_, i) => i)))
+    const allIndices = (analysis.corrections ?? []).map((_, i) => i)
+    // Filtra solo quelle non ancora applicate
+    const toApply = allIndices.filter((i) => !appliedInlineCorrections.has(i))
+    if (toApply.length > 0) {
+      const baseContent = editorContent || ''
+      const { content } = applyCorrectionsToContent(baseContent, analysis.corrections, new Set(toApply))
+      setEditorContent(content)
+      setAppliedInlineCorrections((prev) => new Set([...prev, ...toApply]))
+    }
+    setAcceptedCorrections(new Set(allIndices))
     setRejectedCorrections(new Set())
   }
 
@@ -1222,8 +1131,7 @@ export default function AnalysisPage() {
             setActiveProvider(e.target.value as AIProvider)
             setAcceptedCorrections(new Set())
             setRejectedCorrections(new Set())
-            setAppliedChanges([])
-          }}
+                  }}
           className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-2.5 py-2 text-sm text-slate-300 outline-none focus:border-violet-500/40"
           title="AI per analisi"
         >
@@ -1430,8 +1338,7 @@ export default function AnalysisPage() {
                               setActiveProvider(provider)
                               setAcceptedCorrections(new Set())
                               setRejectedCorrections(new Set())
-                              setAppliedChanges([])
-                            }}
+                                                      }}
                             disabled={!hasAnalysis}
                             className={cn(
                               'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
@@ -1706,15 +1613,6 @@ export default function AnalysisPage() {
                                       {rejectedCorrections.size > 0 && <span className="text-red-400">{rejectedCorrections.size} ✗</span>}
                                     </span>
                                   )}
-                                  <div className="flex-1" />
-                                  <button
-                                    onClick={() => void handleApplyCorrections()}
-                                    disabled={acceptedCorrections.size === 0 || isApplying || (!editorContent && !selectedChapter?.driveContent)}
-                                    className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
-                                  >
-                                    {isApplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
-                                    Applica {acceptedCorrections.size > 0 ? acceptedCorrections.size : ''}
-                                  </button>
                                 </div>
                                 {/* Correction list grouped by type */}
                                 {(() => {
@@ -1761,6 +1659,15 @@ export default function AnalysisPage() {
                                               if (allGroupAccepted) {
                                                 setAcceptedCorrections((prev) => { const next = new Set(prev); items.forEach(({i}) => next.delete(i)); return next })
                                               } else {
+                                                // Applica le correzioni del gruppo nell'editor
+                                                const toApply = items.filter(({i}) => !appliedInlineCorrections.has(i))
+                                                if (toApply.length > 0 && analysis) {
+                                                  const indices = new Set(toApply.map(({i}) => i))
+                                                  const baseContent = editorContent || ''
+                                                  const { content } = applyCorrectionsToContent(baseContent, analysis.corrections, indices)
+                                                  setEditorContent(content)
+                                                  setAppliedInlineCorrections((prev) => new Set([...prev, ...toApply.map(({i}) => i)]))
+                                                }
                                                 setAcceptedCorrections((prev) => { const next = new Set(prev); items.forEach(({i}) => next.add(i)); return next })
                                                 setRejectedCorrections((prev) => { const next = new Set(prev); items.forEach(({i}) => next.delete(i)); return next })
                                               }
@@ -2207,33 +2114,16 @@ export default function AnalysisPage() {
                             <RefreshCw className={cn('h-3 w-3', isForceSyncingDrive && 'animate-spin')} /> Ricarica
                           </button>
                         )}
-                        {driveConfig?.folderId && (
-                          <button
-                            onClick={() => void handlePushToDrive()}
-                            disabled={isPushingToDrive || !editorContent || !isPendingPush}
-                            className={cn('flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-40', isPendingPush ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-700 hover:bg-slate-600')}
-                          >
-                            {isPushingToDrive ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
-                            Salva su Drive{isPendingPush ? ' *' : ''}
-                          </button>
-                        )}
-                        {!driveConfig?.folderId && (
-                          <button onClick={() => void handleSaveEditorContent()} disabled={isSavingContent || !editorContent || !isDirty} className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40">
-                            {isSavingContent ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileEdit className="h-3 w-3" />}
-                            Salva{isDirty ? ' *' : ''}
-                          </button>
-                        )}
+                        <button
+                          onClick={() => void handleSave()}
+                          disabled={isSaving || !editorContent || !isDirty}
+                          className={cn('flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-40', isDirty ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-700 hover:bg-slate-600')}
+                        >
+                          {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                          Salva{isDirty ? ' *' : ''}
+                        </button>
                       </div>
                     </div>
-
-                    {/* Applied changes summary */}
-                    {appliedChanges.length > 0 && (
-                      <div className="shrink-0 flex items-center gap-3 rounded-xl border border-emerald-800/30 bg-emerald-900/10 px-4 py-2.5">
-                        <CheckCheck className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-                        <p className="flex-1 text-xs text-emerald-400">{appliedChanges.length} correzioni applicate \u2014 salva su Drive per confermare</p>
-                        <button onClick={() => setAppliedChanges([])} className="text-slate-600 hover:text-slate-400"><X className="h-3.5 w-3.5" /></button>
-                      </div>
-                    )}
 
                     {!selectedChapter?.driveContent && !editorContent && (
                       <p className="shrink-0 text-xs text-amber-400 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2">
@@ -2244,7 +2134,7 @@ export default function AnalysisPage() {
                     {/* Rich Text Editor with inline corrections */}
                     <RichTextEditor
                       content={editorContent}
-                      onChange={(html) => { setEditorContent(html); setAppliedChanges([]) }}
+                      onChange={(html) => { setEditorContent(html) }}
                       className="flex-1 min-h-0"
                       placeholder="Il testo del capitolo apparir\u00e0 qui dopo la sincronizzazione Drive..."
                       isFullscreen={editorFullscreen}
