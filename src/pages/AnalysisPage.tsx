@@ -1182,8 +1182,8 @@ export default function AnalysisPage() {
     if (!corr) return
     setEditorContent((prev) => prev.replace(corr.original, corr.suggested))
     setAppliedInlineCorrections((prev) => new Set([...prev, idx]))
-    setAcceptedCorrections((prev) => { const s = new Set(prev); s.delete(idx); return s })
-    setRejectedCorrections((prev) => { const s = new Set(prev); s.delete(idx); return s })
+    setAcceptedCorrections((prev) => { const s = new Set(prev); s.add(idx); return s })
+    setRejectedCorrections((prev) => { if (!prev.has(idx)) return prev; const s = new Set(prev); s.delete(idx); return s })
   }
 
   return (
