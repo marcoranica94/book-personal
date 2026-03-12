@@ -535,11 +535,11 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo prima o dopo), 
     "overall": <media pesata 1-10>
   },
   "summary": "<sintesi dell'analisi, max 200 parole>",
-${charactersSchema}${reactionsSection}
+${charactersSchema}
 ${strengthsSchema}
 ${weaknessSchema}
 ${suggestionSchema}
-${correctionsSchema}${historicalSection}${paragraphSection}${showDontTellSection}${verbTenseSection}
+${correctionsSchema}${historicalSection}${paragraphSection}${showDontTellSection}${verbTenseSection}${reactionsSection}
   "_placeholder": null
 }
 ${excludedNote}
@@ -619,7 +619,7 @@ async function callClaude(prompt, previousContext) {
   })
   const message = await client.messages.create({
     model: PROVIDER_MODELS.claude,
-    max_tokens: previousContext ? 24000 : 16000,
+    max_tokens: previousContext ? 65536 : 40000,
     messages: [{role: 'user', content: prompt}],
   })
   const block = message.content[0]
@@ -641,7 +641,7 @@ async function callGemini(prompt, previousContext, retryCount = 0) {
       body: JSON.stringify({
         contents: [{parts: [{text: prompt}]}],
         generationConfig: {
-          maxOutputTokens: previousContext ? 24000 : 16000,
+          maxOutputTokens: previousContext ? 65536 : 40000,
           temperature: 0.7,
           responseMimeType: 'application/json',
         },
@@ -677,6 +677,10 @@ async function callGemini(prompt, previousContext, retryCount = 0) {
     throw new Error(`Gemini API error ${res.status}: ${body.substring(0, 300)}`)
   }
   const data = await res.json()
+  const finishReason = data.candidates?.[0]?.finishReason
+  if (finishReason && finishReason !== 'STOP') {
+    console.warn(`  ⚠ Gemini finishReason: ${finishReason} (output probabilmente troncato)`)
+  }
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
   return text
 }
@@ -690,7 +694,7 @@ async function callChatGPT(prompt, previousContext) {
   })
   const response = await client.chat.completions.create({
     model: PROVIDER_MODELS.chatgpt,
-    max_tokens: previousContext ? 24000 : 16000,
+    max_tokens: previousContext ? 65536 : 40000,
     temperature: 0.7,
     response_format: {type: 'json_object'},
     messages: [
