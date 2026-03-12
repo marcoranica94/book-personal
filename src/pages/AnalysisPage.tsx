@@ -1610,11 +1610,6 @@ export default function AnalysisPage() {
                                         key={i}
                                         onClick={() => {
                                           setItemDetailModal({type: 'weaknesses', item})
-                                          if (itemQuotes.length > 0) {
-                                            setActiveTab('editor' as Tab)
-                                            setEditorSearchQuery(itemQuotes[0])
-                                            setTimeout(() => setEditorSearchQuery(''), 100)
-                                          }
                                         }}
                                         className="cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]"
                                       >
@@ -1653,11 +1648,6 @@ export default function AnalysisPage() {
                                         key={i}
                                         onClick={() => {
                                           setItemDetailModal({type: 'suggestions', item})
-                                          if (itemQuotesSugg.length > 0) {
-                                            setActiveTab('editor' as Tab)
-                                            setEditorSearchQuery(itemQuotesSugg[0])
-                                            setTimeout(() => setEditorSearchQuery(''), 100)
-                                          }
                                         }}
                                         className="cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--overlay)] px-3 py-2 text-sm transition-colors hover:border-[var(--border-strong)] hover:bg-white/[0.07]"
                                       >
