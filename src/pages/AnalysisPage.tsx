@@ -1007,7 +1007,7 @@ export default function AnalysisPage() {
       // Pulisci la riformattazione dopo che è stata applicata
       await deleteParagraphReformat(selectedChapter.id)
       setReformatResult(null)
-      toast.success('Testo riformattato applicato — usa "Sincronizza ora" per inviarlo su Drive')
+      toast.success('Testo riformattato applicato — clicca "Salva" per confermare')
     } catch (err) {
       toast.error('Errore applicazione: ' + (err as Error).message)
     } finally {
@@ -1717,7 +1717,7 @@ export default function AnalysisPage() {
                                                     <div onClick={(e) => { e.stopPropagation(); toggleReject(i) }} className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors', isRejected ? 'border-red-500 bg-red-600' : 'border-[var(--border-strong)] bg-transparent hover:border-red-600')}>
                                                       {isRejected && <X className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
                                                     </div>
-                                                    {isAccepted && <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-900/40 border border-emerald-700/50 px-2 py-0.5 text-xs font-medium text-emerald-400"><CheckCheck className="h-3 w-3" />da applicare</span>}
+                                                    {isAccepted && <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-900/40 border border-emerald-700/50 px-2 py-0.5 text-xs font-medium text-emerald-400"><CheckCheck className="h-3 w-3" />applicata</span>}
                                                     {isRejected && <span className="ml-auto flex items-center gap-1 rounded-full bg-red-900/30 border border-red-800/40 px-2 py-0.5 text-xs text-red-400"><X className="h-3 w-3" />rifiutata</span>}
                                                     {!isAccepted && !isRejected && wasAccepted && <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-900/30 border border-emerald-800/30 px-2 py-0.5 text-xs text-emerald-600"><CheckCheck className="h-3 w-3" />già accettata</span>}
                                                     {!isAccepted && !isRejected && wasRejected && <span className="ml-auto flex items-center gap-1 rounded-full bg-slate-800/40 border border-slate-700/30 px-2 py-0.5 text-xs text-slate-600"><X className="h-3 w-3" />già rifiutata</span>}
