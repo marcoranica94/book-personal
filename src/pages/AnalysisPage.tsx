@@ -347,8 +347,7 @@ export default function AnalysisPage() {
   const [activeInlineCorrection, setActiveInlineCorrection] = useState<number | null>(null)
   // Editor inline
   const [editorContent, setEditorContent] = useState('')
-  // externalSearchQuery: stringa + timestamp per ritriggerare anche se stesso testo
-  const [editorSearchQuery, setEditorSearchQuery] = useState('')
+  const [editorSearchQuery] = useState('')
   const [isForceSyncingDrive, setIsForceSyncingDrive] = useState(false)
   const [itemDetailModal, setItemDetailModal] = useState<{type: 'weaknesses' | 'suggestions'; item: string | {text: string; quotes?: string[]; solution?: string}} | null>(null)
   // Re-analysis dialog — scegli se includere contesto precedente
@@ -1548,7 +1547,6 @@ export default function AnalysisPage() {
                                 <ul className="space-y-1.5">
                                   {analysis.suggestions.map((item, i) => {
                                     const itemText = typeof item === 'string' ? item : item.text
-                                    const itemQuotesSugg = typeof item === 'string' ? [] : ((item as {quotes?: string[]}).quotes ?? [])
                                     const itemSolution = typeof item === 'string' ? undefined : (item as {solution?: string}).solution
                                     return (
                                       <li
