@@ -1533,9 +1533,11 @@ export default function AnalysisPage() {
                     <div className="shrink-0 flex border-b border-[var(--border)]">
                       {([
                         {id: 'feedback' as Tab, label: 'Feedback', count: (analysis.strengths?.length ?? 0) + (analysis.weaknesses?.length ?? 0) + (analysis.suggestions?.length ?? 0)},
-                        {id: 'corrections' as Tab, label: 'Correzioni', count: analysis.corrections?.length ?? 0},
+                        {id: 'corrections' as Tab, label: 'Correzioni', count: analysis.corrections?.length ?? 0, acceptedCount: acceptedCorrections.size, rejectedCount: rejectedCorrections.size},
                         {id: 'extra' as Tab, label: 'Altro', count: undefined},
-                      ] as {id: Tab; label: string; count?: number}[]).map((tab) => (
+                      ] as {id: Tab; label: string; count?: number; acceptedCount?: number; rejectedCount?: number}[]).map((tab) => {
+                        const hasActivity = (tab.acceptedCount ?? 0) > 0 || (tab.rejectedCount ?? 0) > 0
+                        return (
                         <button
                           key={tab.id}
                           onClick={() => setActiveTab(tab.id)}
@@ -1548,13 +1550,22 @@ export default function AnalysisPage() {
                         >
                           {tab.label}
                           {tab.count != null && (
-                            <span className={cn(
-                              'rounded-full px-1.5 py-0.5 text-xs tabular-nums',
-                              activeTab === tab.id ? 'bg-violet-900/30 text-violet-300' : 'bg-[var(--overlay)] text-slate-500'
-                            )}>{tab.count}</span>
+                            hasActivity ? (
+                              <span className="flex items-center gap-1 tabular-nums text-xs">
+                                {(tab.acceptedCount ?? 0) > 0 && <span className="rounded-full bg-emerald-900/40 px-1.5 py-0.5 text-emerald-400">{tab.acceptedCount}✓</span>}
+                                {(tab.rejectedCount ?? 0) > 0 && <span className="rounded-full bg-red-900/30 px-1.5 py-0.5 text-red-400">{tab.rejectedCount}✗</span>}
+                                <span className="rounded-full bg-[var(--overlay)] px-1.5 py-0.5 text-slate-500">/{tab.count}</span>
+                              </span>
+                            ) : (
+                              <span className={cn(
+                                'rounded-full px-1.5 py-0.5 text-xs tabular-nums',
+                                activeTab === tab.id ? 'bg-violet-900/30 text-violet-300' : 'bg-[var(--overlay)] text-slate-500'
+                              )}>{tab.count}</span>
+                            )
                           )}
                         </button>
-                      ))}
+                        )
+                      })}
                     </div>
 
                     {/* Scrollable tab content */}
@@ -1791,7 +1802,7 @@ export default function AnalysisPage() {
                                               return (
                                                 <div
                                                   key={i}
-                                                  onClick={() => { toggleAccept(i); setActiveInlineCorrection(i) }}
+                                                  onClick={() => setActiveInlineCorrection(i)}
                                                   className={cn(
                                                     'cursor-pointer p-3 space-y-2 transition-colors',
                                                     isAccepted ? 'bg-emerald-950/70 border-l-4 border-emerald-500/80'
