@@ -163,7 +163,16 @@ export async function refreshDriveAccessToken(
       grant_type: 'refresh_token',
     }),
   })
-  if (!res.ok) throw new Error('Refresh token fallito')
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({})) as Record<string, unknown>
+    const errCode = (errBody.error as string) ?? ''
+    const errDesc = (errBody.error_description as string) ?? res.statusText
+    // Token revocato o scaduto (app in Testing mode = 7 giorni)
+    if (errCode === 'invalid_grant') {
+      throw new Error('Refresh token scaduto — disconnetti e riconnetti Drive dalle Impostazioni')
+    }
+    throw new Error(`Refresh token fallito (${res.status}): ${errDesc}`)
+  }
   const data = (await res.json()) as { access_token: string; expires_in: number }
   return {
     accessToken: data.access_token,
