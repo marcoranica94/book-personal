@@ -416,12 +416,21 @@ export default function ChapterPage() {
             <Sparkles className="h-4 w-4 text-violet-400" />
             <h2 className="text-sm font-semibold text-violet-300">Analisi AI</h2>
           </div>
-          <Link
-            to={`/analysis`}
-            className="text-xs text-violet-400 hover:underline"
-          >
-            Vai all'analisi completa →
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              to={`/analysis?chapter=${chapter.id}&ask=1`}
+              className="flex items-center gap-1 rounded-md border border-violet-700/40 bg-violet-900/20 px-2 py-1 text-xs text-violet-400 transition-colors hover:bg-violet-900/30 hover:text-violet-300"
+            >
+              <Sparkles className="h-3 w-3" />
+              Chiedi
+            </Link>
+            <Link
+              to={`/analysis?chapter=${chapter.id}`}
+              className="text-xs text-violet-400 hover:underline"
+            >
+              Vai all'analisi completa →
+            </Link>
+          </div>
         </div>
 
         {analysis ? (

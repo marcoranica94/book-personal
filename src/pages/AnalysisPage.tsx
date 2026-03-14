@@ -1,4 +1,5 @@
 import React, {useEffect, useRef, useState} from 'react'
+import {useSearchParams} from 'react-router-dom'
 import {AnimatePresence, motion} from 'framer-motion'
 import {
   AlertTriangle,
@@ -325,6 +326,7 @@ function ScoreBar({label, value}: {label: string; value: number}) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AnalysisPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const {chapters, loadChapters} = useChaptersStore()
   const {analyses, loadAnalysis, loadAllAnalyses, analysisErrors, loadAnalysisErrors, history: analysisHistory, loadChapterHistory, deleteAnalysis, deleteHistoryEntry, removeError, isLoading} = useAnalysisStore()
   const {config: driveConfig, patchTokens, load: loadDrive} = useDriveStore()
@@ -382,6 +384,8 @@ export default function AnalysisPage() {
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>([])
   // ID domanda espansa nel tab Domande
   const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null)
+  // Domanda personalizzata attualmente visualizzata nel pannello principale
+  const [viewingQuestion, setViewingQuestion] = useState<CustomQuestion | null>(null)
   const [pendingReformat, setPendingReformat] = useState<PendingReformat | null>(() => loadPendingReformat())
   const [reformatResult, setReformatResult] = useState<ParagraphReformat | null>(null)
   const [reformatElapsed, setReformatElapsed] = useState(0)
@@ -498,6 +502,22 @@ export default function AnalysisPage() {
     }
   }, [chapters, loadAllAnalyses, loadAnalysisErrors])
 
+  // Handle query params from ChapterPage (?chapter=ID&ask=1)
+  useEffect(() => {
+    const chapterId = searchParams.get('chapter')
+    const ask = searchParams.get('ask')
+    if (chapterId && chapters.length > 0 && chapters.some((c) => c.id === chapterId)) {
+      setSelectedId(chapterId)
+      if (ask === '1') {
+        setCustomQuestion('')
+        setAuthorComment(getAuthorComment(chapterId))
+        setAnalyzeDialog({chapterId, provider: activeProvider})
+      }
+      // Clear params after applying
+      setSearchParams({}, {replace: true})
+    }
+  }, [chapters, searchParams, setSearchParams]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Scroll all'analisi quando cambia provider
   useEffect(() => {
     analysisSectionRef.current?.scrollIntoView({behavior: 'smooth', block: 'start'})
@@ -558,8 +578,11 @@ export default function AnalysisPage() {
             toast.success(`Risposta alla domanda ricevuta per "${pending.chapterTitle}"!`)
             if (pending.chapterId !== 'all') {
               setSelectedId(pending.chapterId)
-              setActiveTab('extra')
-              setActiveExtraTab('domande')
+              // Auto-show the latest custom question in the main feedback panel
+              if (questions.length > 0) {
+                setViewingQuestion(questions[0])
+                setActiveTab('feedback')
+              }
               window.scrollTo({top: 0, behavior: 'smooth'})
             }
           } else {
@@ -1112,6 +1135,7 @@ export default function AnalysisPage() {
           onChange={(e) => {
             setSelectedId(e.target.value)
             setActiveTab('feedback')
+            setViewingQuestion(null)
           }}
           className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm text-slate-300 outline-none focus:border-violet-500/40"
         >
@@ -1291,7 +1315,7 @@ export default function AnalysisPage() {
             {/* Close button */}
             <div className="flex items-center justify-end">
               <button
-                onClick={() => { setSelectedId(''); setActiveTab('feedback'); }}
+                onClick={() => { setSelectedId(''); setActiveTab('feedback'); setViewingQuestion(null); }}
                 title="Chiudi analisi e torna al confronto"
                 className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs text-slate-500 transition-colors hover:bg-[var(--overlay)] hover:text-slate-300"
               >
@@ -1404,36 +1428,61 @@ export default function AnalysisPage() {
                     className="flex flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]"
                     style={{maxHeight: 'calc(100vh - 160px)'}}
                   >
-                    {/* Compact scores header */}
-                    <div className="shrink-0 border-b border-[var(--border)] p-4 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <ProgressRing
-                          value={analysis.scores.overall * 10}
-                          size={72}
-                          stroke={7}
-                          label={analysis.scores.overall.toFixed(1)}
-                          sublabel="overall"
-                        />
-                        <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1.5">
-                          {Object.entries(SCORE_LABELS).map(([key, label]) => (
-                            <ScoreBar
-                              key={key}
-                              label={label}
-                              value={analysis.scores[key as keyof typeof analysis.scores] as number}
-                            />
-                          ))}
+                    {/* Header: scores (standard) or question badge (custom) */}
+                    {viewingQuestion ? (
+                      <div className="shrink-0 border-b border-[var(--border)] p-4 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-500/40 bg-violet-900/30">
+                            <Sparkles className="h-5 w-5 text-violet-400" />
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="rounded-full border border-violet-500/40 bg-violet-900/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400">Domanda</span>
+                              <span className="text-xs text-slate-600">{viewingQuestion.provider} · {viewingQuestion.model}</span>
+                            </div>
+                            <p className="mt-1 text-sm font-medium text-slate-200 leading-snug line-clamp-2">{viewingQuestion.question}</p>
+                          </div>
+                          <button
+                            onClick={() => setViewingQuestion(null)}
+                            title="Torna all'analisi standard"
+                            className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-[var(--overlay)] hover:text-slate-300"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-slate-600">{formatRelativeDate(viewingQuestion.analyzedAt)}</p>
+                      </div>
+                    ) : (
+                      <div className="shrink-0 border-b border-[var(--border)] p-4 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <ProgressRing
+                            value={analysis.scores.overall * 10}
+                            size={72}
+                            stroke={7}
+                            label={analysis.scores.overall.toFixed(1)}
+                            sublabel="overall"
+                          />
+                          <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                            {Object.entries(SCORE_LABELS).map(([key, label]) => (
+                              <ScoreBar
+                                key={key}
+                                label={label}
+                                value={analysis.scores[key as keyof typeof analysis.scores] as number}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <p className="text-xs leading-relaxed text-slate-400 line-clamp-2">{analysis.summary}</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-slate-600">{formatRelativeDate(analysis.analyzedAt)} · {analysis.model}</p>
+                          {analysis.authorComment && (
+                            <span title={analysis.authorComment} className="cursor-help text-xs text-violet-500 truncate max-w-[140px]">
+                              📝 nota autore
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <p className="text-xs leading-relaxed text-slate-400 line-clamp-2">{analysis.summary}</p>
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs text-slate-600">{formatRelativeDate(analysis.analyzedAt)} · {analysis.model}</p>
-                        {analysis.authorComment && (
-                          <span title={analysis.authorComment} className="cursor-help text-xs text-violet-500 truncate max-w-[140px]">
-                            📝 nota autore
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    )}
 
                     {/* Tab bar — 3 tabs */}
                     <div className="shrink-0 flex border-b border-[var(--border)]">
@@ -1478,8 +1527,53 @@ export default function AnalysisPage() {
                     <div className="flex-1 overflow-y-auto p-4 min-h-0">
                       <AnimatePresence mode="wait">
 
-                        {/* ── FEEDBACK TAB: strengths + weaknesses + suggestions ── */}
-                        {activeTab === 'feedback' && (
+                        {/* ── FEEDBACK TAB: custom question view OR strengths + weaknesses + suggestions ── */}
+                        {activeTab === 'feedback' && viewingQuestion && (
+                          <motion.div key="feedback-question" initial={{opacity:0,x:-4}} animate={{opacity:1,x:0}} exit={{opacity:0}} transition={{duration:0.15}} className="space-y-5">
+                            {/* Answer */}
+                            <div className="rounded-xl border border-violet-800/30 bg-violet-900/10 p-4">
+                              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-violet-400">Risposta</p>
+                              <p className="text-sm leading-relaxed text-slate-200 whitespace-pre-wrap">{viewingQuestion.answer}</p>
+                            </div>
+
+                            {/* Findings */}
+                            {viewingQuestion.findings.length > 0 && (
+                              <div>
+                                <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-400">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
+                                  Osservazioni ({viewingQuestion.findings.length})
+                                </p>
+                                <div className="space-y-2">
+                                  {viewingQuestion.findings.map((f, i) => (
+                                    <div key={i} className="rounded-lg border border-[var(--border)] bg-[var(--overlay)] p-3 space-y-2">
+                                      {f.quote && (
+                                        <blockquote className="border-l-2 border-slate-600 pl-3 text-xs italic leading-relaxed text-slate-400">&ldquo;{f.quote}&rdquo;</blockquote>
+                                      )}
+                                      <p className="text-sm text-slate-300">{f.observation}</p>
+                                      {f.suggestion && (
+                                        <div className="rounded-md border border-emerald-800/30 bg-emerald-900/10 px-3 py-2">
+                                          <p className="text-xs font-medium text-emerald-400 mb-0.5">Suggerimento</p>
+                                          <p className="text-xs leading-relaxed text-slate-300">{f.suggestion}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Corrections count */}
+                            {viewingQuestion.corrections.length > 0 && (
+                              <div className="flex items-center gap-2 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2.5">
+                                <FileEdit className="h-4 w-4 text-amber-400" />
+                                <p className="text-xs text-amber-300">
+                                  <strong>{viewingQuestion.corrections.length}</strong> correzioni suggerite — vedi la tab <strong>Correzioni</strong>
+                                </p>
+                              </div>
+                            )}
+                          </motion.div>
+                        )}
+                        {activeTab === 'feedback' && !viewingQuestion && (
                           <motion.div key="feedback" initial={{opacity:0,x:-4}} animate={{opacity:1,x:0}} exit={{opacity:0}} transition={{duration:0.15}} className="space-y-5">
                             {/* Strengths */}
                             {(analysis.strengths?.length ?? 0) > 0 && (
@@ -2019,9 +2113,15 @@ export default function AnalysisPage() {
                                         </div>
                                       ) : (
                                         customQuestions.map((q) => (
-                                          <div key={q.id} className="rounded-xl border border-[var(--border)] bg-[var(--overlay)] overflow-hidden">
+                                          <div key={q.id} className={cn('rounded-xl border bg-[var(--overlay)] overflow-hidden', viewingQuestion?.id === q.id ? 'border-violet-500/50 ring-1 ring-violet-500/20' : 'border-[var(--border)]')}>
                                             <button
-                                              onClick={() => setExpandedQuestionId(expandedQuestionId === q.id ? null : (q.id ?? null))}
+                                              onClick={() => {
+                                                if (expandedQuestionId === q.id) {
+                                                  setExpandedQuestionId(null)
+                                                } else {
+                                                  setExpandedQuestionId(q.id ?? null)
+                                                }
+                                              }}
                                               className="w-full flex items-start gap-3 p-4 text-left hover:bg-white/5 transition-colors"
                                             >
                                               <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-violet-500/40 bg-violet-900/30 text-xs font-bold text-violet-400">?</span>
@@ -2034,6 +2134,18 @@ export default function AnalysisPage() {
 
                                             {expandedQuestionId === q.id && (
                                               <div className="border-t border-[var(--border)] p-4 space-y-4">
+                                                <button
+                                                  onClick={() => { setViewingQuestion(q); setActiveTab('feedback'); }}
+                                                  className={cn(
+                                                    'flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors',
+                                                    viewingQuestion?.id === q.id
+                                                      ? 'border-violet-500/40 bg-violet-900/30 text-violet-300'
+                                                      : 'border-violet-700/40 bg-violet-900/10 text-violet-400 hover:bg-violet-900/20 hover:text-violet-300'
+                                                  )}
+                                                >
+                                                  <Eye className="h-3.5 w-3.5" />
+                                                  {viewingQuestion?.id === q.id ? 'Visualizzata nel pannello' : 'Vedi nel pannello principale'}
+                                                </button>
                                                 <div className="rounded-lg border border-violet-800/30 bg-violet-900/10 p-4">
                                                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-violet-400">Risposta</p>
                                                   <p className="text-sm leading-relaxed text-slate-200 whitespace-pre-wrap">{q.answer}</p>
@@ -2329,6 +2441,11 @@ export default function AnalysisPage() {
                                 {String(c.number).padStart(2, '0')}
                               </span>
                               <span className="text-slate-300">{c.title}</span>
+                              {selectedId === c.id && customQuestions.length > 0 && (
+                                <span className="rounded-full border border-violet-500/30 bg-violet-900/20 px-1.5 py-px text-[9px] font-medium text-violet-400" title={`${customQuestions.length} domande`}>
+                                  <Sparkles className="inline h-2.5 w-2.5 mr-0.5" />{customQuestions.length}
+                                </span>
+                              )}
                             </div>
                           </td>
                           {Object.keys(SCORE_LABELS).map((key) => {
@@ -2415,6 +2532,65 @@ export default function AnalysisPage() {
                                         <p className="text-xs text-slate-500">Solo un'analisi disponibile — avvia un'altra analisi per vedere il trend.</p>
                                       </div>
                                     )}
+                                    {/* Domande personalizzate per questo capitolo (loaded when chapter is selected) */}
+                                    {(() => {
+                                      const chapterQuestions = selectedId === c.id ? customQuestions : []
+                                      if (chapterQuestions.length === 0) return null
+                                      return (
+                                        <div className="space-y-2">
+                                          <div className="flex items-center gap-2">
+                                            <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+                                            <span className="text-xs font-medium text-violet-400">Domande personalizzate</span>
+                                            <span className="text-xs text-slate-600">({chapterQuestions.length})</span>
+                                          </div>
+                                          <div className="overflow-x-auto">
+                                            <table className="w-full text-xs">
+                                              <thead>
+                                                <tr className="text-slate-600">
+                                                  <th className="px-2 py-1.5 text-left font-medium">Data</th>
+                                                  <th className="px-2 py-1.5 text-left font-medium">Provider</th>
+                                                  <th className="px-2 py-1.5 text-left font-medium">Domanda</th>
+                                                  <th className="px-2 py-1.5 text-center font-medium">Osserv.</th>
+                                                  <th className="px-2 py-1.5 text-center font-medium">Correz.</th>
+                                                  <th className="px-2 py-1.5 text-center font-medium"></th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {chapterQuestions.map((q) => (
+                                                  <tr key={q.id} className={cn('border-t border-[var(--border)]', viewingQuestion?.id === q.id && 'bg-violet-900/20')}>
+                                                    <td className="px-2 py-1.5 text-slate-400 whitespace-nowrap">
+                                                      {new Date(q.analyzedAt).toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit', year: '2-digit'})}
+                                                      {' '}
+                                                      <span className="text-slate-600">{new Date(q.analyzedAt).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}</span>
+                                                    </td>
+                                                    <td className="px-2 py-1.5 text-slate-500">{q.provider}</td>
+                                                    <td className="px-2 py-1.5 text-slate-300 max-w-[200px] truncate" title={q.question}>{q.question}</td>
+                                                    <td className="px-2 py-1.5 text-center text-blue-400">{q.findings.length}</td>
+                                                    <td className="px-2 py-1.5 text-center text-amber-400">{q.corrections.length}</td>
+                                                    <td className="px-2 py-1.5 text-center">
+                                                      <button
+                                                        onClick={(e) => {
+                                                          e.stopPropagation()
+                                                          setSelectedId(c.id)
+                                                          setViewingQuestion(q)
+                                                          setActiveTab('feedback')
+                                                          window.scrollTo({top: 0, behavior: 'smooth'})
+                                                        }}
+                                                        title="Visualizza nel pannello principale"
+                                                        className="rounded p-0.5 text-slate-500 transition-colors hover:text-violet-400"
+                                                      >
+                                                        <Eye className="h-3.5 w-3.5" />
+                                                      </button>
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      )
+                                    })()}
+
                                     {providerEntries.map(([provider, historyList]) => {
                                       if (historyList.length < 2) return null
                                       const cfg = AI_PROVIDER_CONFIG[provider]
